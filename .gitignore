@@ -97,3 +97,8 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+#VRM
+/Assets/_SAIUN/Art/VRM/
+/Assets/_SAIUN/Art/VRM.meta
+#VSC
+.vscode/
