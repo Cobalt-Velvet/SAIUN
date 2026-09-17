@@ -15,9 +15,6 @@ namespace _SAIUN.Scripts.UI
     /// </summary>
     public class TimerHudView : MonoBehaviour
     {
-        /// <summary>Sky Layer 높이(px). 사양서 8장 확정값. HUD는 이 영역 안에 놓인다.</summary>
-        public const int Height = 340;
-
         private const int SecondsPerMinute = 60;
 
         [Header("참조")]
@@ -219,11 +216,22 @@ namespace _SAIUN.Scripts.UI
             }
         }
 
+#if UNITY_EDITOR
+        // 인스펙터에서 색을 바꾸면 에디터에서 바로 보이게 한다. 실측용이며 실행에는 영향이 없다.
+        private void OnValidate()
+        {
+            ApplyStyle();
+        }
+#endif
+
         private void ApplyStyle()
         {
             if (primaryText != null) primaryText.color = textColor;
             if (secondaryText != null) secondaryText.color = textColor;
             if (phaseLabel != null) phaseLabel.color = textColor;
+
+            // 실행 중에는 EnsureDots가 만든 도트가 색을 따로 받는다. 여기서는 템플릿만 맞춘다.
+            if (dotTemplate != null) dotTemplate.color = dotPendingColor;
         }
 
         /// <summary>남은 초를 mm:ss로 만든다. 올림이라 59.2초는 01:00으로 보인다.</summary>

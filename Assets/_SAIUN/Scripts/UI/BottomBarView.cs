@@ -11,9 +11,6 @@ namespace _SAIUN.Scripts.UI
     /// </summary>
     public class BottomBarView : MonoBehaviour
     {
-        /// <summary>Bottom Bar 높이(px). 사양서 8장 확정값.</summary>
-        public const int Height = 68;
-
         [Header("참조")]
         [SerializeField] private GameManager gameManager;
         [SerializeField] private Button primaryButton;
@@ -140,6 +137,14 @@ namespace _SAIUN.Scripts.UI
                 if (taskInput.text != text) taskInput.SetTextWithoutNotify(text);
             }
         }
+
+#if UNITY_EDITOR
+        // 인스펙터에서 색을 바꾸면 에디터에서 바로 보이게 한다. 실측용이며 실행에는 영향이 없다.
+        private void OnValidate()
+        {
+            ApplyStyle();
+        }
+#endif
 
         private void ApplyStyle()
         {

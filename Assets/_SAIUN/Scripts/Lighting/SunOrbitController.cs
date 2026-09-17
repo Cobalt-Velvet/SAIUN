@@ -19,6 +19,10 @@ namespace _SAIUN.Scripts.Lighting
         [SerializeField] private Light sun;
         [SerializeField] private PomodoroTimer timer;
 
+        [Header("실측용 미리보기")]
+        [Tooltip("에디터에서 이 값을 움직이면 그 진행률의 광원 각도가 즉시 적용된다. 실행 중에는 무시한다.")]
+        [SerializeField, Range(0f, 1f)] private float previewProgress;
+
         /// <summary>현재 적용된 수평각(도).</summary>
         public float HorizontalAngle { get; private set; } = StartHorizontalAngle;
 
@@ -30,6 +34,16 @@ namespace _SAIUN.Scripts.Lighting
             if (sun == null) Debug.LogError("SunOrbitController: Light 참조가 없습니다.");
             if (timer == null) Debug.LogError("SunOrbitController: PomodoroTimer를 찾지 못했습니다.");
         }
+
+#if UNITY_EDITOR
+        // 진행률 0 / 0.5 / 1 세 시점의 그림자를 재생 없이 비교하기 위한 실측 도구.
+        private void OnValidate()
+        {
+            if (Application.isPlaying) return;
+            if (sun == null) sun = GetComponent<Light>();
+            Apply(previewProgress);
+        }
+#endif
 
         private void Start()
         {

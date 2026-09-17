@@ -50,9 +50,9 @@ namespace _SAIUN.Scripts.Core
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
 
-        // 창 크기 확정값 (사양서 8장). 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
-        public const int WindowWidth  = 480;
-        public const int WindowHeight = 680;
+        // 창 크기는 SceneMetrics가 단일 출처다. 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
+        const int WindowWidth  = SceneMetrics.WindowWidth;
+        const int WindowHeight = SceneMetrics.WindowHeight;
         const string UNITY_WND_CLASS = "UnityWndClass";
         static readonly IntPtr HWND_TOPMOST   = new IntPtr(-1);
         static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2); // spellchecker:ignore NOTOPMOST

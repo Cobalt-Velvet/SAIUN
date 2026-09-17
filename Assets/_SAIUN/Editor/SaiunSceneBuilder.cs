@@ -33,9 +33,9 @@ namespace _SAIUN.Editor
         private const string BottomBarPrefabPath = PrefabFolder + "/BottomBar.prefab";
         private const string TimerHudPrefabPath = PrefabFolder + "/TimerHud.prefab";
 
-        // ---- 확정값 (사양서 8장) ----
-        private const int WindowWidth = 480;
-        private const int WindowHeight = 680;
+        // 확정값은 SceneMetrics가 단일 출처다.
+        private const int WindowWidth = SceneMetrics.WindowWidth;
+        private const int WindowHeight = SceneMetrics.WindowHeight;
 
         // ---- 임시 레이아웃값 (실측 대기) ----
         private const string PlaceholderFontFamily = "Malgun Gothic";
@@ -154,7 +154,7 @@ namespace _SAIUN.Editor
             rt.anchorMax = new Vector2(1f, 0f);
             rt.pivot = new Vector2(0.5f, 0f);
             rt.anchoredPosition = Vector2.zero;
-            rt.sizeDelta = new Vector2(0f, BottomBarView.Height);
+            rt.sizeDelta = new Vector2(0f, SceneMetrics.BottomBarHeight);
 
             Image background = root.GetComponent<Image>();
             background.raycastTarget = false;   // 바 배경 위에서는 창 드래그가 되게 둔다
@@ -225,7 +225,7 @@ namespace _SAIUN.Editor
             rt.anchorMax = new Vector2(1f, 1f);
             rt.pivot = new Vector2(0.5f, 1f);
             rt.anchoredPosition = Vector2.zero;
-            rt.sizeDelta = new Vector2(0f, TimerHudView.Height);
+            rt.sizeDelta = new Vector2(0f, SceneMetrics.SkyLayerHeight);
 
             TMP_Text phase = CreateText(root.transform, "PhaseLabel", font, HudLabelFontSize, "POMODORO");
             SetTopAnchored(phase.rectTransform, y: -36f, height: 30f);
@@ -329,6 +329,8 @@ namespace _SAIUN.Editor
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
             scaler.matchWidthOrHeight = 0.5f;
+
+            SetupCamera();
 
             // 광원 공전: 씬의 Directional Light에 붙인다.
             Light sun = FindDirectionalLight();
@@ -461,6 +463,30 @@ namespace _SAIUN.Editor
         private static Sprite BuiltinSprite(string path)
         {
             return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
+        }
+
+        // 사양서 2-4: 고정 Orthographic 아이소메트릭 카메라.
+        // 배경 알파 0과 Solid Color 설정은 투명 창에 필요하므로 건드리지 않는다.
+        private static void SetupCamera()
+        {
+            Camera camera = Camera.main ?? Object.FindFirstObjectByType<Camera>();
+            if (camera == null)
+            {
+                Debug.LogWarning("SaiunSceneBuilder: 카메라가 없어 설정을 건너뜁니다.");
+                return;
+            }
+
+            camera.orthographic = true;
+            camera.orthographicSize = SceneMetrics.CameraOrthographicSize;
+            camera.nearClipPlane = SceneMetrics.CameraNearClip;
+            camera.farClipPlane = SceneMetrics.CameraFarClip;
+
+            Transform t = camera.transform;
+            t.rotation = Quaternion.Euler(SceneMetrics.CameraPitchDegrees, SceneMetrics.CameraYawDegrees, 0f);
+            t.position = -t.forward * SceneMetrics.CameraDistance;   // 씬 원점을 바라보게 물린다
+
+            Debug.Log($"SaiunSceneBuilder: 카메라 Orthographic Size {SceneMetrics.CameraOrthographicSize} " +
+                      $"(pixelsPerUnit {SceneMetrics.PixelsPerUnit})");
         }
 
         private static Light FindDirectionalLight()
