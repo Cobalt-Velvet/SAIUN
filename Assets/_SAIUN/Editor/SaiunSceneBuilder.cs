@@ -437,6 +437,7 @@ namespace _SAIUN.Editor
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
+            EnsureScreenAlert(canvasGo.transform, gameManager);
             EnsureGlassRim(canvasGo.transform);
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -626,6 +627,43 @@ namespace _SAIUN.Editor
             rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
+        }
+
+        // 시각 알림(P5-02). HUD·하단 바까지 덮어야 하므로 그 뒤에 두고, 유리 테두리보다는 아래에 둔다.
+        private static void EnsureScreenAlert(Transform canvas, GameManager gameManager)
+        {
+            Transform existing = canvas.Find("ScreenAlert");
+            GameObject root = existing != null
+                ? existing.gameObject
+                : new GameObject("ScreenAlert", typeof(RectTransform), typeof(ScreenAlertView));
+            root.transform.SetParent(canvas, false);
+            root.transform.SetAsLastSibling();
+            Stretch(root.GetComponent<RectTransform>());
+
+            Transform dimChild = root.transform.Find("Dim");
+            GameObject dim = dimChild != null ? dimChild.gameObject : new GameObject("Dim", typeof(RectTransform), typeof(Image));
+            dim.transform.SetParent(root.transform, false);
+            dim.transform.SetAsFirstSibling();
+            Stretch(dim.GetComponent<RectTransform>());
+            var dimImage = dim.GetComponent<Image>();
+            dimImage.raycastTarget = false;
+            dimImage.enabled = false;
+
+            Transform glowChild = root.transform.Find("EdgeGlow");
+            GameObject glow = glowChild != null ? glowChild.gameObject : new GameObject("EdgeGlow", typeof(RectTransform), typeof(RawImage));
+            glow.transform.SetParent(root.transform, false);
+            glow.transform.SetAsLastSibling();
+            Stretch(glow.GetComponent<RectTransform>());
+            var glowImage = glow.GetComponent<RawImage>();
+            glowImage.raycastTarget = false;
+            glowImage.enabled = false;
+
+            var view = root.GetComponent<ScreenAlertView>();
+            var so = new SerializedObject(view);
+            so.FindProperty("gameManager").objectReferenceValue = gameManager;
+            so.FindProperty("edgeGlow").objectReferenceValue = glowImage;
+            so.FindProperty("dimOverlay").objectReferenceValue = dimImage;
+            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // 유리 테두리 하이라이트. 창 가장자리를 따라 그리므로 캔버스에서 가장 위에 둔다.
