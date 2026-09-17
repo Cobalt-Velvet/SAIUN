@@ -41,6 +41,9 @@ namespace _SAIUN.Scripts.Timer
         /// <summary>진행 중인 세션의 설정 복사본. 세션 밖에서는 null.</summary>
         public SessionConfig Config { get; private set; }
 
+        /// <summary>현재 구간. 상태머신 상태를 그대로 비춘다(광원 등 타이머만 구독하는 시스템용).</summary>
+        public PomodoroState CurrentPhase => stateMachine != null ? stateMachine.CurrentState : PomodoroState.Idle;
+
         /// <summary>남은 시간의 정수 초가 바뀔 때마다 발행. 사실상 1초마다.</summary>
         public event Action OnTick;
 

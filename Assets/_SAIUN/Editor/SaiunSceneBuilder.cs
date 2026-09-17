@@ -1,6 +1,7 @@
 using System.IO;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
+using _SAIUN.Scripts.Lighting;
 using _SAIUN.Scripts.Timer;
 using _SAIUN.Scripts.UI;
 using TMPro;
@@ -58,21 +59,37 @@ namespace _SAIUN.Editor
             }
 
             TMP_FontAsset font = EnsureFontAsset();
-            BuildBottomBarPrefab(font);
-            BuildTimerHudPrefab(font);
+            BuildPrefabsIfMissing(font);
             SetupMainScene();
             AssetDatabase.SaveAssets();
             Debug.Log("SaiunSceneBuilder: 완료");
         }
 
-        [MenuItem("SAIUN/Build UI Prefabs")]
+        [MenuItem("SAIUN/Build UI Prefabs (missing only)")]
         public static void BuildPrefabs()
+        {
+            if (!EnsureTmpResources()) return;
+            BuildPrefabsIfMissing(EnsureFontAsset());
+            AssetDatabase.SaveAssets();
+        }
+
+        // 프리팹을 다시 만들면 내부 fileID가 바뀌어 씬 인스턴스의 오버라이드가 끊긴다.
+        // 그래서 기본 경로는 없는 프리팹만 만들고, 덮어쓰기는 별도 메뉴로만 한다.
+        [MenuItem("SAIUN/Rebuild UI Prefabs (overwrite)")]
+        public static void RebuildPrefabs()
         {
             if (!EnsureTmpResources()) return;
             TMP_FontAsset font = EnsureFontAsset();
             BuildBottomBarPrefab(font);
             BuildTimerHudPrefab(font);
             AssetDatabase.SaveAssets();
+            Debug.LogWarning("SaiunSceneBuilder: 프리팹을 덮어썼습니다. 씬의 인스턴스를 지우고 Setup Main Scene을 다시 실행하세요.");
+        }
+
+        private static void BuildPrefabsIfMissing(TMP_FontAsset font)
+        {
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(BottomBarPrefabPath) == null) BuildBottomBarPrefab(font);
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(TimerHudPrefabPath) == null) BuildTimerHudPrefab(font);
         }
 
         [MenuItem("SAIUN/Setup Main Scene")]
@@ -306,6 +323,21 @@ namespace _SAIUN.Editor
             scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
             scaler.matchWidthOrHeight = 0.5f;
 
+            // 광원 공전: 씬의 Directional Light에 붙인다.
+            Light sun = FindDirectionalLight();
+            if (sun != null)
+            {
+                var orbit = EnsureComponent<SunOrbitController>(sun.gameObject);
+                var orbitSo = new SerializedObject(orbit);
+                orbitSo.FindProperty("sun").objectReferenceValue = sun;
+                orbitSo.FindProperty("timer").objectReferenceValue = timer;
+                orbitSo.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else
+            {
+                Debug.LogWarning("SaiunSceneBuilder: Directional Light가 없어 SunOrbitController를 붙이지 않았습니다.");
+            }
+
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
 
@@ -422,6 +454,15 @@ namespace _SAIUN.Editor
         private static Sprite BuiltinSprite(string path)
         {
             return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
+        }
+
+        private static Light FindDirectionalLight()
+        {
+            foreach (Light light in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (light.type == LightType.Directional) return light;
+            }
+            return null;
         }
 
         private static T EnsureComponent<T>(GameObject go) where T : Component
