@@ -25,10 +25,11 @@ namespace _SAIUN.Scripts.Core
         public static readonly Color DeepJungle = Hex("24382C");
 
         /// <summary>
-        /// 경고색. 팔레트에 붉은 계열이 없어 청록의 보색 방향에서 골랐다.
-        /// 사용자 확인 전까지는 임시값이다.
+        /// 경고색 Living Coral. 팔레트에 붉은 계열이 없어 따로 지정받았다.
+        /// 색상환에서 Tropical Teal과 171도 떨어져 사실상 보색이고,
+        /// 하단 바 배경 위 대비는 4.59로 본문 기준을 넘는다.
         /// </summary>
-        public static readonly Color Warning = Hex("E08D6F");
+        public static readonly Color Warning = Hex("FF6F61");
 
         // ---- 용도별 색 (사양서 3-2) ----
 

@@ -63,6 +63,26 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 경고색이_하단_바_배경_위에서_읽힌다()
+        {
+            AssertHex("FF6F61", SaiunPalette.Warning);
+            Assert.GreaterOrEqual(
+                Contrast(SaiunPalette.Warning, SaiunPalette.DeepJungle), BodyTextMinimum);
+        }
+
+        [Test]
+        public void 경고색은_포인트_색과_확실히_구분된다()
+        {
+            // 경고는 색상 차이로 읽혀야 한다. 밝기가 비슷해 대비비로는 구분되지 않는다.
+            Color.RGBToHSV(SaiunPalette.Warning, out float warningHue, out _, out _);
+            Color.RGBToHSV(SaiunPalette.MainPoint, out float pointHue, out _, out _);
+
+            float gap = Mathf.Abs(warningHue - pointHue) * 360f;
+            if (gap > 180f) gap = 360f - gap;
+            Assert.Greater(gap, 150f, "경고색과 포인트 색의 색상 차이가 너무 작다.");
+        }
+
+        [Test]
         public void 하단_바_배경은_거의_불투명하다()
         {
             // 바탕화면이 비쳐 보이면 글자 대비가 무너진다.

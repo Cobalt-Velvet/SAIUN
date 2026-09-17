@@ -27,6 +27,7 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
         [DllImport("Dwmapi.dll")] static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset); // spellchecker:ignore Dwmapi
+        [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
         [StructLayout(LayoutKind.Sequential)]
         struct MARGINS { public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight; }
@@ -50,6 +51,10 @@ namespace _SAIUN.Scripts.Core
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
 
+        // Windows 11 빌드 22621 이상에서 지원하는 시스템 배경 속성.
+        const int DWMWA_SYSTEMBACKDROP_TYPE = 38;   // spellchecker:ignore SYSTEMBACKDROP
+        const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
         // 창 크기는 SceneMetrics가 단일 출처다. 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
         const int WindowWidth  = SceneMetrics.WindowWidth;
         const int WindowHeight = SceneMetrics.WindowHeight;
@@ -59,6 +64,23 @@ namespace _SAIUN.Scripts.Core
 
         // 해상도 변경이 적용되기를 기다리는 최대 시간(초).
         const float ResolutionTimeoutSeconds = 2f;
+
+        /// <summary>DWM이 창 뒤에 깔아주는 시스템 배경. 값은 DWM_SYSTEMBACKDROP_TYPE 그대로다.</summary>
+        public enum BackdropType
+        {
+            /// <summary>배경 없음. 창 뒤로 바탕화면이 그대로 보인다.</summary>
+            None = 1,
+            /// <summary>Mica. 바탕화면 색을 크게 흐려 은은하게 깐다.</summary>
+            Mica = 2,
+            /// <summary>Acrylic. 창 뒤를 실제로 블러 처리한다. 유리에 가장 가깝다.</summary>
+            Acrylic = 3,
+            /// <summary>Mica Alt. Mica보다 대비가 강하다.</summary>
+            MicaAlt = 4,
+        }
+
+        [Header("시스템 배경")]
+        [Tooltip("Windows 11의 DWM 시스템 배경. Acrylic은 창 뒤를 흐려 유리처럼 보인다. 창 전체에 적용되며, None으로 두면 바탕화면이 그대로 비친다.")]
+        [SerializeField] private BackdropType backdrop = BackdropType.Acrylic;
 
         /// <summary>창 좌상단 스크린 좌표. 에디터에서는 (0,0).</summary>
         public Vector2Int Position { get; private set; }
@@ -116,6 +138,7 @@ namespace _SAIUN.Scripts.Core
             SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, WindowWidth, WindowHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
             var margins = new MARGINS { cxLeftWidth = -1 };
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
+            ApplyBackdrop(ResolveBackdrop());
             SetAlwaysOnTop(true);
             RefreshPosition();
 
@@ -179,6 +202,41 @@ namespace _SAIUN.Scripts.Core
             if (_hwnd == IntPtr.Zero) return;
             SetWindowPos(_hwnd, alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 #endif
+        }
+
+        /// <summary>
+        /// DWM 시스템 배경을 적용한다. Windows 11 22621 미만에서는 호출이 실패하고 무시된다.
+        /// 창 전체에 적용되므로 하단 바만 유리로 만들 수는 없다.
+        /// </summary>
+        public void ApplyBackdrop(BackdropType type)
+        {
+#if !UNITY_EDITOR
+            if (_hwnd == IntPtr.Zero) return;
+
+            backdrop = type;
+
+            // 배경이 어두운 계열이라 다크 모드로 둬야 Acrylic 틴트가 맞는다.
+            int dark = 1;
+            DwmSetWindowAttribute(_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+
+            int value = (int)type;
+            int result = DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref value, sizeof(int));
+            Debug.Log($"WindowController: 시스템 배경 {type} 적용 결과 0x{result:X8}");
+#endif
+        }
+
+        // 실험 중에는 실행 인자로 배경을 바꿔 한 번의 빌드로 네 값을 모두 본다.
+        // 예: SAIUN.exe -backdrop acrylic
+        BackdropType ResolveBackdrop()
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] != "-backdrop") continue;
+                if (Enum.TryParse(args[i + 1], true, out BackdropType parsed)) return parsed;
+                Debug.LogWarning($"WindowController: 알 수 없는 -backdrop 값 {args[i + 1]}");
+            }
+            return backdrop;
         }
 
         // ---- 내부 ----
