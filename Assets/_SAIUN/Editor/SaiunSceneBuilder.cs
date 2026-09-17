@@ -93,6 +93,59 @@ namespace _SAIUN.Editor
             if (AssetDatabase.LoadAssetAtPath<GameObject>(TimerHudPrefabPath) == null) BuildTimerHudPrefab(font);
         }
 
+        // 프리팹은 직렬화된 값을 들고 있어서 C# 기본값을 바꿔도 반영되지 않는다.
+        // LoadPrefabContents로 제자리 편집해야 fileID가 유지돼 씬 인스턴스가 끊기지 않는다.
+        [MenuItem("SAIUN/Apply Palette to Prefabs")]
+        public static void ApplyPalette()
+        {
+            SetColors(BottomBarPrefabPath, typeof(BottomBarView),
+                ("backgroundColor", SaiunPalette.BottomBarBackground),
+                ("inputBackgroundColor", SaiunPalette.InputBackground),
+                ("inputTextColor", SaiunPalette.InputText),
+                ("buttonColor", SaiunPalette.MainPoint),
+                ("buttonTextColor", SaiunPalette.OnMainPoint));
+
+            SetColors(TimerHudPrefabPath, typeof(TimerHudView),
+                ("textColor", SaiunPalette.HudText),
+                ("dotCompletedColor", SaiunPalette.SetDotCompleted),
+                ("dotPendingColor", SaiunPalette.SetDotPending));
+
+            AssetDatabase.SaveAssets();
+            Debug.Log("SaiunSceneBuilder: 팔레트를 프리팹에 적용했습니다.");
+        }
+
+        private static void SetColors(string prefabPath, System.Type componentType, params (string Field, Color Color)[] values)
+        {
+            GameObject contents = PrefabUtility.LoadPrefabContents(prefabPath);
+            try
+            {
+                Component component = contents.GetComponent(componentType);
+                if (component == null)
+                {
+                    Debug.LogError($"SaiunSceneBuilder: {prefabPath}에 {componentType.Name}이(가) 없습니다.");
+                    return;
+                }
+
+                var so = new SerializedObject(component);
+                foreach ((string field, Color color) in values)
+                {
+                    SerializedProperty property = so.FindProperty(field);
+                    if (property == null)
+                    {
+                        Debug.LogWarning($"SaiunSceneBuilder: {componentType.Name}에 {field} 필드가 없습니다.");
+                        continue;
+                    }
+                    property.colorValue = color;
+                }
+                so.ApplyModifiedPropertiesWithoutUndo();
+                PrefabUtility.SaveAsPrefabAsset(contents, prefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(contents);
+            }
+        }
+
         [MenuItem("SAIUN/Setup Main Scene")]
         public static void SetupScene()
         {

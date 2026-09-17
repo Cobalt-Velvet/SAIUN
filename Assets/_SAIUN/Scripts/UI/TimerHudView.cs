@@ -33,10 +33,10 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string interruptedLabel = "INTERRUPTED";
         [SerializeField] private string failedLabel = "FAILED";
 
-        [Header("색상 (실측 대기값)")]
-        [SerializeField] private Color textColor = Color.white;
-        [SerializeField] private Color dotCompletedColor = Color.white;
-        [SerializeField] private Color dotPendingColor = new Color(1f, 1f, 1f, 0.3f);
+        [Header("색상")]
+        [SerializeField] private Color textColor = SaiunPalette.HudText;
+        [SerializeField] private Color dotCompletedColor = SaiunPalette.SetDotCompleted;
+        [SerializeField] private Color dotPendingColor = SaiunPalette.SetDotPending;
 
         private readonly List<Image> _dots = new List<Image>();
         private string _clockText = string.Empty;

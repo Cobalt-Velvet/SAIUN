@@ -24,11 +24,12 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string acknowledgeLabel = "확인";
         [SerializeField] private string excuseLabel = "괜찮아요";
 
-        [Header("색상 (실측 대기값)")]
-        [SerializeField] private Color backgroundColor = new Color(0f, 0f, 0f, 0.55f);
-        [SerializeField] private Color inputTextColor = new Color(0.12f, 0.16f, 0.16f, 1f);
-        [SerializeField] private Color buttonColor = new Color(0.5f, 0.86f, 0.79f, 1f);      // 민트 계열 방향만 확정
-        [SerializeField] private Color buttonTextColor = new Color(0.12f, 0.16f, 0.16f, 1f);
+        [Header("색상")]
+        [SerializeField] private Color backgroundColor = SaiunPalette.BottomBarBackground;
+        [SerializeField] private Color inputBackgroundColor = SaiunPalette.InputBackground;
+        [SerializeField] private Color inputTextColor = SaiunPalette.InputText;
+        [SerializeField] private Color buttonColor = SaiunPalette.MainPoint;
+        [SerializeField] private Color buttonTextColor = SaiunPalette.OnMainPoint;
 
         /// <summary>현재 버튼에 표시된 라벨.</summary>
         public string CurrentButtonLabel => primaryButtonLabel != null ? primaryButtonLabel.text : string.Empty;
@@ -158,6 +159,9 @@ namespace _SAIUN.Scripts.UI
 
             if (taskInput != null)
             {
+                var inputBackground = taskInput.GetComponent<Image>();
+                if (inputBackground != null) inputBackground.color = inputBackgroundColor;
+
                 if (taskInput.textComponent != null) taskInput.textComponent.color = inputTextColor;
                 if (taskInput.placeholder is Graphic placeholder)
                 {
