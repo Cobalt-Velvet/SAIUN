@@ -532,7 +532,7 @@ namespace _SAIUN.Editor
             }
 
             var so = new SerializedObject(controller);
-            so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.DesktopBlur;
+            so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.WallpaperBlur;
             // Acrylic으로 바꿔 쓸 때를 대비해 조율해 둔 농도를 씬에도 남긴다.
             so.FindProperty("glassTintStrength").floatValue = 0.15f;
             so.FindProperty("extendFrame").boolValue = false;
@@ -540,7 +540,7 @@ namespace _SAIUN.Editor
             so.FindProperty("roundedCorners").boolValue = true;
             so.FindProperty("customBorder").boolValue = true;
             so.ApplyModifiedPropertiesWithoutUndo();
-            Debug.Log("SaiunSceneBuilder: 유리 배경을 DesktopBlur로 설정했습니다.");
+            Debug.Log("SaiunSceneBuilder: 유리 배경을 WallpaperBlur로 설정했습니다.");
         }
 
         // 창 뒤 화면을 흐리게 깔아 주는 층. 다른 UI보다 먼저 그려야 하므로 맨 앞에 둔다.
@@ -570,6 +570,10 @@ namespace _SAIUN.Editor
             so.FindProperty("backdrop").objectReferenceValue = glass.GetComponent<RawImage>();
             so.FindProperty("tintOverlay").objectReferenceValue = tint.GetComponent<Image>();
             so.FindProperty("windowController").objectReferenceValue = windowController;
+            // 한 번 읽는 데 14밀리초쯤 걸리므로 간격을 넉넉히 둔다.
+            so.FindProperty("refreshInterval").floatValue = 0.12f;
+            so.FindProperty("downscale").intValue = 3;
+            so.FindProperty("blurPasses").intValue = 3;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

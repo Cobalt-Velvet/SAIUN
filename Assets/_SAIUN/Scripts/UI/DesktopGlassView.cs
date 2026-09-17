@@ -6,9 +6,10 @@ using UnityEngine.UI;
 namespace _SAIUN.Scripts.UI
 {
     /// <summary>
-    /// 창 뒤 화면을 읽어 흐리게 깔아 준다.
+    /// 창 뒤를 읽어 흐리게 깔아 준다.
     /// Windows의 Acrylic은 광도 레이어가 색을 눌러버려 뒤에 무엇이 있는지 알아볼 수 없다.
-    /// 여기서는 화면을 직접 축소해서 받아 오므로 뒷배경의 형태와 색이 그대로 남는다.
+    /// 여기서는 직접 축소해서 받아 오므로 뒷배경의 형태와 색이 그대로 남는다.
+    /// 무엇을 읽을지는 WindowController의 유리 모드가 정한다.
     /// </summary>
     public class DesktopGlassView : MonoBehaviour
     {
@@ -17,13 +18,17 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private WindowController windowController;
 
         [Header("흐림")]
-        [Tooltip("몇 분의 1로 줄여서 읽을지. 클수록 더 흐려지고 더 가볍다.")]
+        [Tooltip("몇 분의 1로 줄여서 읽을지. 너무 크게 잡으면 확대할 때 계단이 보인다.")]
         [Range(2, 16)]
-        [SerializeField] private int downscale = 10;
+        [SerializeField] private int downscale = 3;
 
-        [Tooltip("화면을 다시 읽는 간격(초). 0.066이면 초당 15번이다.")]
-        [Range(0.016f, 0.5f)]
-        [SerializeField] private float refreshInterval = 0.066f;
+        [Tooltip("GPU에서 부드럽게 뭉개는 횟수. 줄였다 키우기를 반복해 계단을 없앤다.")]
+        [Range(0, 4)]
+        [SerializeField] private int blurPasses = 3;
+
+        [Tooltip("다시 읽는 간격(초). 한 번 읽는 데 10밀리초 남짓 걸리므로 너무 짧게 두지 않는다.")]
+        [Range(0.033f, 0.5f)]
+        [SerializeField] private float refreshInterval = 0.12f;
 
         [Header("틴트")]
         [Tooltip("유리에 얹을 색.")]
@@ -36,6 +41,9 @@ namespace _SAIUN.Scripts.UI
         /// <summary>마지막 읽기가 성공했는지.</summary>
         public bool IsCapturing { get; private set; }
 
+        /// <summary>마지막 읽기에 걸린 시간(밀리초).</summary>
+        public double LastCaptureMilliseconds => _capture?.LastCaptureMilliseconds ?? 0d;
+
         /// <summary>실제로 읽어 올 크기. 창 크기를 축소 배율로 나눈 값이다.</summary>
         public Vector2Int CaptureSize => new Vector2Int(
             Mathf.Max(1, SceneMetrics.WindowWidth / downscale),
@@ -43,6 +51,9 @@ namespace _SAIUN.Scripts.UI
 
         private DesktopCapture _capture;
         private Coroutine _loop;
+        private int _captureCount;
+        private RenderTexture _blurA;
+        private RenderTexture _blurB;
 
         private void Awake()
         {
@@ -80,6 +91,56 @@ namespace _SAIUN.Scripts.UI
 
             _capture?.Dispose();
             _capture = null;
+
+            ReleaseRenderTexture(ref _blurA);
+            ReleaseRenderTexture(ref _blurB);
+        }
+
+        /// <summary>
+        /// 줄였다 키우기를 반복해 계단을 없앤다.
+        /// 텍스처가 작아서 GPU 비용은 사실상 없다.
+        /// </summary>
+        private Texture Smooth(Texture source)
+        {
+            if (blurPasses <= 0) return source;
+
+            // 같은 크기끼리 옮기면 아무 일도 일어나지 않는다. 반드시 줄였다 키워야 뭉개진다.
+            int width = Mathf.Max(2, source.width / 2);
+            int height = Mathf.Max(2, source.height / 2);
+            EnsureRenderTexture(ref _blurA, width, height);
+            EnsureRenderTexture(ref _blurB, Mathf.Max(2, width / 2), Mathf.Max(2, height / 2));
+
+            Graphics.Blit(source, _blurA);
+            for (int i = 0; i < blurPasses; i++)
+            {
+                Graphics.Blit(_blurA, _blurB);   // 절반으로 줄이며 평균
+                Graphics.Blit(_blurB, _blurA);   // 다시 키우며 보간
+            }
+            return _blurA;
+        }
+
+        private static void EnsureRenderTexture(ref RenderTexture texture, int width, int height)
+        {
+            if (texture != null && texture.width == width && texture.height == height) return;
+
+            ReleaseRenderTexture(ref texture);
+            texture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
+            {
+                name = "GlassBlur",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+            texture.Create();
+        }
+
+        private static void ReleaseRenderTexture(ref RenderTexture texture)
+        {
+            if (texture == null) return;
+            texture.Release();
+            if (Application.isPlaying) Destroy(texture);
+            else DestroyImmediate(texture);
+            texture = null;
         }
 
         /// <summary>틴트를 바꾼다.</summary>
@@ -88,6 +149,14 @@ namespace _SAIUN.Scripts.UI
             tint = color;
             tintStrength = Mathf.Clamp01(strength);
             if (tintOverlay != null) tintOverlay.color = SaiunPalette.WithAlpha(tint, tintStrength);
+        }
+
+        /// <summary>유리 모드에 맞는 읽기 대상을 고른다.</summary>
+        private DesktopCapture.Source ResolveSource()
+        {
+            return windowController != null && windowController.CurrentGlass == WindowController.GlassMode.DesktopBlur
+                ? DesktopCapture.Source.Screen
+                : DesktopCapture.Source.WallpaperLayer;
         }
 
         private IEnumerator CaptureLoop()
@@ -110,9 +179,20 @@ namespace _SAIUN.Scripts.UI
 
             // 창이 옮겨졌을 수 있으므로 읽기 직전에 위치를 다시 확인한다.
             Vector2Int position = windowController != null ? windowController.RefreshAndGetPosition() : Vector2Int.zero;
-            IsCapturing = _capture.Capture(position.x, position.y, SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
+            IsCapturing = _capture.Capture(
+                ResolveSource(), position.x, position.y, SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
 
-            if (backdrop != null) backdrop.enabled = IsCapturing;
+            if (backdrop != null)
+            {
+                backdrop.enabled = IsCapturing;
+                if (IsCapturing) backdrop.texture = Smooth(_capture.Texture);
+            }
+
+            // 실제 비용을 한 번은 남겨 둔다. 간격을 조절할 때 근거가 된다.
+            if (++_captureCount == 30)
+            {
+                Debug.Log($"DesktopGlassView: {ResolveSource()} 읽기 {_capture.LastCaptureMilliseconds:F1}ms, 간격 {refreshInterval:F3}s");
+            }
         }
 
 #if UNITY_EDITOR

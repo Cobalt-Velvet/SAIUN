@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
@@ -9,18 +10,30 @@ namespace _SAIUN.Scripts.Core
     /// <summary>
     /// 화면의 한 영역을 축소해서 읽어 온다.
     /// 축소 자체가 흐림 효과라, 따로 블러를 돌리지 않아도 유리처럼 보인다.
-    /// GDI가 평균을 내며 줄여주므로 비용이 거의 들지 않는다.
+    /// GDI가 평균을 내며 줄여주므로 셰이더가 필요 없다.
     /// </summary>
     public sealed class DesktopCapture : IDisposable
     {
+        /// <summary>무엇을 읽을지.</summary>
+        public enum Source
+        {
+            /// <summary>합성된 화면 전체. 뒤에 있는 다른 창까지 비치지만 자기 자신도 찍힌다.</summary>
+            Screen,
+            /// <summary>바탕화면 레이어만. 다른 창은 안 비치는 대신 자기 자신도 안 찍혀 되먹임이 없다.</summary>
+            WallpaperLayer,
+        }
+
         [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr hWnd);
         [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+        [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
         [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
         [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr hObject);
         [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr hObject);
         [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
         [DllImport("gdi32.dll")] static extern int SetStretchBltMode(IntPtr hdc, int mode); // spellchecker:ignore StretchBlt
+        [DllImport("gdi32.dll")] static extern bool SetViewportOrgEx(IntPtr hdc, int x, int y, IntPtr previous); // spellchecker:ignore Viewport OrgEx
         [DllImport("gdi32.dll")] static extern bool StretchBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
             IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, uint rop);
         [DllImport("gdi32.dll")] static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint start, uint lines,
@@ -41,9 +54,12 @@ namespace _SAIUN.Scripts.Core
             public int bmiColors;
         }
 
-        const uint SRCCOPY = 0x00CC0020;   // spellchecker:ignore SRCCOPY
-        const int HALFTONE = 4;            // 축소할 때 평균을 내는 모드
-        const uint DIB_RGB_COLORS = 0;     // spellchecker:ignore DIB
+        const uint SRCCOPY = 0x00CC0020;            // spellchecker:ignore SRCCOPY
+        const int HALFTONE = 4;                     // 축소할 때 평균을 내는 모드
+        const uint DIB_RGB_COLORS = 0;              // spellchecker:ignore DIB
+        const uint PW_RENDERFULLCONTENT = 0x0002;   // spellchecker:ignore RENDERFULLCONTENT
+        const string DESKTOP_CLASS = "Progman";     // spellchecker:ignore Progman
+        const string DESKTOP_TITLE = "Program Manager";
 
         /// <summary>축소해서 담아 둔 화면. BGRA 순서다.</summary>
         public Texture2D Texture { get; }
@@ -51,9 +67,19 @@ namespace _SAIUN.Scripts.Core
         public int Width { get; }
         public int Height { get; }
 
+        /// <summary>마지막 읽기에 걸린 시간(밀리초). 갱신 간격을 정할 때 참고한다.</summary>
+        public double LastCaptureMilliseconds { get; private set; }
+
         private readonly byte[] _buffer;
+        private readonly Stopwatch _stopwatch = new Stopwatch();
         private BITMAPINFO _info;
         private bool _disposed;
+
+        // 바탕화면 레이어를 읽을 때 쓰는 중간 버퍼. 창 크기 그대로 한 번만 만들어 재사용한다.
+        private IntPtr _layerDC;
+        private IntPtr _layerBitmap;
+        private int _layerWidth;
+        private int _layerHeight;
 
         public DesktopCapture(int width, int height)
         {
@@ -84,30 +110,121 @@ namespace _SAIUN.Scripts.Core
             };
         }
 
-        /// <summary>화면의 (x, y, width, height) 영역을 읽어 텍스처를 갱신한다.</summary>
-        public bool Capture(int x, int y, int width, int height)
+        /// <summary>지정한 화면 영역을 읽어 텍스처를 갱신한다.</summary>
+        public bool Capture(Source source, int x, int y, int width, int height)
         {
             if (_disposed || width <= 0 || height <= 0) return false;
+
+            _stopwatch.Restart();
+            bool result = source == Source.WallpaperLayer
+                ? CaptureWallpaperLayer(x, y, width, height)
+                : CaptureScreen(x, y, width, height);
+            _stopwatch.Stop();
+            LastCaptureMilliseconds = _stopwatch.Elapsed.TotalMilliseconds;
+
+            return result;
+        }
+
+        // ---- 화면 전체에서 읽기 ----
+
+        private bool CaptureScreen(int x, int y, int width, int height)
+        {
+            IntPtr screenDC = GetDC(IntPtr.Zero);
+            if (screenDC == IntPtr.Zero) return false;
+
+            try
+            {
+                return BlitAndRead(screenDC, x, y, width, height);
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, screenDC);
+            }
+        }
+
+        // ---- 바탕화면 레이어에서 읽기 ----
+
+        /// <summary>
+        /// 바탕화면 창만 그려 받는다. 다른 프로그램 창은 물론 우리 창도 들어오지 않아 되먹임이 없다.
+        /// Wallpaper Engine처럼 영상 벽지를 쓰는 경우에도 그 창이 여기에 그리므로 그대로 들어온다.
+        /// </summary>
+        private bool CaptureWallpaperLayer(int x, int y, int width, int height)
+        {
+            IntPtr desktop = FindWindow(DESKTOP_CLASS, DESKTOP_TITLE);
+            if (desktop == IntPtr.Zero) return false;
+
+            if (!EnsureLayerBuffer(width, height)) return false;
+
+            // 창 전체를 그리되 원점을 옮겨, 우리에게 필요한 영역만 버퍼에 담기게 한다.
+            SetViewportOrgEx(_layerDC, -x, -y, IntPtr.Zero);
+            bool printed = PrintWindow(desktop, _layerDC, PW_RENDERFULLCONTENT);
+            SetViewportOrgEx(_layerDC, 0, 0, IntPtr.Zero);
+            if (!printed) return false;
+
+            return BlitAndRead(_layerDC, 0, 0, width, height);
+        }
+
+        private bool EnsureLayerBuffer(int width, int height)
+        {
+            if (_layerDC != IntPtr.Zero && _layerWidth == width && _layerHeight == height) return true;
+
+            ReleaseLayerBuffer();
 
             IntPtr screenDC = GetDC(IntPtr.Zero);
             if (screenDC == IntPtr.Zero) return false;
 
+            try
+            {
+                _layerDC = CreateCompatibleDC(screenDC);
+                if (_layerDC == IntPtr.Zero) return false;
+
+                _layerBitmap = CreateCompatibleBitmap(screenDC, width, height);
+                if (_layerBitmap == IntPtr.Zero)
+                {
+                    ReleaseLayerBuffer();
+                    return false;
+                }
+
+                SelectObject(_layerDC, _layerBitmap);
+                _layerWidth = width;
+                _layerHeight = height;
+                return true;
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, screenDC);
+            }
+        }
+
+        private void ReleaseLayerBuffer()
+        {
+            if (_layerBitmap != IntPtr.Zero) { DeleteObject(_layerBitmap); _layerBitmap = IntPtr.Zero; }
+            if (_layerDC != IntPtr.Zero) { DeleteDC(_layerDC); _layerDC = IntPtr.Zero; }
+            _layerWidth = 0;
+            _layerHeight = 0;
+        }
+
+        // ---- 공용 ----
+
+        /// <summary>원본 DC의 영역을 축소해 텍스처로 올린다.</summary>
+        private bool BlitAndRead(IntPtr sourceDC, int x, int y, int width, int height)
+        {
             IntPtr memoryDC = IntPtr.Zero;
             IntPtr bitmap = IntPtr.Zero;
             IntPtr previous = IntPtr.Zero;
 
             try
             {
-                memoryDC = CreateCompatibleDC(screenDC);
+                memoryDC = CreateCompatibleDC(sourceDC);
                 if (memoryDC == IntPtr.Zero) return false;
 
-                bitmap = CreateCompatibleBitmap(screenDC, Width, Height);
+                bitmap = CreateCompatibleBitmap(sourceDC, Width, Height);
                 if (bitmap == IntPtr.Zero) return false;
 
                 previous = SelectObject(memoryDC, bitmap);
                 SetStretchBltMode(memoryDC, HALFTONE);
 
-                if (!StretchBlt(memoryDC, 0, 0, Width, Height, screenDC, x, y, width, height, SRCCOPY)) return false;
+                if (!StretchBlt(memoryDC, 0, 0, Width, Height, sourceDC, x, y, width, height, SRCCOPY)) return false;
 
                 // 선택을 풀어야 GetDIBits가 비트맵을 읽을 수 있다.
                 SelectObject(memoryDC, previous);
@@ -127,7 +244,6 @@ namespace _SAIUN.Scripts.Core
                 if (previous != IntPtr.Zero) SelectObject(memoryDC, previous);
                 if (bitmap != IntPtr.Zero) DeleteObject(bitmap);
                 if (memoryDC != IntPtr.Zero) DeleteDC(memoryDC);
-                ReleaseDC(IntPtr.Zero, screenDC);
             }
         }
 
@@ -135,6 +251,8 @@ namespace _SAIUN.Scripts.Core
         {
             if (_disposed) return;
             _disposed = true;
+
+            ReleaseLayerBuffer();
 
             if (Texture == null) return;
             if (Application.isPlaying) UnityEngine.Object.Destroy(Texture);

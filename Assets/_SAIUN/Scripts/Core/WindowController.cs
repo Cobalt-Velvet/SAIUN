@@ -120,6 +120,8 @@ namespace _SAIUN.Scripts.Core
             TransparentTint,
             /// <summary>화면을 직접 읽어 흐린다. 뒷배경의 형태와 색이 그대로 남는 유일한 방식이다.</summary>
             DesktopBlur,
+            /// <summary>바탕화면 레이어만 읽어 흐린다. 다른 창은 안 비치지만 녹화에도 정상으로 나온다.</summary>
+            WallpaperBlur,
         }
 
         [Header("유리 배경")]
@@ -348,6 +350,7 @@ namespace _SAIUN.Scripts.Core
                     break;
 
                 case GlassMode.DesktopBlur:
+                case GlassMode.WallpaperBlur:
                     // 창을 완전히 투명하게 두고, 흐림은 DesktopGlassView가 직접 그린다.
                     SetSystemBackdrop(1);
                     SetAccent(ACCENT_DISABLED, 0);
@@ -411,6 +414,7 @@ namespace _SAIUN.Scripts.Core
         void ApplyCaptureExclusion()
         {
 #if !UNITY_EDITOR
+            // 바탕화면 레이어만 읽는 모드는 자기 자신이 안 찍히므로 제외할 이유가 없다.
             bool exclude = excludeFromCapture && glass == GlassMode.DesktopBlur;
             bool ok = SetWindowDisplayAffinity(_hwnd, exclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
             Debug.Log($"WindowController: 캡처 제외 {exclude} 적용 {(ok ? "성공" : "실패")} err={Marshal.GetLastWin32Error()}");
