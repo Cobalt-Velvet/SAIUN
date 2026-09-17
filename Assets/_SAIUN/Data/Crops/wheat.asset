@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58c5a40e2bd3160459ab51147b2d55e8, type: 3}
+  m_Name: wheat
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Crop.CropDefinition
+  id: wheat
+  displayName: "\uBC00"
+  stagePrefabs:
+  - {fileID: 4042366353895272477, guid: 9d851ed20fdcb43438c7f73870b6df8e, type: 3}
+  - {fileID: 5200177825689620277, guid: 46d13325aa138964d86a00e0602d5b47, type: 3}
+  - {fileID: 842788192486993444, guid: aea311d53f280674eaa0aba78ca81e61, type: 3}
+  - {fileID: 5163732063327480346, guid: a3e0c3c8ea8ae154ea7de8d8031da262, type: 3}
+  - {fileID: 6811365827146101042, guid: 44a1f5e182e3cfa43befb798b089db7e, type: 3}

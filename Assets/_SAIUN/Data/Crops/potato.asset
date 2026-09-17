@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58c5a40e2bd3160459ab51147b2d55e8, type: 3}
+  m_Name: potato
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Crop.CropDefinition
+  id: potato
+  displayName: "\uAC10\uC790"
+  stagePrefabs:
+  - {fileID: 1276495550194623854, guid: 375414809d915a54f91a479ebd386c25, type: 3}
+  - {fileID: 446675264253885568, guid: 673f64e80e28aa7469d878a733a06f47, type: 3}
+  - {fileID: 2446264482735519731, guid: 818b310cc87e05743a3b0609c308380b, type: 3}
+  - {fileID: 6536481525376618514, guid: c570ef5eaf6ab334fabeb0b692301f8e, type: 3}
+  - {fileID: 6770401158811686470, guid: 9f5c7aad3bc02b94a9e025366b4ab7f8, type: 3}

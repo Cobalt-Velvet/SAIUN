@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5da5526241b781d4fb49cd662aa65308, type: 3}
+  m_Name: CropCatalog
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Crop.CropCatalog
+  crops:
+  - {fileID: 11400000, guid: 3a272f6d4806095438f0685a69bdf41a, type: 2}
+  - {fileID: 11400000, guid: 4b17d7156383fc24d853f2415e01df09, type: 2}
+  - {fileID: 11400000, guid: ebd70d0b962b04341820a521b3b0bae3, type: 2}
+  - {fileID: 11400000, guid: a5b53a688ad8da544a7171d7c26692eb, type: 2}

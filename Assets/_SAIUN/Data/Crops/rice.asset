@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58c5a40e2bd3160459ab51147b2d55e8, type: 3}
+  m_Name: rice
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Crop.CropDefinition
+  id: rice
+  displayName: "\uC300"
+  stagePrefabs:
+  - {fileID: 5663142534779125217, guid: 285784deed0e6824cafd8491a1a44886, type: 3}
+  - {fileID: 3902634345094054913, guid: aaec630d6b82b774abfca94816642b71, type: 3}
+  - {fileID: 6525996638049166365, guid: 92ad70222c21b9a429c22088db9bf9fc, type: 3}
+  - {fileID: 7544768189700730831, guid: eff65422a3acbd74fb6c167673b6ee1c, type: 3}
+  - {fileID: 2048686326786961985, guid: d58bc2f69f7e95e48b0975ac31f6ab77, type: 3}

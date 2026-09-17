@@ -40,6 +40,8 @@ namespace _SAIUN.Editor
         private const string ShadowCatcherMaterialPath = MaterialFolder + "/ShadowCatcher.mat";
         private const string LitShaderName = "Universal Render Pipeline/Lit";
         private const string ShadowCatcherShaderName = "SAIUN/ShadowCatcher";
+        private const string GlowMaterialPath = MaterialFolder + "/Particle_Glow.mat";
+        private const string ParticleShaderName = "Universal Render Pipeline/Particles/Unlit";
 
         // 확정값은 SceneMetrics가 단일 출처다.
         private const int WindowWidth = SceneMetrics.WindowWidth;
@@ -71,6 +73,9 @@ namespace _SAIUN.Editor
 
         // 톤매핑을 끄면 템플릿의 광원 세기 2에서는 밝은 면이 1을 넘어 하얗게 날아간다.
         private const float SunIntensity = 1f;
+
+        // 가산 파티클 재질의 HDR 배율
+        private const float GlowIntensity = 2.5f;
 
         [MenuItem("SAIUN/Build All (TMP·Font·Prefabs·Scene)")]
         public static void BuildAll()
@@ -428,7 +433,8 @@ namespace _SAIUN.Editor
 
             GameObject backdropCanvas = EnsureBackdropCanvas(camera);
             EnsureDesktopGlass(backdropCanvas.transform, canvasGo.transform, windowController);
-            EnsureFlowerbed();
+            Flowerbed bed = EnsureFlowerbed();
+            EnsureCropGrowth(bed, stateMachine, timer);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
             EnsureGlassRim(canvasGo.transform);
@@ -689,14 +695,14 @@ namespace _SAIUN.Editor
         // ---- 화단 (P2-02) ----
 
         // 화단과 임시 외형, 그림자 받이를 만든다. 위치는 처음 만들 때만 정하고, 이후에는 인스펙터에서 조정한 값을 지킨다.
-        private static void EnsureFlowerbed()
+        private static Flowerbed EnsureFlowerbed()
         {
             Shader lit = Shader.Find(LitShaderName);
             Shader catcher = Shader.Find(ShadowCatcherShaderName);
             if (lit == null || catcher == null)
             {
                 Debug.LogError("SaiunSceneBuilder: 화단 셰이더를 찾지 못했습니다.");
-                return;
+                return null;
             }
 
             Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, m =>
@@ -754,6 +760,169 @@ namespace _SAIUN.Editor
 
             bed.FitVisuals();
             Debug.Log($"SaiunSceneBuilder: 화단 원점 {bedGo.transform.position}, 칸 간격 {bed.CellSize}");
+            return bed;
+        }
+
+        // ---- 작물 성장 (P2-03) ----
+
+        private static void EnsureCropGrowth(Flowerbed bed, PomodoroStateMachine stateMachine, PomodoroTimer timer)
+        {
+            if (bed == null) return;
+
+            CropCatalog catalog = CropPlaceholderBuilder.Build(overwrite: false);
+            Material glow = EnsureGlowMaterial();
+
+            ParticleSystem sprout = EnsureParticles(bed.transform, "SproutBurst", glow,
+                ps => ConfigureBurst(ps, SaiunPalette.TeaGreen, minSpeed: 0.15f, maxSpeed: 0.4f));
+            ParticleSystem harvest = EnsureParticles(bed.transform, "HarvestBurst", glow,
+                ps => ConfigureBurst(ps, SaiunPalette.Eggshell, minSpeed: 0.3f, maxSpeed: 0.7f));
+            ParticleSystem harvestGlow = EnsureParticles(bed.transform, "HarvestGlow", glow,
+                ps => ConfigureGlow(ps, bed));
+
+            var growth = EnsureComponent<CropGrowth>(bed.gameObject);
+            var so = new SerializedObject(growth);
+            so.FindProperty("stateMachine").objectReferenceValue = stateMachine;
+            so.FindProperty("timer").objectReferenceValue = timer;
+            so.FindProperty("flowerbed").objectReferenceValue = bed;
+            so.FindProperty("catalog").objectReferenceValue = catalog;
+            so.FindProperty("sproutBurst").objectReferenceValue = sprout;
+            so.FindProperty("harvestBurst").objectReferenceValue = harvest;
+            so.FindProperty("harvestGlow").objectReferenceValue = harvestGlow;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 빛 알갱이용 가산 재질. URP 머티리얼 인스펙터가 블렌드 모드를 고를 때 넣는 값을 직접 넣는다.
+        private static Material EnsureGlowMaterial()
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(GlowMaterialPath);
+            if (material != null) return material;
+
+            Shader shader = Shader.Find(ParticleShaderName);
+            if (shader == null)
+            {
+                Debug.LogError("SaiunSceneBuilder: URP 파티클 셰이더를 찾지 못했습니다.");
+                return null;
+            }
+
+            material = new Material(shader) { name = Path.GetFileNameWithoutExtension(GlowMaterialPath) };
+            material.SetFloat("_Surface", 1f);   // Transparent
+            material.SetFloat("_Blend", 2f);     // Additive
+            material.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)BlendMode.One);
+            material.SetFloat("_SrcBlendAlpha", (float)BlendMode.One);
+            material.SetFloat("_DstBlendAlpha", (float)BlendMode.One);
+            material.SetFloat("_ZWrite", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.renderQueue = (int)RenderQueue.Transparent;
+            // 1을 넘겨 블룸(임계 1)에 걸리게 한다. 작은 알갱이가 빛나 보인다.
+            material.SetColor("_BaseColor", Color.white * GlowIntensity);
+
+            var texture = AssetDatabase.GetBuiltinExtraResource<Texture2D>("Default-Particle.psd");
+            if (texture != null) material.SetTexture("_BaseMap", texture);
+            else Debug.LogWarning("SaiunSceneBuilder: 기본 파티클 텍스처가 없어 사각 알갱이로 그립니다.");
+
+            EnsureFolder(MaterialFolder);
+            AssetDatabase.CreateAsset(material, GlowMaterialPath);
+            return material;
+        }
+
+        private static ParticleSystem EnsureParticles(Transform parent, string name, Material material,
+            System.Action<ParticleSystem> configure)
+        {
+            Transform existing = parent.Find(name);
+            GameObject go = existing != null ? existing.gameObject : new GameObject(name);
+            go.transform.SetParent(parent, false);
+
+            var system = EnsureComponent<ParticleSystem>(go);
+            system.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            var renderer = go.GetComponent<ParticleSystemRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            configure(system);
+            return system;
+        }
+
+        // 포기마다 한 번 튀었다 사라지는 알갱이. CropGrowth가 위치를 정해 Emit한다.
+        private static void ConfigureBurst(ParticleSystem system, Color color, float minSpeed, float maxSpeed)
+        {
+            ParticleSystem.MainModule main = system.main;
+            main.duration = 1f;
+            main.loop = false;
+            main.playOnAwake = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.8f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(minSpeed, maxSpeed);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.09f);
+            main.startColor = color;
+            main.gravityModifier = 0.15f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            ParticleSystem.EmissionModule emission = system.emission;
+            emission.rateOverTime = 0f;
+
+            // 반구가 위를 향하게 눕힌다.
+            ParticleSystem.ShapeModule shape = system.shape;
+            shape.shapeType = ParticleSystemShapeType.Hemisphere;
+            shape.radius = 0.04f;
+            shape.rotation = new Vector3(-90f, 0f, 0f);
+
+            ParticleSystem.ColorOverLifetimeModule fade = system.colorOverLifetime;
+            fade.enabled = true;
+            fade.color = AlphaGradient(new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f));
+
+            ParticleSystem.SizeOverLifetimeModule size = system.sizeOverLifetime;
+            size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0.2f));
+        }
+
+        // 수확 가능 상태에서 화단 위로 천천히 떠오르는 빛. 범위는 CropGrowth가 켤 때 화단에 맞춘다.
+        private static void ConfigureGlow(ParticleSystem system, Flowerbed bed)
+        {
+            system.transform.localPosition = new Vector3(0f, bed.SurfaceHeight, 0f);
+
+            ParticleSystem.MainModule main = system.main;
+            main.duration = 2f;
+            main.loop = true;
+            main.playOnAwake = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(1.4f, 2.2f);
+            main.startSpeed = 0f;
+            main.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.11f);
+            main.startColor = SaiunPalette.Eggshell;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+
+            ParticleSystem.EmissionModule emission = system.emission;
+            emission.rateOverTime = 18f;
+
+            Vector2 grid = bed.GridSize;
+            ParticleSystem.ShapeModule shape = system.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3(grid.x, 0.02f, grid.y);
+
+            // 세 축의 곡선 모드가 같아야 한다.
+            ParticleSystem.VelocityOverLifetimeModule velocity = system.velocityOverLifetime;
+            velocity.enabled = true;
+            velocity.space = ParticleSystemSimulationSpace.World;
+            velocity.x = new ParticleSystem.MinMaxCurve(0f, 0f);
+            velocity.y = new ParticleSystem.MinMaxCurve(0.06f, 0.14f);
+            velocity.z = new ParticleSystem.MinMaxCurve(0f, 0f);
+
+            ParticleSystem.ColorOverLifetimeModule fade = system.colorOverLifetime;
+            fade.enabled = true;
+            fade.color = AlphaGradient(
+                new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.25f), new GradientAlphaKey(0f, 1f));
+        }
+
+        private static ParticleSystem.MinMaxGradient AlphaGradient(params GradientAlphaKey[] alphas)
+        {
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                alphas);
+            return new ParticleSystem.MinMaxGradient(gradient);
         }
 
         // 처음 만들 때만 설정한다. 이후 색·농도 조정은 머티리얼 에셋에서 한다.
