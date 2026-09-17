@@ -784,7 +784,8 @@ MonoBehaviour:
   windowController: {fileID: 330585548}
   downscale: 3
   blurPasses: 3
-  refreshInterval: 0.12
+  refreshInterval: 0.05
+  wallpaperInterval: 0.3
   tint: {r: 0.14117648, g: 0.21960784, b: 0.17254902, a: 1}
   tintStrength: 0.22
 --- !u!114 &861211984

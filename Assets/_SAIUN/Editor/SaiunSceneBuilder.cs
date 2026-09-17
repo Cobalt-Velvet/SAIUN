@@ -570,8 +570,9 @@ namespace _SAIUN.Editor
             so.FindProperty("backdrop").objectReferenceValue = glass.GetComponent<RawImage>();
             so.FindProperty("tintOverlay").objectReferenceValue = tint.GetComponent<Image>();
             so.FindProperty("windowController").objectReferenceValue = windowController;
-            // 한 번 읽는 데 14밀리초쯤 걸리므로 간격을 넉넉히 둔다.
-            so.FindProperty("refreshInterval").floatValue = 0.12f;
+            // 창 추적은 자주, 바탕화면 새로 받기는 드물게.
+            so.FindProperty("refreshInterval").floatValue = 0.05f;
+            so.FindProperty("wallpaperInterval").floatValue = 0.3f;
             so.FindProperty("downscale").intValue = 3;
             so.FindProperty("blurPasses").intValue = 3;
             so.ApplyModifiedPropertiesWithoutUndo();

@@ -27,17 +27,20 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
         [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
+        [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
         [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
         [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr hObject);
         [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr hObject);
         [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
         [DllImport("gdi32.dll")] static extern int SetStretchBltMode(IntPtr hdc, int mode); // spellchecker:ignore StretchBlt
-        [DllImport("gdi32.dll")] static extern bool SetViewportOrgEx(IntPtr hdc, int x, int y, IntPtr previous); // spellchecker:ignore Viewport OrgEx
         [DllImport("gdi32.dll")] static extern bool StretchBlt(IntPtr hdcDest, int xDest, int yDest, int wDest, int hDest,
             IntPtr hdcSrc, int xSrc, int ySrc, int wSrc, int hSrc, uint rop);
         [DllImport("gdi32.dll")] static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint start, uint lines,
             byte[] bits, ref BITMAPINFO info, uint usage); // spellchecker:ignore BITMAPINFO DIBits
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct RECT { public int left, top, right, bottom; }
 
         [StructLayout(LayoutKind.Sequential)]
         struct BITMAPINFOHEADER // spellchecker:ignore BITMAPINFOHEADER
@@ -75,11 +78,12 @@ namespace _SAIUN.Scripts.Core
         private BITMAPINFO _info;
         private bool _disposed;
 
-        // 바탕화면 레이어를 읽을 때 쓰는 중간 버퍼. 창 크기 그대로 한 번만 만들어 재사용한다.
+        // 바탕화면 레이어를 담아 두는 버퍼. 바탕화면 전체 크기로 한 번만 만들어 재사용한다.
         private IntPtr _layerDC;
         private IntPtr _layerBitmap;
         private int _layerWidth;
         private int _layerHeight;
+        private bool _layerFilled;
 
         public DesktopCapture(int width, int height)
         {
@@ -110,14 +114,18 @@ namespace _SAIUN.Scripts.Core
             };
         }
 
-        /// <summary>지정한 화면 영역을 읽어 텍스처를 갱신한다.</summary>
-        public bool Capture(Source source, int x, int y, int width, int height)
+        /// <summary>
+        /// 지정한 화면 영역을 읽어 텍스처를 갱신한다.
+        /// 바탕화면 레이어를 읽을 때 refreshSource가 false면 앞서 받아 둔 그림에서 잘라만 쓴다.
+        /// 창을 옮길 때는 잘라내기만 하면 되므로 훨씬 싸다.
+        /// </summary>
+        public bool Capture(Source source, int x, int y, int width, int height, bool refreshSource = true)
         {
             if (_disposed || width <= 0 || height <= 0) return false;
 
             _stopwatch.Restart();
             bool result = source == Source.WallpaperLayer
-                ? CaptureWallpaperLayer(x, y, width, height)
+                ? CaptureWallpaperLayer(x, y, width, height, refreshSource)
                 : CaptureScreen(x, y, width, height);
             _stopwatch.Stop();
             LastCaptureMilliseconds = _stopwatch.Elapsed.TotalMilliseconds;
@@ -148,20 +156,25 @@ namespace _SAIUN.Scripts.Core
         /// 바탕화면 창만 그려 받는다. 다른 프로그램 창은 물론 우리 창도 들어오지 않아 되먹임이 없다.
         /// Wallpaper Engine처럼 영상 벽지를 쓰는 경우에도 그 창이 여기에 그리므로 그대로 들어온다.
         /// </summary>
-        private bool CaptureWallpaperLayer(int x, int y, int width, int height)
+        private bool CaptureWallpaperLayer(int x, int y, int width, int height, bool refreshSource)
         {
             IntPtr desktop = FindWindow(DESKTOP_CLASS, DESKTOP_TITLE);
             if (desktop == IntPtr.Zero) return false;
+            if (!GetWindowRect(desktop, out RECT desktopRect)) return false;
 
-            if (!EnsureLayerBuffer(width, height)) return false;
+            int desktopWidth = desktopRect.right - desktopRect.left;
+            int desktopHeight = desktopRect.bottom - desktopRect.top;
+            if (!EnsureLayerBuffer(desktopWidth, desktopHeight)) return false;
 
-            // 창 전체를 그리되 원점을 옮겨, 우리에게 필요한 영역만 버퍼에 담기게 한다.
-            SetViewportOrgEx(_layerDC, -x, -y, IntPtr.Zero);
-            bool printed = PrintWindow(desktop, _layerDC, PW_RENDERFULLCONTENT);
-            SetViewportOrgEx(_layerDC, 0, 0, IntPtr.Zero);
-            if (!printed) return false;
+            // PrintWindow는 DC의 원점 이동을 무시하고 언제나 (0,0)부터 그린다.
+            // 그래서 바탕화면 전체를 받아 두고, 필요한 영역은 여기서 잘라낸다.
+            if (refreshSource || !_layerFilled)
+            {
+                if (!PrintWindow(desktop, _layerDC, PW_RENDERFULLCONTENT)) return false;
+                _layerFilled = true;
+            }
 
-            return BlitAndRead(_layerDC, 0, 0, width, height);
+            return BlitAndRead(_layerDC, x - desktopRect.left, y - desktopRect.top, width, height);
         }
 
         private bool EnsureLayerBuffer(int width, int height)
@@ -202,6 +215,7 @@ namespace _SAIUN.Scripts.Core
             if (_layerDC != IntPtr.Zero) { DeleteDC(_layerDC); _layerDC = IntPtr.Zero; }
             _layerWidth = 0;
             _layerHeight = 0;
+            _layerFilled = false;
         }
 
         // ---- 공용 ----

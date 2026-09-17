@@ -26,9 +26,13 @@ namespace _SAIUN.Scripts.UI
         [Range(0, 4)]
         [SerializeField] private int blurPasses = 3;
 
-        [Tooltip("다시 읽는 간격(초). 한 번 읽는 데 10밀리초 남짓 걸리므로 너무 짧게 두지 않는다.")]
-        [Range(0.033f, 0.5f)]
-        [SerializeField] private float refreshInterval = 0.12f;
+        [Tooltip("창 위치를 따라 배경을 다시 잘라내는 간격(초). 잘라내기만 하므로 싸다.")]
+        [Range(0.016f, 0.3f)]
+        [SerializeField] private float refreshInterval = 0.05f;
+
+        [Tooltip("바탕화면 그림을 새로 받는 간격(초). 영상 벽지의 움직임이 이 주기로 갱신된다.")]
+        [Range(0.1f, 2f)]
+        [SerializeField] private float wallpaperInterval = 0.3f;
 
         [Header("틴트")]
         [Tooltip("유리에 얹을 색.")]
@@ -52,6 +56,7 @@ namespace _SAIUN.Scripts.UI
         private DesktopCapture _capture;
         private Coroutine _loop;
         private int _captureCount;
+        private float _nextWallpaperRefresh;
         private RenderTexture _blurA;
         private RenderTexture _blurB;
 
@@ -179,8 +184,13 @@ namespace _SAIUN.Scripts.UI
 
             // 창이 옮겨졌을 수 있으므로 읽기 직전에 위치를 다시 확인한다.
             Vector2Int position = windowController != null ? windowController.RefreshAndGetPosition() : Vector2Int.zero;
+            // 벽지 그림은 드물게 새로 받고, 창을 따라 잘라내는 일은 자주 한다.
+            bool refreshSource = Time.realtimeSinceStartup >= _nextWallpaperRefresh;
+            if (refreshSource) _nextWallpaperRefresh = Time.realtimeSinceStartup + wallpaperInterval;
+
             IsCapturing = _capture.Capture(
-                ResolveSource(), position.x, position.y, SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
+                ResolveSource(), position.x, position.y,
+                SceneMetrics.WindowWidth, SceneMetrics.WindowHeight, refreshSource);
 
             if (backdrop != null)
             {

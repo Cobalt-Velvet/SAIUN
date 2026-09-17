@@ -20,8 +20,6 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern IntPtr GetActiveWindow();
         [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
-        [DllImport("user32.dll")] static extern bool ReleaseCapture();
-        [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
         [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
@@ -65,8 +63,6 @@ namespace _SAIUN.Scripts.Core
         const uint SWP_NOMOVE        = 0x0002; // spellchecker:ignore NOMOVE
         const uint SWP_NOZORDER      = 0x0004; // spellchecker:ignore NOZORDER
         const uint SWP_NOACTIVATE    = 0x0010; // spellchecker:ignore NOACTIVATE
-        const uint WM_NCLBUTTONDOWN  = 0xA1;   // spellchecker:ignore NCLBUTTONDOWN
-        const int  HT_CAPTION        = 0x2;
         const int  VK_LBUTTON        = 0x01;
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
@@ -169,6 +165,9 @@ namespace _SAIUN.Scripts.Core
 
         IntPtr _hwnd;
         bool _wasDown;
+        bool _dragging;
+        Vector2Int _dragCursorStart;
+        Vector2Int _dragWindowStart;
 
         void Start()
         {
@@ -238,16 +237,53 @@ namespace _SAIUN.Scripts.Core
 
             if (isDown && !_wasDown && IsCursorInsideWindow() && !IsPointerOverUI())
             {
-                // 테두리 없는 창은 Unity 입력이 마우스 다운을 잡지 못해 OS에 캡션 드래그를 위임한다.
-                // SendMessage는 드래그가 끝날 때까지 돌아오지 않는다.
-                ReleaseCapture();
-                SendMessage(_hwnd, WM_NCLBUTTONDOWN, new IntPtr(HT_CAPTION), IntPtr.Zero);
-                RefreshPosition();
-                OnMoved?.Invoke(Position);
+                BeginDrag();
+            }
+            else if (_dragging && isDown)
+            {
+                ContinueDrag();
+            }
+            else if (_dragging)
+            {
+                EndDrag();
             }
 
             _wasDown = isDown;
 #endif
+        }
+
+        // ---- 드래그 ----
+        //
+        // OS에 캡션 드래그를 넘기면(WM_NCLBUTTONDOWN) 그 호출이 드래그가 끝날 때까지 돌아오지 않는다.
+        // 그동안 Unity가 통째로 멈춰서 시계도 유리 배경도 얼어붙는다.
+        // 그래서 위치를 직접 옮긴다. 매 프레임 그리므로 배경이 창을 따라온다.
+
+        void BeginDrag()
+        {
+#if !UNITY_EDITOR
+            if (!GetCursorPos(out POINT cursor) || !GetWindowRect(_hwnd, out RECT rect)) return;
+            _dragging = true;
+            _dragCursorStart = new Vector2Int(cursor.x, cursor.y);
+            _dragWindowStart = new Vector2Int(rect.left, rect.top);
+#endif
+        }
+
+        void ContinueDrag()
+        {
+#if !UNITY_EDITOR
+            if (!GetCursorPos(out POINT cursor)) return;
+            int x = _dragWindowStart.x + (cursor.x - _dragCursorStart.x);
+            int y = _dragWindowStart.y + (cursor.y - _dragCursorStart.y);
+            SetWindowPos(_hwnd, IntPtr.Zero, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            RefreshPosition();
+#endif
+        }
+
+        void EndDrag()
+        {
+            _dragging = false;
+            RefreshPosition();
+            OnMoved?.Invoke(Position);
         }
 
         // ---- 공개 API ----
