@@ -1,0 +1,22 @@
+{
+    "name": "_SAIUN.Editor",
+    "rootNamespace": "_SAIUN.Editor",
+    "references": [
+        "_SAIUN.Scripts",
+        "UnityEngine.UI",
+        "Unity.TextMeshPro",
+        "Unity.TextMeshPro.Editor",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

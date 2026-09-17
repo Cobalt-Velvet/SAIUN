@@ -1,0 +1,450 @@
+using System.IO;
+using _SAIUN.Scripts.Core;
+using _SAIUN.Scripts.Data;
+using _SAIUN.Scripts.Timer;
+using _SAIUN.Scripts.UI;
+using TMPro;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+namespace _SAIUN.Editor
+{
+    /// <summary>
+    /// UI 프리팹과 메인 씬을 코드로 만든다. 여러 번 실행해도 결과가 같다.
+    /// 메뉴 SAIUN/Build All 또는 배치 모드 -executeMethod _SAIUN.Editor.SaiunSceneBuilder.BuildAll 로 실행한다.
+    /// 레이아웃 치수 중 확정값은 사양서 8장을, 폰트·색은 실측 대기값이라 임시값을 쓴다.
+    /// </summary>
+    public static class SaiunSceneBuilder
+    {
+        // ---- 경로 ----
+        private const string ScenePath = "Assets/_SAIUN/Scenes/Main.unity";
+        private const string LegacyScenePath = "Assets/Scenes/SampleScene.unity";
+        private const string LegacySceneFolder = "Assets/Scenes";
+        private const string FontFolder = "Assets/_SAIUN/Art/Fonts";
+        private const string FontAssetPath = FontFolder + "/MalgunGothic SDF.asset";
+        private const string PrefabFolder = "Assets/_SAIUN/Prefabs/UI";
+        private const string BottomBarPrefabPath = PrefabFolder + "/BottomBar.prefab";
+        private const string TimerHudPrefabPath = PrefabFolder + "/TimerHud.prefab";
+
+        // ---- 확정값 (사양서 8장) ----
+        private const int WindowWidth = 480;
+        private const int WindowHeight = 680;
+
+        // ---- 임시 레이아웃값 (실측 대기) ----
+        private const string PlaceholderFontFamily = "Malgun Gothic";
+        private const int BarPadding = 16;
+        private const int BarButtonWidth = 96;
+        private const int BarControlHeight = 44;
+        private const int BarGap = 12;
+        private const float BarFontSize = 18f;
+        private const float HudPrimaryFontSize = 96f;
+        private const float HudSecondaryFontSize = 28f;
+        private const float HudLabelFontSize = 20f;
+        private const int DotSize = 12;
+        private const int DotSpacing = 10;
+
+        [MenuItem("SAIUN/Build All (TMP·Font·Prefabs·Scene)")]
+        public static void BuildAll()
+        {
+            if (!EnsureTmpResources())
+            {
+                Debug.LogError("SaiunSceneBuilder: TMP 필수 리소스가 없어 중단합니다. 임포트 후 다시 실행하세요.");
+                return;
+            }
+
+            TMP_FontAsset font = EnsureFontAsset();
+            BuildBottomBarPrefab(font);
+            BuildTimerHudPrefab(font);
+            SetupMainScene();
+            AssetDatabase.SaveAssets();
+            Debug.Log("SaiunSceneBuilder: 완료");
+        }
+
+        [MenuItem("SAIUN/Build UI Prefabs")]
+        public static void BuildPrefabs()
+        {
+            if (!EnsureTmpResources()) return;
+            TMP_FontAsset font = EnsureFontAsset();
+            BuildBottomBarPrefab(font);
+            BuildTimerHudPrefab(font);
+            AssetDatabase.SaveAssets();
+        }
+
+        [MenuItem("SAIUN/Setup Main Scene")]
+        public static void SetupScene()
+        {
+            SetupMainScene();
+            AssetDatabase.SaveAssets();
+        }
+
+        // ---- TMP 리소스 ----
+
+        private static bool EnsureTmpResources()
+        {
+            if (Resources.Load<TMP_Settings>("TMP Settings") != null) return true;
+
+            Debug.Log("SaiunSceneBuilder: TMP Essential Resources를 임포트합니다.");
+            TMP_PackageResourceImporter.ImportResources(true, false, false);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            return Resources.Load<TMP_Settings>("TMP Settings") != null;
+        }
+
+        // 한글 표시용 임시 폰트. OS 폰트를 DynamicOS 모드로 참조하므로 폰트 파일을 저장소에 넣지 않는다.
+        private static TMP_FontAsset EnsureFontAsset()
+        {
+            var existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
+            if (existing != null) return existing;
+
+            TMP_FontAsset fontAsset = TMP_FontAsset.CreateFontAsset(PlaceholderFontFamily, "Regular");
+            if (fontAsset == null)
+            {
+                Debug.LogWarning($"SaiunSceneBuilder: OS 폰트 '{PlaceholderFontFamily}'를 찾지 못해 TMP 기본 폰트를 씁니다. 한글이 표시되지 않을 수 있습니다.");
+                return TMP_Settings.defaultFontAsset;
+            }
+
+            EnsureFolder(FontFolder);
+            fontAsset.name = Path.GetFileNameWithoutExtension(FontAssetPath);
+            AssetDatabase.CreateAsset(fontAsset, FontAssetPath);
+
+            Texture2D atlas = fontAsset.atlasTextures[0];
+            atlas.name = fontAsset.name + " Atlas";
+            AssetDatabase.AddObjectToAsset(atlas, fontAsset);
+
+            Material material = fontAsset.material;
+            material.name = fontAsset.name + " Material";
+            AssetDatabase.AddObjectToAsset(material, fontAsset);
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.ImportAsset(FontAssetPath);
+            return AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
+        }
+
+        // ---- Bottom Bar 프리팹 ----
+
+        private static void BuildBottomBarPrefab(TMP_FontAsset font)
+        {
+            EnsureFolder(PrefabFolder);
+
+            var root = new GameObject("BottomBar", typeof(RectTransform), typeof(Image), typeof(BottomBarView));
+            RectTransform rt = root.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 0f);
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(0.5f, 0f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(0f, BottomBarView.Height);
+
+            Image background = root.GetComponent<Image>();
+            background.raycastTarget = false;   // 바 배경 위에서는 창 드래그가 되게 둔다
+
+            // 태스크 입력
+            GameObject inputGo = TMP_DefaultControls.CreateInputField(DefaultResources());
+            inputGo.name = "TaskInput";
+            inputGo.transform.SetParent(root.transform, false);
+            RectTransform inputRt = inputGo.GetComponent<RectTransform>();
+            inputRt.anchorMin = new Vector2(0f, 0.5f);
+            inputRt.anchorMax = new Vector2(1f, 0.5f);
+            inputRt.pivot = new Vector2(0.5f, 0.5f);
+            inputRt.offsetMin = new Vector2(BarPadding, -BarControlHeight / 2f);
+            inputRt.offsetMax = new Vector2(-(BarPadding + BarButtonWidth + BarGap), BarControlHeight / 2f);
+
+            var input = inputGo.GetComponent<TMP_InputField>();
+            input.characterLimit = SessionConfig.MaxTaskTextLength;
+            var inputText = input.textComponent as TMP_Text;
+            if (inputText != null)
+            {
+                inputText.font = font;
+                inputText.fontSize = BarFontSize;
+            }
+            if (input.placeholder is TMP_Text placeholder)
+            {
+                placeholder.font = font;
+                placeholder.fontSize = BarFontSize;
+                placeholder.text = "이번 세션에 할 일";
+            }
+
+            // 시작·정지 버튼
+            GameObject buttonGo = TMP_DefaultControls.CreateButton(DefaultResources());
+            buttonGo.name = "PrimaryButton";
+            buttonGo.transform.SetParent(root.transform, false);
+            RectTransform buttonRt = buttonGo.GetComponent<RectTransform>();
+            buttonRt.anchorMin = new Vector2(1f, 0.5f);
+            buttonRt.anchorMax = new Vector2(1f, 0.5f);
+            buttonRt.pivot = new Vector2(1f, 0.5f);
+            buttonRt.anchoredPosition = new Vector2(-BarPadding, 0f);
+            buttonRt.sizeDelta = new Vector2(BarButtonWidth, BarControlHeight);
+
+            var label = buttonGo.GetComponentInChildren<TMP_Text>();
+            label.font = font;
+            label.fontSize = BarFontSize;
+            label.text = "시작";
+            label.raycastTarget = false;
+
+            var view = root.GetComponent<BottomBarView>();
+            var so = new SerializedObject(view);
+            so.FindProperty("primaryButton").objectReferenceValue = buttonGo.GetComponent<Button>();
+            so.FindProperty("primaryButtonLabel").objectReferenceValue = label;
+            so.FindProperty("taskInput").objectReferenceValue = input;
+            so.FindProperty("background").objectReferenceValue = background;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            SavePrefab(root, BottomBarPrefabPath);
+        }
+
+        // ---- Timer HUD 프리팹 ----
+
+        private static void BuildTimerHudPrefab(TMP_FontAsset font)
+        {
+            EnsureFolder(PrefabFolder);
+
+            var root = new GameObject("TimerHud", typeof(RectTransform), typeof(TimerHudView));
+            RectTransform rt = root.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(0f, TimerHudView.Height);
+
+            TMP_Text phase = CreateText(root.transform, "PhaseLabel", font, HudLabelFontSize, "POMODORO");
+            SetTopAnchored(phase.rectTransform, y: -36f, height: 30f);
+
+            TMP_Text primary = CreateText(root.transform, "PrimaryText", font, HudPrimaryFontSize, "00:00");
+            SetMiddleAnchored(primary.rectTransform, y: 20f, height: 120f);
+
+            TMP_Text secondary = CreateText(root.transform, "SecondaryText", font, HudSecondaryFontSize, "00:00");
+            SetMiddleAnchored(secondary.rectTransform, y: -60f, height: 40f);
+
+            // 세트 진행 도트
+            var dots = new GameObject("SetDots", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+            dots.transform.SetParent(root.transform, false);
+            RectTransform dotsRt = dots.GetComponent<RectTransform>();
+            dotsRt.anchorMin = new Vector2(0.5f, 0f);
+            dotsRt.anchorMax = new Vector2(0.5f, 0f);
+            dotsRt.pivot = new Vector2(0.5f, 0f);
+            dotsRt.anchoredPosition = new Vector2(0f, 24f);
+            dotsRt.sizeDelta = new Vector2(WindowWidth / 2f, DotSize);
+
+            var layout = dots.GetComponent<HorizontalLayoutGroup>();
+            layout.spacing = DotSpacing;
+            layout.childAlignment = TextAnchor.MiddleCenter;
+            layout.childControlWidth = false;
+            layout.childControlHeight = false;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+
+            var dotGo = new GameObject("DotTemplate", typeof(RectTransform), typeof(Image));
+            dotGo.transform.SetParent(dots.transform, false);
+            dotGo.GetComponent<RectTransform>().sizeDelta = new Vector2(DotSize, DotSize);
+            var dotImage = dotGo.GetComponent<Image>();
+            dotImage.sprite = BuiltinSprite("UI/Skin/Knob.psd");
+            dotImage.raycastTarget = false;
+            dotGo.SetActive(false);
+
+            var view = root.GetComponent<TimerHudView>();
+            var so = new SerializedObject(view);
+            so.FindProperty("primaryText").objectReferenceValue = primary;
+            so.FindProperty("secondaryText").objectReferenceValue = secondary;
+            so.FindProperty("phaseLabel").objectReferenceValue = phase;
+            so.FindProperty("dotsContainer").objectReferenceValue = dotsRt;
+            so.FindProperty("dotTemplate").objectReferenceValue = dotImage;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            SavePrefab(root, TimerHudPrefabPath);
+        }
+
+        // ---- 메인 씬 ----
+
+        private static void SetupMainScene()
+        {
+            MoveLegacySceneIfNeeded();
+
+            if (!File.Exists(ScenePath))
+            {
+                Debug.LogError($"SaiunSceneBuilder: 씬이 없습니다: {ScenePath}");
+                return;
+            }
+
+            Scene scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+
+            // GameManager 오브젝트 하나에 시스템 컴포넌트를 모두 붙인다.
+            GameObject gmGo = GameObject.Find("GameManager") ?? new GameObject("GameManager");
+            var stateMachine = EnsureComponent<PomodoroStateMachine>(gmGo);
+            var timer = EnsureComponent<PomodoroTimer>(gmGo);
+            var database = EnsureComponent<SaiunDatabase>(gmGo);
+            var gameManager = EnsureComponent<GameManager>(gmGo);
+            var windowController = Object.FindFirstObjectByType<WindowController>();
+
+            var timerSo = new SerializedObject(timer);
+            timerSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
+            timerSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var gmSo = new SerializedObject(gameManager);
+            gmSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
+            gmSo.FindProperty("timer").objectReferenceValue = timer;
+            gmSo.FindProperty("database").objectReferenceValue = database;
+            gmSo.FindProperty("windowController").objectReferenceValue = windowController;
+            gmSo.ApplyModifiedPropertiesWithoutUndo();
+
+            // EventSystem은 새 Input System 모듈만 쓴다.
+            EventSystem eventSystem = Object.FindFirstObjectByType<EventSystem>();
+            GameObject esGo = eventSystem != null ? eventSystem.gameObject : new GameObject("EventSystem", typeof(EventSystem));
+            var legacyModule = esGo.GetComponent<StandaloneInputModule>();
+            if (legacyModule != null) Object.DestroyImmediate(legacyModule);
+            EnsureComponent<InputSystemUIInputModule>(esGo);
+
+            // 캔버스: 창 크기가 고정이므로 기준 해상도를 창 크기로 둔다.
+            GameObject canvasGo = GameObject.Find("UICanvas")
+                                  ?? new GameObject("UICanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            var canvas = canvasGo.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            var scaler = canvasGo.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
+            EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+
+            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            Debug.Log($"SaiunSceneBuilder: 씬 저장 {ScenePath}");
+        }
+
+        // 사양서 3장: 씬은 Assets/_SAIUN/Scenes/ 에 둔다. GUID를 유지한 채 옮긴다.
+        private static void MoveLegacySceneIfNeeded()
+        {
+            if (File.Exists(ScenePath) || !File.Exists(LegacyScenePath)) return;
+
+            EnsureFolder(Path.GetDirectoryName(ScenePath)?.Replace('\\', '/'));
+            string error = AssetDatabase.MoveAsset(LegacyScenePath, ScenePath);
+            if (!string.IsNullOrEmpty(error))
+            {
+                Debug.LogError($"SaiunSceneBuilder: 씬 이동 실패 - {error}");
+                return;
+            }
+
+            // 비어 있으면 옛 폴더를 지운다.
+            if (Directory.Exists(LegacySceneFolder)
+                && Directory.GetFileSystemEntries(LegacySceneFolder).Length == 0)
+            {
+                AssetDatabase.DeleteAsset(LegacySceneFolder);
+            }
+
+            Debug.Log($"SaiunSceneBuilder: 씬 이동 {LegacyScenePath} → {ScenePath}");
+        }
+
+        private static void EnsurePrefabInstance<TView>(Transform parent, string name, string prefabPath, GameManager gameManager)
+            where TView : MonoBehaviour
+        {
+            Transform existing = parent.Find(name);
+            if (existing != null) return;
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefab == null)
+            {
+                Debug.LogError($"SaiunSceneBuilder: 프리팹이 없습니다: {prefabPath}");
+                return;
+            }
+
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, parent);
+            instance.name = name;
+
+            // 뷰가 GameManager를 직접 알도록 씬 인스턴스에서만 참조를 넣는다.
+            TView view = instance.GetComponent<TView>();
+            if (view == null)
+            {
+                Debug.LogError($"SaiunSceneBuilder: {prefabPath}에 {typeof(TView).Name}이(가) 없습니다.");
+                return;
+            }
+
+            var so = new SerializedObject(view);
+            SerializedProperty prop = so.FindProperty("gameManager");
+            if (prop != null)
+            {
+                prop.objectReferenceValue = gameManager;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        // ---- 공용 ----
+
+        private static TMP_Text CreateText(Transform parent, string name, TMP_FontAsset font, float fontSize, string text)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(TextMeshProUGUI));
+            go.transform.SetParent(parent, false);
+            var tmp = go.GetComponent<TextMeshProUGUI>();
+            tmp.font = font;
+            tmp.fontSize = fontSize;
+            tmp.text = text;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.raycastTarget = false;
+            return tmp;
+        }
+
+        private static void SetTopAnchored(RectTransform rt, float y, float height)
+        {
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0f, y);
+            rt.sizeDelta = new Vector2(0f, height);
+        }
+
+        private static void SetMiddleAnchored(RectTransform rt, float y, float height)
+        {
+            rt.anchorMin = new Vector2(0f, 0.5f);
+            rt.anchorMax = new Vector2(1f, 0.5f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = new Vector2(0f, y);
+            rt.sizeDelta = new Vector2(0f, height);
+        }
+
+        private static TMP_DefaultControls.Resources DefaultResources()
+        {
+            return new TMP_DefaultControls.Resources
+            {
+                standard = BuiltinSprite("UI/Skin/UISprite.psd"),
+                background = BuiltinSprite("UI/Skin/Background.psd"),
+                inputField = BuiltinSprite("UI/Skin/InputFieldBackground.psd"),
+                knob = BuiltinSprite("UI/Skin/Knob.psd"),
+                checkmark = BuiltinSprite("UI/Skin/Checkmark.psd"),
+                dropdown = BuiltinSprite("UI/Skin/DropdownArrow.psd"),
+                mask = BuiltinSprite("UI/Skin/UIMask.psd"),
+            };
+        }
+
+        private static Sprite BuiltinSprite(string path)
+        {
+            return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
+        }
+
+        private static T EnsureComponent<T>(GameObject go) where T : Component
+        {
+            T component = go.GetComponent<T>();
+            return component != null ? component : go.AddComponent<T>();
+        }
+
+        private static void SavePrefab(GameObject root, string path)
+        {
+            PrefabUtility.SaveAsPrefabAsset(root, path, out bool success);
+            Object.DestroyImmediate(root);
+            if (success) Debug.Log($"SaiunSceneBuilder: 프리팹 저장 {path}");
+            else Debug.LogError($"SaiunSceneBuilder: 프리팹 저장 실패 {path}");
+        }
+
+        private static void EnsureFolder(string assetFolder)
+        {
+            if (string.IsNullOrEmpty(assetFolder) || AssetDatabase.IsValidFolder(assetFolder)) return;
+
+            string parent = Path.GetDirectoryName(assetFolder)?.Replace('\\', '/');
+            EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, Path.GetFileName(assetFolder));
+        }
+    }
+}
