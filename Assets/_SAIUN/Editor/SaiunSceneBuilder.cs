@@ -533,6 +533,8 @@ namespace _SAIUN.Editor
 
             var so = new SerializedObject(controller);
             so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.DesktopBlur;
+            // Acrylic으로 바꿔 쓸 때를 대비해 조율해 둔 농도를 씬에도 남긴다.
+            so.FindProperty("glassTintStrength").floatValue = 0.15f;
             so.FindProperty("extendFrame").boolValue = false;
             so.FindProperty("excludeFromCapture").boolValue = true;
             so.FindProperty("roundedCorners").boolValue = true;
