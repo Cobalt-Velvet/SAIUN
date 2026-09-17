@@ -147,18 +147,36 @@ namespace _SAIUN.Scripts.UI
         }
 #endif
 
+        /// <summary>
+        /// Selectable의 상태 틴트. Unity 기본값은 비활성일 때 회색으로 밀어버려 팔레트를 벗어난다.
+        /// 여기서는 밝기와 알파만 건드려 색조를 그대로 둔다.
+        /// </summary>
+        private static ColorBlock PaletteColorBlock()
+        {
+            ColorBlock block = ColorBlock.defaultColorBlock;
+            block.normalColor = Color.white;
+            block.highlightedColor = Color.white;
+            block.pressedColor = new Color(0.85f, 0.85f, 0.85f, 1f);
+            block.selectedColor = Color.white;
+            block.disabledColor = new Color(1f, 1f, 1f, 0.45f);
+            return block;
+        }
+
         private void ApplyStyle()
         {
             if (background != null) background.color = backgroundColor;
 
-            if (primaryButton != null && primaryButton.targetGraphic != null)
+            if (primaryButton != null)
             {
-                primaryButton.targetGraphic.color = buttonColor;
+                if (primaryButton.targetGraphic != null) primaryButton.targetGraphic.color = buttonColor;
+                primaryButton.colors = PaletteColorBlock();
             }
             if (primaryButtonLabel != null) primaryButtonLabel.color = buttonTextColor;
 
             if (taskInput != null)
             {
+                taskInput.colors = PaletteColorBlock();
+
                 var inputBackground = taskInput.GetComponent<Image>();
                 if (inputBackground != null) inputBackground.color = inputBackgroundColor;
 

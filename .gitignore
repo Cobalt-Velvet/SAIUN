@@ -102,3 +102,7 @@ InitTestScene*.unity*
 /Assets/_SAIUN/Art/VRM.meta
 #VSC
 .vscode/
+
+# Unity Performance Testing 패키지가 테스트 실행마다 만드는 산출물
+/[Aa]ssets/Resources/PerformanceTestRunInfo.json*
+/[Aa]ssets/Resources/PerformanceTestRunSettings.json*
