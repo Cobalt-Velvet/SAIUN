@@ -31,10 +31,14 @@ namespace _SAIUN.Scripts.Core
         [Tooltip("방해 앱 감시. 없어도 동작한다.")]
         [SerializeField] private ForegroundWatcher watcher;
 
+        [Tooltip("작물 목록. 없으면 설정한 작물을 확인 없이 심고 해금 판정도 하지 않는다.")]
+        [SerializeField] private CropCatalog cropCatalog;
+
         public PomodoroStateMachine StateMachine => stateMachine;
         public PomodoroTimer Timer => timer;
         public SaiunDatabase Database => database;
         public ForegroundWatcher Watcher => watcher;
+        public CropCatalog CropCatalog => cropCatalog;
 
         /// <summary>다음 세션에 쓸 설정. 시작 시 PlayerPrefs에 저장된다. Awake 전에 읽혀도 동작한다.</summary>
         public SessionConfig CurrentConfig
@@ -48,6 +52,12 @@ namespace _SAIUN.Scripts.Core
 
         /// <summary>세션 기록이 DB에 저장된 직후 발행.</summary>
         public event Action<SessionRecord> OnSessionRecorded;
+
+        /// <summary>수확이 기록되고 보유량이 오른 직후 발행. 인자는 작물 종류.</summary>
+        public event Action<string> OnHarvested;
+
+        /// <summary>작물이 새로 해금됐을 때 1회 발행.</summary>
+        public event Action<CropDefinition> OnCropUnlocked;
 
         private SessionConfig _currentConfig;
         private string _sessionStartTime;
@@ -84,6 +94,9 @@ namespace _SAIUN.Scripts.Core
         {
             ApplyFrameRate();
 
+            // 해금 조건이 바뀌었거나 예전 기록만으로 이미 조건을 채운 경우를 위해 한 번 맞춘다.
+            EvaluateUnlocks();
+
             // 투명 창 설정이 끝난 뒤에 위치를 복원해야 한다.
             if (windowController == null) return;
             if (windowController.IsReady) RestoreWindow();
@@ -108,7 +121,11 @@ namespace _SAIUN.Scripts.Core
 
         // ---- UI 요청 진입점 ----
 
-        /// <summary>주어진 설정으로 세션을 시작한다. 설정은 복사해 보관하고 PlayerPrefs에 저장한다.</summary>
+        /// <summary>
+        /// 주어진 설정으로 세션을 시작한다. 설정은 복사해 보관하고 PlayerPrefs에 저장한다.
+        /// 고른 작물을 이번 세션에 심을 수 없으면(잠김·필요 설정 미달) 심을 수 있는 작물로 바꿔 시작하되,
+        /// 저장하는 설정에는 사용자가 고른 작물을 그대로 남긴다.
+        /// </summary>
         public void RequestStart(SessionConfig config)
         {
             if (config == null)
@@ -119,7 +136,16 @@ namespace _SAIUN.Scripts.Core
 
             CurrentConfig = config.Clone();
             SettingsStore.SaveSessionConfig(CurrentConfig);
-            timer.StartSession(CurrentConfig);
+
+            SessionConfig session = CurrentConfig.Clone();
+            CropDefinition crop = cropCatalog != null ? cropCatalog.ChooseFor(session, IsCropUnlocked) : null;
+            if (crop != null && crop.Id != session.CropType)
+            {
+                Debug.Log($"GameManager: '{session.CropType}'은(는) 이번 세션에 심을 수 없어 '{crop.Id}'을(를) 심습니다.");
+                session.CropType = crop.Id;
+            }
+
+            timer.StartSession(session);
         }
 
         /// <summary>현재 보관 중인 설정으로 세션을 시작한다.</summary>
@@ -144,6 +170,13 @@ namespace _SAIUN.Scripts.Core
             timer.Cancel();
         }
 
+        /// <summary>장기 휴식(수확 가능) 중에 휴식을 끝내고 작물을 거둔다. 기록은 세션 종료 처리가 맡는다.</summary>
+        public void RequestHarvest()
+        {
+            if (stateMachine.CurrentState != PomodoroState.LongBreak) return;
+            timer.Cancel();
+        }
+
         /// <summary>Failed 상태를 확인하고 Idle로 돌아간다.</summary>
         public void RequestAcknowledgeFailure()
         {
@@ -156,6 +189,13 @@ namespace _SAIUN.Scripts.Core
         {
             if (watcher == null) return;
             watcher.ExcuseCurrentProcess();
+        }
+
+        /// <summary>작물을 심을 수 있게 해금됐는지. 기본 작물은 항상 참이다.</summary>
+        public bool IsCropUnlocked(CropDefinition crop)
+        {
+            if (crop == null) return false;
+            return crop.IsDefault || (database != null && database.IsUnlocked(crop.UnlockItemId));
         }
 
         /// <summary>다음 세션의 태스크 텍스트를 바꾼다. 길이 제한은 SessionConfig가 적용한다.</summary>
@@ -207,9 +247,36 @@ namespace _SAIUN.Scripts.Core
                 Result = result,
             };
 
-            database.InsertSession(record);
+            int sessionId = database.InsertSession(record);
             _sessionStartTime = null;
+
+            // 사양서 v1.1 9장: 수확 1회 = 해당 작물 1개.
+            bool harvested = result == SessionRecord.ResultHarvested;
+            if (harvested) database.AddHarvest(sessionId, record.CropType);
+
             OnSessionRecorded?.Invoke(record);
+            if (harvested) OnHarvested?.Invoke(record.CropType);
+
+            // 실패한 세션도 완료한 세트만큼 집중 시간이 쌓이므로 결과와 무관하게 판정한다.
+            EvaluateUnlocks();
+        }
+
+        /// <summary>누적 집중 시간과 수확 횟수로 작물 해금을 판정하고, 새로 채운 작물을 기록한다.</summary>
+        private void EvaluateUnlocks()
+        {
+            if (cropCatalog == null || database == null) return;
+
+            int focusMinutes = database.GetTotalFocusMinutes();
+            int harvests = database.GetHarvestCount();
+            foreach (CropDefinition crop in cropCatalog.Crops)
+            {
+                if (crop == null || crop.IsDefault || database.IsUnlocked(crop.UnlockItemId)) continue;
+                if (!crop.IsUnlockedBy(focusMinutes, harvests)) continue;
+
+                database.Unlock(crop.UnlockItemId);
+                Debug.Log($"GameManager: 작물 해금 {crop.Id}");
+                OnCropUnlocked?.Invoke(crop);
+            }
         }
 
         private void RestoreWindow()

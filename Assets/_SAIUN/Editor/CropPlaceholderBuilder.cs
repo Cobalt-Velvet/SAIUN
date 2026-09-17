@@ -72,12 +72,13 @@ namespace _SAIUN.Editor
             Dictionary<string, Material> materials = EnsureMaterials();
             if (materials == null) return null;
 
+            // 필요 설정과 해금 조건은 사양서 v1.1 7-3 MVP 표 그대로다.
             var definitions = new List<CropDefinition>
             {
-                BuildCrop("rice", "쌀", materials, overwrite, RiceStage),
-                BuildCrop("wheat", "밀", materials, overwrite, WheatStage),
-                BuildCrop("tomato", "토마토", materials, overwrite, TomatoStage),
-                BuildCrop("potato", "감자", materials, overwrite, PotatoStage),
+                BuildCrop("rice", "쌀", materials, overwrite, RiceStage, 25, 4, UnlockCondition.Default, 0),
+                BuildCrop("wheat", "밀", materials, overwrite, WheatStage, 25, 4, UnlockCondition.Default, 0),
+                BuildCrop("tomato", "토마토", materials, overwrite, TomatoStage, 45, 4, UnlockCondition.TotalFocusHours, 10),
+                BuildCrop("potato", "감자", materials, overwrite, PotatoStage, 45, 4, UnlockCondition.HarvestCount, 10),
             };
 
             var catalog = AssetDatabase.LoadAssetAtPath<CropCatalog>(CatalogPath);
@@ -99,7 +100,8 @@ namespace _SAIUN.Editor
         private delegate void StageShape(CropStage stage, Shape shape);
 
         private static CropDefinition BuildCrop(string id, string displayName, Dictionary<string, Material> materials,
-            bool overwrite, StageShape describe)
+            bool overwrite, StageShape describe,
+            int requiredFocusMinutes, int requiredSets, UnlockCondition unlock, int unlockThreshold)
         {
             string folder = $"{PrefabRoot}/{id}";
             EnsureFolder(folder);
@@ -130,6 +132,7 @@ namespace _SAIUN.Editor
                 AssetDatabase.CreateAsset(definition, definitionPath);
             }
             definition.Configure(id, displayName, prefabs);
+            definition.ConfigureRules(requiredFocusMinutes, requiredSets, unlock, unlockThreshold);
             EditorUtility.SetDirty(definition);
             return definition;
         }

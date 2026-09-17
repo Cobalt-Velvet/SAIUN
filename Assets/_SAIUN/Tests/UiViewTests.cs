@@ -129,6 +129,26 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 바_장기_휴식에서는_수확_버튼이_강조되고_누르면_거둔다()
+        {
+            _gm.RequestStart(ShortConfig(sets: 1));
+            Assert.IsFalse(_bar.IsHarvestHighlighted);
+            Color normal = _bar.PrimaryButton.targetGraphic.color;
+
+            Advance(300);   // → LongBreak
+            Assert.AreEqual(PomodoroState.LongBreak, _sm.CurrentState);
+            Assert.AreEqual("수확", _bar.CurrentButtonLabel);
+            Assert.IsTrue(_bar.IsHarvestHighlighted);
+            Assert.AreNotEqual(normal, _bar.PrimaryButton.targetGraphic.color, "강조색으로 바뀐다");
+
+            _bar.PrimaryButton.onClick.Invoke();
+            Assert.AreEqual(PomodoroState.Idle, _sm.CurrentState);
+            Assert.AreEqual("시작", _bar.CurrentButtonLabel);
+            Assert.IsFalse(_bar.IsHarvestHighlighted);
+            Assert.AreEqual(normal, _bar.PrimaryButton.targetGraphic.color);
+        }
+
+        [Test]
         public void 바_휴식_중에도_정지_라벨이다()
         {
             _gm.RequestStart(ShortConfig());

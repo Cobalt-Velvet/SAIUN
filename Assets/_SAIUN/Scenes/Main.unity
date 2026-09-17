@@ -5036,6 +5036,7 @@ MonoBehaviour:
   database: {fileID: 215741473}
   windowController: {fileID: 330585548}
   watcher: {fileID: 215741477}
+  cropCatalog: {fileID: 11400000, guid: f568a8224a5a82e42948ca07c12f61ed, type: 2}
 --- !u!114 &215741473
 MonoBehaviour:
   m_ObjectHideFlags: 0

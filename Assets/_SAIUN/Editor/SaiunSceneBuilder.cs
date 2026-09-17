@@ -434,7 +434,7 @@ namespace _SAIUN.Editor
             GameObject backdropCanvas = EnsureBackdropCanvas(camera);
             EnsureDesktopGlass(backdropCanvas.transform, canvasGo.transform, windowController);
             Flowerbed bed = EnsureFlowerbed();
-            EnsureCropGrowth(bed, stateMachine, timer);
+            EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
             EnsureGlassRim(canvasGo.transform);
@@ -765,11 +765,17 @@ namespace _SAIUN.Editor
 
         // ---- 작물 성장 (P2-03) ----
 
-        private static void EnsureCropGrowth(Flowerbed bed, PomodoroStateMachine stateMachine, PomodoroTimer timer)
+        private static void EnsureCropGrowth(Flowerbed bed, PomodoroStateMachine stateMachine, PomodoroTimer timer,
+            GameManager gameManager)
         {
             if (bed == null) return;
 
             CropCatalog catalog = CropPlaceholderBuilder.Build(overwrite: false);
+
+            // 수확 기록과 해금 판정, 시작 시 작물 확인에 쓴다.
+            var gmSo = new SerializedObject(gameManager);
+            gmSo.FindProperty("cropCatalog").objectReferenceValue = catalog;
+            gmSo.ApplyModifiedPropertiesWithoutUndo();
             Material glow = EnsureGlowMaterial();
 
             ParticleSystem sprout = EnsureParticles(bed.transform, "SproutBurst", glow,

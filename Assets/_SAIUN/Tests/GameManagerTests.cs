@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using _SAIUN.Scripts.Core;
+using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Timer;
@@ -19,6 +20,7 @@ namespace _SAIUN.Tests
         private SaiunDatabase _db;
         private GameManager _gm;
         private double _now;
+        private readonly List<Object> _owned = new List<Object>();
 
         [SetUp]
         public void SetUp()
@@ -41,6 +43,8 @@ namespace _SAIUN.Tests
         [TearDown]
         public void TearDown()
         {
+            foreach (Object owned in _owned) Object.DestroyImmediate(owned);
+            _owned.Clear();
             Object.DestroyImmediate(_go);
             SaiunDatabase.PathOverride = null;
             SettingsStore.DeleteAll();
@@ -195,6 +199,186 @@ namespace _SAIUN.Tests
         {
             _gm.SetTaskText(new string('a', 100));
             Assert.AreEqual(SessionConfig.MaxTaskTextLength, _gm.CurrentConfig.TaskText.Length);
+        }
+
+        // ---- 수확·해금 (P4-03) ----
+
+        [Test]
+        public void 수확하면_수확_기록과_보유량이_1씩_오른다()
+        {
+            UseCatalog();
+            string harvested = null;
+            _gm.OnHarvested += crop => harvested = crop;
+
+            CompleteOneSetSession("wheat");
+
+            Assert.AreEqual(1, _db.GetHarvestCount());
+            List<InventoryRecord> inventory = _db.GetInventory();
+            Assert.AreEqual(1, inventory.Count);
+            Assert.AreEqual("wheat", inventory[0].CropType);
+            Assert.AreEqual(1, inventory[0].Quantity);
+            Assert.AreEqual("wheat", harvested);
+        }
+
+        [Test]
+        public void 실패하거나_취소한_세션은_수확하지_않는다()
+        {
+            UseCatalog();
+            _gm.RequestStart(ShortConfig());
+            _sm.ChangeState(PomodoroState.Interrupted);
+            _sm.ChangeState(PomodoroState.Failed);
+            _gm.RequestAcknowledgeFailure();
+
+            _gm.RequestStart(ShortConfig());
+            _gm.RequestCancel();
+
+            Assert.AreEqual(2, _db.GetSessionCount());
+            Assert.AreEqual(0, _db.GetHarvestCount());
+            Assert.AreEqual(0, _db.GetInventory().Count);
+        }
+
+        [Test]
+        public void 장기_휴식_중_수확_요청은_휴식을_끝내고_거둔다()
+        {
+            UseCatalog();
+            _gm.RequestStart(ShortConfig(sets: 1));
+            _gm.RequestHarvest();
+            Assert.AreEqual(PomodoroState.Focus, _sm.CurrentState, "집중 중에는 무시한다");
+
+            Advance(300);   // → LongBreak
+            _gm.RequestHarvest();
+
+            Assert.AreEqual(PomodoroState.Idle, _sm.CurrentState);
+            Assert.AreEqual(1, _db.GetHarvestCount());
+        }
+
+        [Test]
+        public void 누적_집중_10시간을_채우면_토마토가_한_번_해금된다()
+        {
+            UseCatalog();
+            var unlocked = new List<string>();
+            _gm.OnCropUnlocked += crop => unlocked.Add(crop.Id);
+
+            // 9시간 55분을 미리 쌓아 두고 5분짜리 세션을 마친다.
+            InsertPastFocus(595);
+            CompleteOneSetSession("rice");
+
+            Assert.IsTrue(_db.IsUnlocked("crop.tomato"));
+            Assert.IsFalse(_db.IsUnlocked("crop.potato"));
+            CollectionAssert.AreEqual(new[] { "tomato" }, unlocked);
+
+            CompleteOneSetSession("rice");
+            CollectionAssert.AreEqual(new[] { "tomato" }, unlocked, "이미 해금된 작물은 다시 발행하지 않는다");
+        }
+
+        [Test]
+        public void 열_번째_수확에서_감자가_해금된다()
+        {
+            UseCatalog();
+            for (int i = 0; i < 9; i++) _db.AddHarvest(0, "rice");
+
+            CompleteOneSetSession("rice");
+
+            Assert.IsTrue(_db.IsUnlocked("crop.potato"));
+            Assert.IsTrue(_gm.IsCropUnlocked(_gm.CropCatalog.Find("potato")));
+        }
+
+        [Test]
+        public void 실패한_세션의_집중_시간도_해금에_쌓인다()
+        {
+            UseCatalog();
+            InsertPastFocus(595);
+
+            _gm.RequestStart(ShortConfig(sets: 2));
+            Advance(300);   // 1세트 완료 = 5분
+            _gm.RequestCancel();
+
+            Assert.IsTrue(_db.IsUnlocked("crop.tomato"));
+        }
+
+        [Test]
+        public void 잠긴_작물로_시작하면_기본_작물을_심고_고른_작물은_저장해_둔다()
+        {
+            UseCatalog();
+            _gm.RequestStart(LongConfig("tomato"));
+
+            Assert.AreEqual("rice", _timer.Config.CropType, "잠긴 토마토 대신 목록의 첫 기본 작물");
+            Assert.AreEqual("tomato", _gm.CurrentConfig.CropType);
+            Assert.AreEqual("tomato", SettingsStore.LoadSessionConfig().CropType);
+        }
+
+        [Test]
+        public void 해금된_작물은_필요_설정을_채우면_그대로_심는다()
+        {
+            UseCatalog();
+            _db.Unlock("crop.tomato");
+
+            _gm.RequestStart(LongConfig("tomato"));
+
+            Assert.AreEqual("tomato", _timer.Config.CropType);
+        }
+
+        [Test]
+        public void 수확_기록은_실제로_심은_작물로_남는다()
+        {
+            UseCatalog();
+            CompleteOneSetSession("potato");   // 잠긴 감자 대신 쌀을 심는다
+
+            Assert.AreEqual("rice", _db.GetRecentSessions(1)[0].CropType);
+            Assert.AreEqual("rice", _db.GetInventory()[0].CropType);
+        }
+
+        private void UseCatalog()
+        {
+            var catalog = ScriptableObject.CreateInstance<CropCatalog>();
+            _owned.Add(catalog);
+            catalog.Configure(new[]
+            {
+                Crop("rice", 25, 4, UnlockCondition.Default, 0),
+                Crop("wheat", 25, 4, UnlockCondition.Default, 0),
+                Crop("tomato", 45, 4, UnlockCondition.TotalFocusHours, 10),
+                Crop("potato", 45, 4, UnlockCondition.HarvestCount, 10),
+            });
+            typeof(GameManager)
+                .GetField("cropCatalog", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .SetValue(_gm, catalog);
+        }
+
+        private CropDefinition Crop(string id, int focus, int sets, UnlockCondition condition, int threshold)
+        {
+            var crop = ScriptableObject.CreateInstance<CropDefinition>();
+            _owned.Add(crop);
+            crop.Configure(id, id, new GameObject[CropDefinition.StageModelCount]);
+            crop.ConfigureRules(focus, sets, condition, threshold);
+            return crop;
+        }
+
+        private void InsertPastFocus(int minutes)
+        {
+            _db.InsertSession(new SessionRecord
+            {
+                StartTime = SaiunDatabase.Now(), DurationMin = minutes, SetsCompleted = 1,
+                CropType = "rice", Result = SessionRecord.ResultFailed,
+            });
+        }
+
+        private void CompleteOneSetSession(string crop)
+        {
+            _gm.RequestStart(new SessionConfig
+            {
+                FocusMinutes = 5, ShortBreakMinutes = 1, LongBreakMinutes = 5, TotalSets = 1, CropType = crop,
+            });
+            Advance(300);   // → LongBreak
+            Advance(300);   // → Idle
+            Assert.AreEqual(PomodoroState.Idle, _sm.CurrentState);
+        }
+
+        private static SessionConfig LongConfig(string crop)
+        {
+            return new SessionConfig
+            {
+                FocusMinutes = 45, ShortBreakMinutes = 1, LongBreakMinutes = 5, TotalSets = 4, CropType = crop,
+            };
         }
 
         private static void AssertNoFieldOfType(System.Type owner, System.Type forbidden)

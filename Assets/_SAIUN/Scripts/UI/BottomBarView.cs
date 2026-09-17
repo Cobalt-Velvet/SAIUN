@@ -23,6 +23,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string stopLabel = "정지";
         [SerializeField] private string acknowledgeLabel = "확인";
         [SerializeField] private string excuseLabel = "괜찮아요";
+        [SerializeField] private string harvestLabel = "수확";
 
         [Header("색상")]
         [SerializeField] private Color backgroundColor = SaiunPalette.BottomBarBackground;
@@ -31,8 +32,15 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private Color buttonColor = SaiunPalette.MainPoint;
         [SerializeField] private Color buttonTextColor = SaiunPalette.OnMainPoint;
 
+        [Tooltip("장기 휴식(수확 가능) 중 버튼 강조 (사양서 v1.1 13-2)")]
+        [SerializeField] private Color harvestButtonColor = SaiunPalette.Harvestable;
+        [SerializeField] private Color harvestButtonTextColor = SaiunPalette.OnMainPoint;
+
         /// <summary>현재 버튼에 표시된 라벨.</summary>
         public string CurrentButtonLabel => primaryButtonLabel != null ? primaryButtonLabel.text : string.Empty;
+
+        /// <summary>버튼이 수확 강조 상태인지.</summary>
+        public bool IsHarvestHighlighted { get; private set; }
 
         public TMP_InputField TaskInput => taskInput;
         public Button PrimaryButton => primaryButton;
@@ -98,6 +106,10 @@ namespace _SAIUN.Scripts.UI
                     gameManager.RequestExcuseDistraction();
                     break;
 
+                case PomodoroState.LongBreak:
+                    gameManager.RequestHarvest();
+                    break;
+
                 default:
                     gameManager.RequestCancel();
                     break;
@@ -116,13 +128,18 @@ namespace _SAIUN.Scripts.UI
         {
             bool idle = state == PomodoroState.Idle;
 
+            // 장기 휴식은 전 세트를 마친 수확 가능 상태다. 버튼을 누르면 휴식을 끝내고 거둔다.
+            IsHarvestHighlighted = state == PomodoroState.LongBreak;
+
             if (primaryButtonLabel != null)
             {
                 primaryButtonLabel.text = idle ? startLabel
                     : state == PomodoroState.Failed ? acknowledgeLabel
                     : state == PomodoroState.Interrupted ? excuseLabel
+                    : IsHarvestHighlighted ? harvestLabel
                     : stopLabel;
             }
+            ApplyButtonColors();
 
             // 유예 중에는 감시자가 있을 때만(세션 예외 요청 가능) 버튼을 살린다.
             if (primaryButton != null) primaryButton.interactable = state != PomodoroState.Interrupted || gameManager.Watcher != null;
@@ -136,6 +153,18 @@ namespace _SAIUN.Scripts.UI
                     ? gameManager.Timer.Config.TaskText
                     : gameManager.CurrentConfig.TaskText;
                 if (taskInput.text != text) taskInput.SetTextWithoutNotify(text);
+            }
+        }
+
+        private void ApplyButtonColors()
+        {
+            if (primaryButton != null && primaryButton.targetGraphic != null)
+            {
+                primaryButton.targetGraphic.color = IsHarvestHighlighted ? harvestButtonColor : buttonColor;
+            }
+            if (primaryButtonLabel != null)
+            {
+                primaryButtonLabel.color = IsHarvestHighlighted ? harvestButtonTextColor : buttonTextColor;
             }
         }
 
@@ -166,12 +195,8 @@ namespace _SAIUN.Scripts.UI
         {
             if (background != null) background.color = backgroundColor;
 
-            if (primaryButton != null)
-            {
-                if (primaryButton.targetGraphic != null) primaryButton.targetGraphic.color = buttonColor;
-                primaryButton.colors = PaletteColorBlock();
-            }
-            if (primaryButtonLabel != null) primaryButtonLabel.color = buttonTextColor;
+            if (primaryButton != null) primaryButton.colors = PaletteColorBlock();
+            ApplyButtonColors();
 
             if (taskInput != null)
             {
