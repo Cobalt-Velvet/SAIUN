@@ -85,6 +85,15 @@ namespace _SAIUN.Scripts.Core
         /// <summary>마지막 읽기에 걸린 시간(밀리초). 갱신 간격을 정할 때 참고한다.</summary>
         public double LastCaptureMilliseconds { get; private set; }
 
+        /// <summary>
+        /// 직전 읽기와 얼마나 달라졌는지. 0이면 그대로고 1이면 완전히 다르다.
+        /// 뒷배경이 멈춰 있으면 다음 읽기를 늦춰 CPU를 아끼는 데 쓴다.
+        /// </summary>
+        public float LastChangeAmount { get; private set; } = 1f;
+
+        // 변화량은 전부 비교할 필요가 없다. 몇 픽셀 건너 하나씩만 본다.
+        const int ChangeSampleStride = 16 * 4;
+
         // 작업 스레드가 _workBuffer에 채우고, 다 채우면 _readyBuffer와 맞바꾼다.
         private byte[] _workBuffer;
         private byte[] _readyBuffer;
@@ -416,6 +425,16 @@ namespace _SAIUN.Scripts.Core
 
                 // GDI는 알파를 채우지 않아 0이 들어온다. 불투명으로 덮어쓴다.
                 for (int i = 3; i < _workBuffer.Length; i += 4) _workBuffer[i] = 255;
+
+                // 맞바꾸기 전이라 _readyBuffer에는 아직 직전 프레임이 들어 있다.
+                long difference = 0;
+                int samples = 0;
+                for (int i = 0; i < _workBuffer.Length; i += ChangeSampleStride)
+                {
+                    difference += Math.Abs(_workBuffer[i] - _readyBuffer[i]);
+                    samples++;
+                }
+                LastChangeAmount = samples > 0 ? difference / (float)samples / 255f : 1f;
 
                 lock (_frameLock)
                 {

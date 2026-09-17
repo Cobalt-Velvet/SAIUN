@@ -27,9 +27,17 @@ namespace _SAIUN.Scripts.UI
         [Range(0, 4)]
         [SerializeField] private int blurPasses = 3;
 
-        [Tooltip("창 위치를 따라 배경을 다시 잘라내는 간격(초). 잘라내기만 하므로 싸다.")]
+        [Tooltip("뒷배경이 움직일 때 다시 읽는 간격(초).")]
         [Range(0.016f, 0.3f)]
-        [SerializeField] private float refreshInterval = 0.05f;
+        [SerializeField] private float refreshInterval = 0.06f;
+
+        [Tooltip("뒷배경이 멈춰 있을 때 늦추는 간격(초). 가만히 둔 위젯이 CPU를 계속 먹지 않게 한다.")]
+        [Range(0.1f, 2f)]
+        [SerializeField] private float idleInterval = 0.6f;
+
+        [Tooltip("이보다 적게 바뀌면 멈춘 것으로 본다.")]
+        [Range(0f, 0.05f)]
+        [SerializeField] private float changeThreshold = 0.004f;
 
         [Tooltip("바탕화면 그림을 새로 받는 간격(초). 영상 벽지의 움직임이 이 주기로 갱신된다.")]
         [Range(0.1f, 2f)]
@@ -70,6 +78,9 @@ namespace _SAIUN.Scripts.UI
         public Vector2Int CaptureSize => new Vector2Int(
             Mathf.Max(1, SceneMetrics.WindowWidth / downscale),
             Mathf.Max(1, SceneMetrics.WindowHeight / downscale));
+
+        // 이만큼 연달아 변화가 없으면 느린 간격으로 넘어간다.
+        private const int IdleFramesBeforeSlowing = 8;
 
         private DesktopCapture _capture;
         private Coroutine _loop;
@@ -364,6 +375,8 @@ namespace _SAIUN.Scripts.UI
         {
             DesktopCapture capture = _capture;
             float nextWallpaper = 0f;
+            int idleFrames = 0;
+            var lastPosition = new Vector2Int(int.MinValue, int.MinValue);
             var clock = System.Diagnostics.Stopwatch.StartNew();
 
             try
@@ -386,6 +399,12 @@ namespace _SAIUN.Scripts.UI
                     capture.Capture(source, position.x, position.y,
                         SceneMetrics.WindowWidth, SceneMetrics.WindowHeight, refreshSource);
 
+                    // 창이 움직였거나 뒷배경이 바뀌었으면 빠르게, 아니면 느긋하게 돈다.
+                    bool moved = position != lastPosition;
+                    lastPosition = position;
+                    if (moved || capture.LastChangeAmount > changeThreshold) idleFrames = 0;
+                    else idleFrames++;
+
                     if (source == DesktopCapture.Source.WallpaperLayer && ambientInfluence > 0f)
                     {
                         bool ok = capture.SampleAmbient(position.x, position.y,
@@ -403,7 +422,9 @@ namespace _SAIUN.Scripts.UI
                         lock (_shared) { _sharedAmbientValid = false; }
                     }
 
-                    Thread.Sleep(Mathf.Max(1, Mathf.RoundToInt(refreshInterval * 1000f)));
+                    // 몇 번 연달아 그대로면 느린 쪽으로 넘어간다.
+                    float interval = idleFrames > IdleFramesBeforeSlowing ? idleInterval : refreshInterval;
+                    Thread.Sleep(Mathf.Max(1, Mathf.RoundToInt(interval * 1000f)));
                 }
             }
             catch (System.Exception e)
