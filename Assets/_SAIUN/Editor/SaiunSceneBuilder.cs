@@ -1,5 +1,6 @@
 using System.IO;
 using _SAIUN.Scripts.Core;
+using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Lighting;
@@ -11,6 +12,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -32,6 +34,12 @@ namespace _SAIUN.Editor
         private const string PrefabFolder = "Assets/_SAIUN/Prefabs/UI";
         private const string BottomBarPrefabPath = PrefabFolder + "/BottomBar.prefab";
         private const string TimerHudPrefabPath = PrefabFolder + "/TimerHud.prefab";
+        private const string MaterialFolder = "Assets/_SAIUN/Art/Materials";
+        private const string PlanterMaterialPath = MaterialFolder + "/Flowerbed_Planter.mat";
+        private const string SoilMaterialPath = MaterialFolder + "/Flowerbed_Soil.mat";
+        private const string ShadowCatcherMaterialPath = MaterialFolder + "/ShadowCatcher.mat";
+        private const string LitShaderName = "Universal Render Pipeline/Lit";
+        private const string ShadowCatcherShaderName = "SAIUN/ShadowCatcher";
 
         // 확정값은 SceneMetrics가 단일 출처다.
         private const int WindowWidth = SceneMetrics.WindowWidth;
@@ -49,6 +57,20 @@ namespace _SAIUN.Editor
         private const float HudLabelFontSize = 20f;
         private const int DotSize = 12;
         private const int DotSpacing = 10;
+
+        // ---- 화단 임시값 (실측 대기) ----
+        // 화단 흙 윗면 중심을 둘 창 픽셀. 사양서 2-3 "우측 고정 / 중앙 하단"에 따라
+        // Scene Layer(340~612px)의 오른쪽 절반에 들어가고 하단 바와 16px 떨어지게 잡았다.
+        private static readonly Vector2 FlowerbedWindowPixel = new Vector2(352f, 490f);
+        private const float PlaceholderSmoothness = 0.15f;
+        private const float ShadowStrength = 0.55f;
+        private const float ShadowFadeWidth = 0.8f;
+
+        // 유리 배경은 모든 투명 오브젝트보다 먼저 그려야 그림자·파티클을 덮지 않는다.
+        private const int BackdropSortingOrder = -1000;
+
+        // 톤매핑을 끄면 템플릿의 광원 세기 2에서는 밝은 면이 1을 넘어 하얗게 날아간다.
+        private const float SunIntensity = 1f;
 
         [MenuItem("SAIUN/Build All (TMP·Font·Prefabs·Scene)")]
         public static void BuildAll()
@@ -385,12 +407,14 @@ namespace _SAIUN.Editor
 
             SetupWindowController(windowController);
 
-            SetupCamera();
+            Camera camera = SetupCamera();
 
             // 광원 공전: 씬의 Directional Light에 붙인다.
             Light sun = FindDirectionalLight();
             if (sun != null)
             {
+                sun.intensity = SunIntensity;
+                sun.shadows = LightShadows.Soft;
                 var orbit = EnsureComponent<SunOrbitController>(sun.gameObject);
                 var orbitSo = new SerializedObject(orbit);
                 orbitSo.FindProperty("sun").objectReferenceValue = sun;
@@ -402,7 +426,9 @@ namespace _SAIUN.Editor
                 Debug.LogWarning("SaiunSceneBuilder: Directional Light가 없어 SunOrbitController를 붙이지 않았습니다.");
             }
 
-            EnsureDesktopGlass(canvasGo.transform, windowController);
+            GameObject backdropCanvas = EnsureBackdropCanvas(camera);
+            EnsureDesktopGlass(backdropCanvas.transform, canvasGo.transform, windowController);
+            EnsureFlowerbed();
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
             EnsureGlassRim(canvasGo.transform);
@@ -543,10 +569,11 @@ namespace _SAIUN.Editor
             Debug.Log("SaiunSceneBuilder: 유리 배경을 DesktopBlur로 설정했습니다.");
         }
 
-        // 창 뒤 화면을 흐리게 깔아 주는 층. 다른 UI보다 먼저 그려야 하므로 맨 앞에 둔다.
-        private static void EnsureDesktopGlass(Transform canvas, WindowController windowController)
+        // 창 뒤 화면을 흐리게 깔아 주는 층. 3D 씬보다 뒤에 있어야 하므로 카메라 공간 캔버스에 둔다.
+        // 예전에는 오버레이 캔버스에 있었으므로, 거기 남아 있으면 옮겨 온다(참조와 fileID는 유지된다).
+        private static void EnsureDesktopGlass(Transform canvas, Transform legacyCanvas, WindowController windowController)
         {
-            Transform existing = canvas.Find("DesktopGlass");
+            Transform existing = canvas.Find("DesktopGlass") ?? legacyCanvas.Find("DesktopGlass");
             GameObject glass = existing != null
                 ? existing.gameObject
                 : new GameObject("DesktopGlass", typeof(RectTransform), typeof(RawImage), typeof(DesktopGlassView));
@@ -617,13 +644,13 @@ namespace _SAIUN.Editor
 
         // 사양서 2-4: 고정 Orthographic 아이소메트릭 카메라.
         // 배경 알파 0과 Solid Color 설정은 투명 창에 필요하므로 건드리지 않는다.
-        private static void SetupCamera()
+        private static Camera SetupCamera()
         {
             Camera camera = Camera.main ?? Object.FindFirstObjectByType<Camera>();
             if (camera == null)
             {
                 Debug.LogWarning("SaiunSceneBuilder: 카메라가 없어 설정을 건너뜁니다.");
-                return;
+                return null;
             }
 
             camera.orthographic = true;
@@ -637,6 +664,134 @@ namespace _SAIUN.Editor
 
             Debug.Log($"SaiunSceneBuilder: 카메라 Orthographic Size {SceneMetrics.CameraOrthographicSize} " +
                       $"(pixelsPerUnit {SceneMetrics.PixelsPerUnit})");
+            return camera;
+        }
+
+        // 유리 배경 전용 캔버스. 카메라 Far 클립 바로 앞에 펼쳐서 3D 오브젝트가 깊이 테스트로 그 앞에 그려지게 한다.
+        private static GameObject EnsureBackdropCanvas(Camera camera)
+        {
+            GameObject go = GameObject.Find("BackdropCanvas")
+                            ?? new GameObject("BackdropCanvas", typeof(Canvas), typeof(CanvasScaler));
+
+            var canvas = go.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.worldCamera = camera;
+            canvas.planeDistance = SceneMetrics.BackdropPlaneDistance;
+            canvas.sortingOrder = BackdropSortingOrder;
+
+            var scaler = go.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
+            scaler.matchWidthOrHeight = 0.5f;
+            return go;
+        }
+
+        // ---- 화단 (P2-02) ----
+
+        // 화단과 임시 외형, 그림자 받이를 만든다. 위치는 처음 만들 때만 정하고, 이후에는 인스펙터에서 조정한 값을 지킨다.
+        private static void EnsureFlowerbed()
+        {
+            Shader lit = Shader.Find(LitShaderName);
+            Shader catcher = Shader.Find(ShadowCatcherShaderName);
+            if (lit == null || catcher == null)
+            {
+                Debug.LogError("SaiunSceneBuilder: 화단 셰이더를 찾지 못했습니다.");
+                return;
+            }
+
+            Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, m =>
+            {
+                m.SetColor("_BaseColor", SaiunPalette.Eggshell);
+                m.SetFloat("_Smoothness", PlaceholderSmoothness);
+            });
+            Material soilMaterial = EnsureMaterial(SoilMaterialPath, lit, m =>
+            {
+                m.SetColor("_BaseColor", SaiunPalette.DeepJungle);
+                m.SetFloat("_Smoothness", PlaceholderSmoothness);
+            });
+            Material catcherMaterial = EnsureMaterial(ShadowCatcherMaterialPath, catcher, m =>
+            {
+                m.SetColor("_ShadowColor", SaiunPalette.DeepJungle);
+                m.SetFloat("_ShadowStrength", ShadowStrength);
+                m.SetFloat("_FadeWidth", ShadowFadeWidth);
+            });
+
+            GameObject bedGo = GameObject.Find("Flowerbed");
+            bool created = bedGo == null;
+            if (created) bedGo = new GameObject("Flowerbed");
+            var bed = EnsureComponent<Flowerbed>(bedGo);
+
+            Transform planter = EnsurePrimitiveChild(bedGo.transform, "Planter", PrimitiveType.Cube,
+                planterMaterial, ShadowCastingMode.On);
+
+            Transform soilRoot = bedGo.transform.Find("Soil");
+            if (soilRoot == null)
+            {
+                soilRoot = new GameObject("Soil").transform;
+                soilRoot.SetParent(bedGo.transform, false);
+            }
+            for (int i = 0; i < bed.CellCount; i++)
+            {
+                EnsurePrimitiveChild(soilRoot, $"Soil_{i / bed.Columns}_{i % bed.Columns}", PrimitiveType.Cube,
+                    soilMaterial, ShadowCastingMode.On);
+            }
+
+            Transform ground = EnsurePrimitiveChild(bedGo.transform, "ShadowGround", PrimitiveType.Quad,
+                catcherMaterial, ShadowCastingMode.Off);
+
+            var so = new SerializedObject(bed);
+            so.FindProperty("planter").objectReferenceValue = planter;
+            so.FindProperty("soilRoot").objectReferenceValue = soilRoot;
+            so.FindProperty("shadowGround").objectReferenceValue = ground;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            if (created)
+            {
+                // 흙 윗면 중심이 지정한 창 픽셀에 보이도록 바닥 원점을 역산한다.
+                Vector3 surface = SceneMetrics.WindowPixelsToGround(FlowerbedWindowPixel, bed.SurfaceHeight);
+                bedGo.transform.SetPositionAndRotation(new Vector3(surface.x, 0f, surface.z), Quaternion.identity);
+            }
+
+            bed.FitVisuals();
+            Debug.Log($"SaiunSceneBuilder: 화단 원점 {bedGo.transform.position}, 칸 간격 {bed.CellSize}");
+        }
+
+        // 처음 만들 때만 설정한다. 이후 색·농도 조정은 머티리얼 에셋에서 한다.
+        private static Material EnsureMaterial(string path, Shader shader, System.Action<Material> configure)
+        {
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material != null) return material;
+
+            EnsureFolder(MaterialFolder);
+            material = new Material(shader) { name = Path.GetFileNameWithoutExtension(path) };
+            configure(material);
+            AssetDatabase.CreateAsset(material, path);
+            return material;
+        }
+
+        private static Transform EnsurePrimitiveChild(Transform parent, string name, PrimitiveType type,
+            Material material, ShadowCastingMode shadows)
+        {
+            Transform existing = parent.Find(name);
+            GameObject go;
+            if (existing != null)
+            {
+                go = existing.gameObject;
+            }
+            else
+            {
+                go = GameObject.CreatePrimitive(type);
+                go.name = name;
+                go.transform.SetParent(parent, false);
+                // 클릭 판정이 필요 없는 장식이다.
+                Object.DestroyImmediate(go.GetComponent<Collider>());
+            }
+
+            var renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = shadows;
+            renderer.receiveShadows = true;
+            return go.transform;
         }
 
         private static Light FindDirectionalLight()

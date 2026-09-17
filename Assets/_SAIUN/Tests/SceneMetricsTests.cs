@@ -1,5 +1,6 @@
 using _SAIUN.Scripts.Core;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace _SAIUN.Tests
 {
@@ -54,6 +55,58 @@ namespace _SAIUN.Tests
         {
             Assert.Less(SceneMetrics.CameraNearClip, SceneMetrics.CameraDistance);
             Assert.Greater(SceneMetrics.CameraFarClip, SceneMetrics.CameraDistance);
+        }
+
+        [Test]
+        public void 씬_원점은_창_한가운데에_그려진다()
+        {
+            Vector2 pixel = SceneMetrics.WorldToWindowPixels(Vector3.zero);
+            Assert.AreEqual(SceneMetrics.WindowWidth / 2f, pixel.x, 0.0001f);
+            Assert.AreEqual(SceneMetrics.WindowHeight / 2f, pixel.y, 0.0001f);
+        }
+
+        [Test]
+        public void 카메라_위쪽으로_1유닛은_100픽셀_위다()
+        {
+            Vector3 up = SceneMetrics.CameraRotation * Vector3.up;
+            Vector2 pixel = SceneMetrics.WorldToWindowPixels(up);
+            Assert.AreEqual(SceneMetrics.WindowHeight / 2f - SceneMetrics.PixelsPerUnit, pixel.y, 0.001f);
+        }
+
+        [Test]
+        public void 시선_방향으로_움직여도_같은_픽셀이다()
+        {
+            Vector3 point = new Vector3(0.3f, 0.2f, -1.1f);
+            Vector3 forward = SceneMetrics.CameraRotation * Vector3.forward;
+            Vector2 a = SceneMetrics.WorldToWindowPixels(point);
+            Vector2 b = SceneMetrics.WorldToWindowPixels(point + forward * 4f);
+            Assert.AreEqual(a.x, b.x, 0.001f);
+            Assert.AreEqual(a.y, b.y, 0.001f);
+        }
+
+        [Test]
+        public void 창_픽셀에서_수평면으로의_역산은_투영의_역연산이다()
+        {
+            foreach (var pixel in new[] { new Vector2(352f, 490f), new Vector2(10f, 600f), new Vector2(240f, 340f) })
+            {
+                foreach (float height in new[] { 0f, 0.24f, -0.5f })
+                {
+                    Vector3 ground = SceneMetrics.WindowPixelsToGround(pixel, height);
+                    Assert.AreEqual(height, ground.y, 0.0001f);
+
+                    Vector2 back = SceneMetrics.WorldToWindowPixels(ground);
+                    Assert.AreEqual(pixel.x, back.x, 0.01f);
+                    Assert.AreEqual(pixel.y, back.y, 0.01f);
+                }
+            }
+        }
+
+        [Test]
+        public void 유리_배경은_Far_클립_안쪽_카메라보다_먼_곳에_있다()
+        {
+            Assert.Less(SceneMetrics.BackdropPlaneDistance, SceneMetrics.CameraFarClip);
+            Assert.Greater(SceneMetrics.BackdropPlaneDistance, SceneMetrics.CameraDistance * 2f,
+                "씬 오브젝트보다 충분히 뒤에 있어야 깊이 테스트로 가려진다.");
         }
 
         [Test]
