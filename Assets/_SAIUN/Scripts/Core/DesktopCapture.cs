@@ -10,7 +10,9 @@ namespace _SAIUN.Scripts.Core
     /// <summary>
     /// 화면의 한 영역을 축소해서 읽어 온다.
     /// 축소 자체가 흐림 효과라, 따로 블러를 돌리지 않아도 유리처럼 보인다.
-    /// GDI가 평균을 내며 줄여주므로 셰이더가 필요 없다.
+    ///
+    /// 읽기(Capture, SampleAmbient)는 GDI만 쓰므로 작업 스레드에서 불러도 된다.
+    /// 텍스처에 올리는 ApplyToTexture만 메인 스레드에서 불러야 한다.
     /// </summary>
     public sealed class DesktopCapture : IDisposable
     {
@@ -83,7 +85,12 @@ namespace _SAIUN.Scripts.Core
         /// <summary>마지막 읽기에 걸린 시간(밀리초). 갱신 간격을 정할 때 참고한다.</summary>
         public double LastCaptureMilliseconds { get; private set; }
 
-        private readonly byte[] _buffer;
+        // 작업 스레드가 _workBuffer에 채우고, 다 채우면 _readyBuffer와 맞바꾼다.
+        private byte[] _workBuffer;
+        private byte[] _readyBuffer;
+        private readonly object _frameLock = new object();
+        private bool _hasFrame;
+
         private readonly Stopwatch _stopwatch = new Stopwatch();
         private BITMAPINFO _info;
         private bool _disposed;
@@ -114,7 +121,8 @@ namespace _SAIUN.Scripts.Core
                 hideFlags = HideFlags.HideAndDontSave,
             };
 
-            _buffer = new byte[Width * Height * 4];
+            _workBuffer = new byte[Width * Height * 4];
+            _readyBuffer = new byte[Width * Height * 4];
             _info = new BITMAPINFO
             {
                 bmiHeader = new BITMAPINFOHEADER
@@ -265,6 +273,34 @@ namespace _SAIUN.Scripts.Core
             return result;
         }
 
+        /// <summary>
+        /// 마지막으로 읽어 둔 화면을 텍스처에 올린다. 메인 스레드에서만 부른다.
+        /// 새로 들어온 것이 없으면 아무 일도 하지 않고 false를 돌려준다.
+        /// </summary>
+        public bool ApplyToTexture()
+        {
+            if (_disposed || Texture == null) return false;
+
+            lock (_frameLock)
+            {
+                if (!_hasFrame) return false;
+                _hasFrame = false;
+                Texture.LoadRawTextureData(_readyBuffer);
+            }
+
+            Texture.Apply(false, false);
+            return true;
+        }
+
+        /// <summary>GDI 자원을 놓는다. 읽기를 하던 스레드에서 부르는 편이 깔끔하다.</summary>
+        public void ReleaseGdiResources()
+        {
+            ReleaseLayerBuffer();
+
+            if (_ambientBitmap != IntPtr.Zero) { DeleteObject(_ambientBitmap); _ambientBitmap = IntPtr.Zero; }
+            if (_ambientDC != IntPtr.Zero) { DeleteDC(_ambientDC); _ambientDC = IntPtr.Zero; }
+        }
+
         // ---- 화면 전체에서 읽기 ----
 
         private bool CaptureScreen(int x, int y, int width, int height)
@@ -376,13 +412,18 @@ namespace _SAIUN.Scripts.Core
                 SelectObject(memoryDC, previous);
                 previous = IntPtr.Zero;
 
-                if (GetDIBits(memoryDC, bitmap, 0, (uint)Height, _buffer, ref _info, DIB_RGB_COLORS) == 0) return false;
+                if (GetDIBits(memoryDC, bitmap, 0, (uint)Height, _workBuffer, ref _info, DIB_RGB_COLORS) == 0) return false;
 
                 // GDI는 알파를 채우지 않아 0이 들어온다. 불투명으로 덮어쓴다.
-                for (int i = 3; i < _buffer.Length; i += 4) _buffer[i] = 255;
+                for (int i = 3; i < _workBuffer.Length; i += 4) _workBuffer[i] = 255;
 
-                Texture.LoadRawTextureData(_buffer);
-                Texture.Apply(false, false);
+                lock (_frameLock)
+                {
+                    byte[] swap = _readyBuffer;
+                    _readyBuffer = _workBuffer;
+                    _workBuffer = swap;
+                    _hasFrame = true;
+                }
                 return true;
             }
             finally
@@ -398,10 +439,7 @@ namespace _SAIUN.Scripts.Core
             if (_disposed) return;
             _disposed = true;
 
-            ReleaseLayerBuffer();
-
-            if (_ambientBitmap != IntPtr.Zero) { DeleteObject(_ambientBitmap); _ambientBitmap = IntPtr.Zero; }
-            if (_ambientDC != IntPtr.Zero) { DeleteDC(_ambientDC); _ambientDC = IntPtr.Zero; }
+            ReleaseGdiResources();
 
             if (Texture == null) return;
             if (Application.isPlaying) UnityEngine.Object.Destroy(Texture);

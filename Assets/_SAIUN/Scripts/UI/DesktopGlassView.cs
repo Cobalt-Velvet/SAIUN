@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Threading;
 using _SAIUN.Scripts.Core;
 using UnityEngine;
 using UnityEngine.UI;
@@ -72,8 +73,17 @@ namespace _SAIUN.Scripts.UI
 
         private DesktopCapture _capture;
         private Coroutine _loop;
+        private Thread _worker;
+        private volatile bool _stopWorker;
         private int _captureCount;
-        private float _nextWallpaperRefresh;
+
+        // 작업 스레드와 주고받는 값들.
+        private readonly object _shared = new object();
+        private Vector2Int _sharedPosition;
+        private DesktopCapture.Source _sharedSource;
+        private bool _sharedAmbientValid;
+        private readonly Color[] _sharedAmbient = new Color[4];
+        private readonly Color[] _workerAmbient = new Color[4];
         private RenderTexture _blurA;
         private RenderTexture _blurB;
         private readonly Color[] _ambientSamples = new Color[4];
@@ -116,6 +126,7 @@ namespace _SAIUN.Scripts.UI
                 _loop = null;
             }
 
+            StopWorker();
             _capture?.Dispose();
             _capture = null;
 
@@ -183,7 +194,7 @@ namespace _SAIUN.Scripts.UI
         {
             tint = color;
             tintStrength = Mathf.Clamp01(strength);
-            if (tintOverlay != null) tintOverlay.color = SaiunPalette.WithAlpha(tint, tintStrength);
+            EnsureAmbientTexture();
         }
 
         /// <summary>
@@ -191,19 +202,21 @@ namespace _SAIUN.Scripts.UI
         /// 유리 안에 비치는 그림은 바탕화면이지만, 색만은 실제로 뒤에 있는 것을 따라가게 만든다.
         /// 밝은 창 위로 옮기면 유리가 그쪽으로 물든다.
         /// </summary>
-        private void UpdateAmbientTint(Vector2Int position)
+        private void UpdateAmbientTint()
         {
             if (tintOverlay == null) return;
             EnsureAmbientTexture();
 
-            bool sampled = ambientInfluence > 0f && _capture != null
-                && _capture.SampleAmbient(position.x, position.y,
-                    SceneMetrics.WindowWidth, SceneMetrics.WindowHeight,
-                    ambientMargin, ambientThickness, _ambientSamples);
+            bool sampled;
+            lock (_shared)
+            {
+                sampled = _sharedAmbientValid;
+                if (sampled) System.Array.Copy(_sharedAmbient, _ambientSamples, _ambientSamples.Length);
+            }
 
             if (!sampled)
             {
-                // 못 읽었으면 팔레트 색만 쓴다.
+                // 못 읽었거나 화면 전체를 읽는 모드면 팔레트 색만 쓴다.
                 for (int i = 0; i < _ambientCorners.Length; i++)
                 {
                     _ambientCorners[i] = SaiunPalette.WithAlpha(tint, tintStrength);
@@ -282,46 +295,128 @@ namespace _SAIUN.Scripts.UI
 
         private IEnumerator CaptureLoop()
         {
-            var wait = new WaitForSecondsRealtime(refreshInterval);
-
             // 창 설정이 끝나기 전에는 위치가 확정되지 않는다.
             while (windowController != null && !windowController.IsReady) yield return null;
 
+            PublishPosition();
+            StartWorker();
+
             while (true)
             {
-                CaptureOnce();
-                yield return wait;
+                PublishPosition();
+
+                if (_capture.ApplyToTexture())
+                {
+                    IsCapturing = true;
+                    if (backdrop != null)
+                    {
+                        backdrop.enabled = true;
+                        backdrop.texture = Smooth(_capture.Texture);
+                    }
+
+                    if (++_captureCount == 30)
+                    {
+                        Debug.Log($"DesktopGlassView: {_sharedSource} 읽기 {_capture.LastCaptureMilliseconds:F1}ms (작업 스레드)");
+                    }
+                }
+
+                UpdateAmbientTint();
+                yield return null;
             }
         }
 
-        private void CaptureOnce()
+        /// <summary>창 위치와 읽기 대상을 작업 스레드에 넘긴다.</summary>
+        private void PublishPosition()
         {
-            if (_capture == null) return;
-
-            // 창이 옮겨졌을 수 있으므로 읽기 직전에 위치를 다시 확인한다.
             Vector2Int position = windowController != null ? windowController.RefreshAndGetPosition() : Vector2Int.zero;
-            // 벽지 그림은 드물게 새로 받고, 창을 따라 잘라내는 일은 자주 한다.
-            bool refreshSource = Time.realtimeSinceStartup >= _nextWallpaperRefresh;
-            if (refreshSource) _nextWallpaperRefresh = Time.realtimeSinceStartup + wallpaperInterval;
+            DesktopCapture.Source source = ResolveSource();
 
-            IsCapturing = _capture.Capture(
-                ResolveSource(), position.x, position.y,
-                SceneMetrics.WindowWidth, SceneMetrics.WindowHeight, refreshSource);
-
-            if (backdrop != null)
+            lock (_shared)
             {
-                backdrop.enabled = IsCapturing;
-                if (IsCapturing) backdrop.texture = Smooth(_capture.Texture);
-            }
-
-            UpdateAmbientTint(position);
-
-            // 실제 비용을 한 번은 남겨 둔다. 간격을 조절할 때 근거가 된다.
-            if (++_captureCount == 30)
-            {
-                Debug.Log($"DesktopGlassView: {ResolveSource()} 읽기 {_capture.LastCaptureMilliseconds:F1}ms, 간격 {refreshInterval:F3}s");
+                _sharedPosition = position;
+                _sharedSource = source;
             }
         }
+
+        private void StartWorker()
+        {
+            if (_worker != null) return;
+
+            _stopWorker = false;
+            _worker = new Thread(WorkerLoop)
+            {
+                IsBackground = true,
+                Name = "SaiunDesktopGlass",
+            };
+            _worker.Start();
+        }
+
+        private void StopWorker()
+        {
+            if (_worker == null) return;
+
+            _stopWorker = true;
+            if (!_worker.Join(1000)) Debug.LogWarning("DesktopGlassView: 작업 스레드가 제때 끝나지 않았습니다.");
+            _worker = null;
+        }
+
+        private void WorkerLoop()
+        {
+            DesktopCapture capture = _capture;
+            float nextWallpaper = 0f;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+
+            try
+            {
+                while (!_stopWorker)
+                {
+                    Vector2Int position;
+                    DesktopCapture.Source source;
+                    lock (_shared)
+                    {
+                        position = _sharedPosition;
+                        source = _sharedSource;
+                    }
+
+                    // 벽지 그림은 드물게 새로 받고, 창을 따라 잘라내는 일은 자주 한다.
+                    float now = (float)clock.Elapsed.TotalSeconds;
+                    bool refreshSource = now >= nextWallpaper;
+                    if (refreshSource) nextWallpaper = now + wallpaperInterval;
+
+                    capture.Capture(source, position.x, position.y,
+                        SceneMetrics.WindowWidth, SceneMetrics.WindowHeight, refreshSource);
+
+                    if (source == DesktopCapture.Source.WallpaperLayer && ambientInfluence > 0f)
+                    {
+                        bool ok = capture.SampleAmbient(position.x, position.y,
+                            SceneMetrics.WindowWidth, SceneMetrics.WindowHeight,
+                            ambientMargin, ambientThickness, _workerAmbient);
+
+                        lock (_shared)
+                        {
+                            _sharedAmbientValid = ok;
+                            if (ok) System.Array.Copy(_workerAmbient, _sharedAmbient, _sharedAmbient.Length);
+                        }
+                    }
+                    else
+                    {
+                        lock (_shared) { _sharedAmbientValid = false; }
+                    }
+
+                    Thread.Sleep(Mathf.Max(1, Mathf.RoundToInt(refreshInterval * 1000f)));
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"DesktopGlassView: 작업 스레드가 멈췄습니다. {e}");
+            }
+            finally
+            {
+                // GDI 자원은 만든 스레드에서 놓는다.
+                capture.ReleaseGdiResources();
+            }
+        }
+
 
 #if UNITY_EDITOR
         private void OnValidate()
