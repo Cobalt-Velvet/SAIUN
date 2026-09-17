@@ -177,6 +177,18 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 작물_등급은_시작_시점_설정으로_1회_판정된다()
+        {
+            Assert.AreEqual(_SAIUN.Scripts.Crop.CropGrade.Normal, _gm.CurrentGrade);
+            _gm.RequestStart(new SessionConfig { FocusMinutes = 60, ShortBreakMinutes = 1, LongBreakMinutes = 5, TotalSets = 8 });
+            Assert.AreEqual(_SAIUN.Scripts.Crop.CropGrade.Legend, _gm.CurrentGrade);
+
+            // 진행 중 설정을 바꿔도 등급은 그대로다.
+            _gm.SetTaskText("x");
+            Assert.AreEqual(_SAIUN.Scripts.Crop.CropGrade.Legend, _gm.CurrentGrade);
+        }
+
+        [Test]
         public void 태스크_텍스트는_40자로_잘려_보관된다()
         {
             _gm.SetTaskText(new string('a', 100));

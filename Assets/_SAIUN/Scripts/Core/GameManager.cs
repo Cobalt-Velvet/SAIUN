@@ -1,4 +1,5 @@
 using System;
+using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Timer;
 using UnityEngine;
@@ -36,6 +37,9 @@ namespace _SAIUN.Scripts.Core
             get => _currentConfig ??= SettingsStore.LoadSessionConfig();
             private set => _currentConfig = value;
         }
+
+        /// <summary>진행 중(또는 마지막) 세션의 작물 등급. 세션 시작 시 1회 판정한다.</summary>
+        public CropGrade CurrentGrade { get; private set; } = CropGrade.Normal;
 
         /// <summary>세션 기록이 DB에 저장된 직후 발행.</summary>
         public event Action<SessionRecord> OnSessionRecorded;
@@ -155,6 +159,8 @@ namespace _SAIUN.Scripts.Core
             if (from == PomodoroState.Idle && to == PomodoroState.Focus)
             {
                 _sessionStartTime = SaiunDatabase.Now();
+                // 등급은 시작 시점 설정으로 1회만 정하고 진행 중 변경은 반영하지 않는다.
+                CurrentGrade = CropGradeRule.GetCropGrade(timer.Config ?? CurrentConfig);
                 return;
             }
 
