@@ -75,6 +75,7 @@ namespace _SAIUN.Scripts.UI
             if (gameManager == null) return;
             gameManager.StateMachine.OnStateChanged += HandleStateChanged;
             gameManager.Timer.OnTick += HandleTick;
+            if (gameManager.Watcher != null) gameManager.Watcher.OnGraceTick += HandleGraceTick;
 
             UpdateClock(force: true);
             Refresh(gameManager.StateMachine.CurrentState);
@@ -86,6 +87,7 @@ namespace _SAIUN.Scripts.UI
             if (gameManager == null) return;
             gameManager.StateMachine.OnStateChanged -= HandleStateChanged;
             gameManager.Timer.OnTick -= HandleTick;
+            if (gameManager.Watcher != null) gameManager.Watcher.OnGraceTick -= HandleGraceTick;
 
             if (_clockRoutine != null)
             {
@@ -104,6 +106,13 @@ namespace _SAIUN.Scripts.UI
         private void HandleTick()
         {
             RefreshTimer();
+        }
+
+        // 유예 중에는 라벨에 남은 초를 함께 보여준다.
+        private void HandleGraceTick(float remainingSeconds)
+        {
+            if (phaseLabel == null || gameManager.StateMachine.CurrentState != PomodoroState.Interrupted) return;
+            phaseLabel.text = $"{interruptedLabel} {Mathf.CeilToInt(remainingSeconds)}";
         }
 
         // 시계는 매 프레임이 아니라 1초마다 확인하고, 표시 문자열이 바뀔 때만 갱신한다.

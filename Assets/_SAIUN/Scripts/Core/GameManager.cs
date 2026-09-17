@@ -1,6 +1,7 @@
 using System;
 using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
+using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Timer;
 using UnityEngine;
 
@@ -27,9 +28,13 @@ namespace _SAIUN.Scripts.Core
         [Tooltip("창 위치 저장·복원에 쓴다. 없어도 동작한다.")]
         [SerializeField] private WindowController windowController;
 
+        [Tooltip("방해 앱 감시. 없어도 동작한다.")]
+        [SerializeField] private ForegroundWatcher watcher;
+
         public PomodoroStateMachine StateMachine => stateMachine;
         public PomodoroTimer Timer => timer;
         public SaiunDatabase Database => database;
+        public ForegroundWatcher Watcher => watcher;
 
         /// <summary>다음 세션에 쓸 설정. 시작 시 PlayerPrefs에 저장된다. Awake 전에 읽혀도 동작한다.</summary>
         public SessionConfig CurrentConfig
@@ -56,6 +61,7 @@ namespace _SAIUN.Scripts.Core
             if (stateMachine == null) stateMachine = GetComponent<PomodoroStateMachine>();
             if (timer == null) timer = GetComponent<PomodoroTimer>();
             if (database == null) database = GetComponent<SaiunDatabase>();
+            if (watcher == null) watcher = GetComponent<ForegroundWatcher>();
 
             if (stateMachine == null || timer == null || database == null)
             {
@@ -65,6 +71,7 @@ namespace _SAIUN.Scripts.Core
             // targetFrameRate는 VSync가 꺼져 있어야 적용된다.
             QualitySettings.vSyncCount = 0;
             CurrentConfig = SettingsStore.LoadSessionConfig();
+            if (watcher != null) watcher.GraceSeconds = SettingsStore.GraceSeconds;
         }
 
         private void OnEnable()
@@ -142,6 +149,13 @@ namespace _SAIUN.Scripts.Core
         {
             if (stateMachine.CurrentState != PomodoroState.Failed) return;
             stateMachine.ChangeState(PomodoroState.Idle);
+        }
+
+        /// <summary>유예 중 '지금은 괜찮아요'. 이 세션에서 해당 앱을 무시하고 집중으로 돌아간다.</summary>
+        public void RequestExcuseDistraction()
+        {
+            if (watcher == null) return;
+            watcher.ExcuseCurrentProcess();
         }
 
         /// <summary>다음 세션의 태스크 텍스트를 바꾼다. 길이 제한은 SessionConfig가 적용한다.</summary>

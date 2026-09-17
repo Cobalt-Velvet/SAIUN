@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
+using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Timer;
 using _SAIUN.Scripts.UI;
 using NUnit.Framework;
@@ -20,6 +21,9 @@ namespace _SAIUN.Tests
         private const string TimerHudPrefabPath = "Assets/_SAIUN/Prefabs/UI/TimerHud.prefab";
 
         private string _dbPath;
+        private string _blacklistPath;
+        private ForegroundWatcher _watcher;
+        private string _foreground = "SAIUN";
         private GameObject _gmGo;
         private GameObject _canvasGo;
         private PomodoroStateMachine _sm;
@@ -34,12 +38,16 @@ namespace _SAIUN.Tests
         {
             _dbPath = Path.Combine(Application.temporaryCachePath, $"saiun_ui_{Guid.NewGuid():N}.db");
             SaiunDatabase.PathOverride = _dbPath;
+            _blacklistPath = Path.Combine(Application.temporaryCachePath, $"blacklist_ui_{Guid.NewGuid():N}.json");
+            BlacklistStore.PathOverride = _blacklistPath;
             SettingsStore.DeleteAll();
 
             _gmGo = new GameObject("GameManager");
             _sm = _gmGo.AddComponent<PomodoroStateMachine>();
             _timer = _gmGo.AddComponent<PomodoroTimer>();
             _gmGo.AddComponent<SaiunDatabase>();
+            _watcher = _gmGo.AddComponent<ForegroundWatcher>();
+            _watcher.ProcessNameProvider = () => _foreground;
             _gm = _gmGo.AddComponent<GameManager>();
 
             _now = 100d;
@@ -56,8 +64,10 @@ namespace _SAIUN.Tests
             UnityEngine.Object.DestroyImmediate(_canvasGo);
             UnityEngine.Object.DestroyImmediate(_gmGo);
             SaiunDatabase.PathOverride = null;
+            BlacklistStore.PathOverride = null;
             SettingsStore.DeleteAll();
             if (File.Exists(_dbPath)) File.Delete(_dbPath);
+            if (File.Exists(_blacklistPath)) File.Delete(_blacklistPath);
         }
 
         private T Instantiate<T>(string prefabPath) where T : Component
@@ -128,15 +138,20 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 바_유예_중에는_버튼이_비활성이다()
+        public void 바_유예_중에는_괜찮아요_라벨이고_누르면_Focus로_복귀한다()
         {
             _gm.RequestStart(ShortConfig());
-            _sm.ChangeState(PomodoroState.Interrupted);
-
-            Assert.IsFalse(_bar.PrimaryButton.interactable);
-
-            _sm.ChangeState(PomodoroState.Focus);
+            _foreground = "chrome";
+            _watcher.Poll();
+            Assert.AreEqual(PomodoroState.Interrupted, _sm.CurrentState);
+            Assert.AreEqual("괜찮아요", _bar.CurrentButtonLabel);
             Assert.IsTrue(_bar.PrimaryButton.interactable);
+            Assert.AreEqual("INTERRUPTED 7", _hud.PhaseText);
+
+            _bar.PrimaryButton.onClick.Invoke();
+            Assert.AreEqual(PomodoroState.Focus, _sm.CurrentState);
+            Assert.AreEqual("정지", _bar.CurrentButtonLabel);
+            Assert.AreEqual("POMODORO", _hud.PhaseText);
         }
 
         [Test]

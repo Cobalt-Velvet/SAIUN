@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
+using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Timer;
 using NUnit.Framework;
 using UnityEngine;
@@ -65,6 +66,7 @@ namespace _SAIUN.Tests
             AssertNoFieldOfType(typeof(PomodoroTimer), typeof(GameManager));
             AssertNoFieldOfType(typeof(SaiunDatabase), typeof(GameManager));
             AssertNoFieldOfType(typeof(WindowController), typeof(GameManager));
+            AssertNoFieldOfType(typeof(ForegroundWatcher), typeof(GameManager));
 
             // 상태머신은 아무도 참조하지 않는다(다른 시스템 타입의 필드가 없다).
             AssertNoFieldOfType(typeof(PomodoroStateMachine), typeof(PomodoroTimer));

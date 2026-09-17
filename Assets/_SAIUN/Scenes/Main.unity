@@ -132,6 +132,7 @@ GameObject:
   - component: {fileID: 215741474}
   - component: {fileID: 215741473}
   - component: {fileID: 215741472}
+  - component: {fileID: 215741477}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -155,6 +156,7 @@ MonoBehaviour:
   timer: {fileID: 215741474}
   database: {fileID: 215741473}
   windowController: {fileID: 330585548}
+  watcher: {fileID: 215741477}
 --- !u!114 &215741473
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -208,6 +210,20 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &215741477
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 215741471}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6c0c333537f066541b25062c090c4dd5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Distraction.ForegroundWatcher
+  stateMachine: {fileID: 215741475}
+  graceSeconds: 7
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0

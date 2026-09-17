@@ -1,6 +1,7 @@
 using System.IO;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
+using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Lighting;
 using _SAIUN.Scripts.Timer;
 using _SAIUN.Scripts.UI;
@@ -293,17 +294,23 @@ namespace _SAIUN.Editor
             var timer = EnsureComponent<PomodoroTimer>(gmGo);
             var database = EnsureComponent<SaiunDatabase>(gmGo);
             var gameManager = EnsureComponent<GameManager>(gmGo);
+            var watcher = EnsureComponent<ForegroundWatcher>(gmGo);
             var windowController = Object.FindFirstObjectByType<WindowController>();
 
             var timerSo = new SerializedObject(timer);
             timerSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
             timerSo.ApplyModifiedPropertiesWithoutUndo();
 
+            var watcherSo = new SerializedObject(watcher);
+            watcherSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
+            watcherSo.ApplyModifiedPropertiesWithoutUndo();
+
             var gmSo = new SerializedObject(gameManager);
             gmSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
             gmSo.FindProperty("timer").objectReferenceValue = timer;
             gmSo.FindProperty("database").objectReferenceValue = database;
             gmSo.FindProperty("windowController").objectReferenceValue = windowController;
+            gmSo.FindProperty("watcher").objectReferenceValue = watcher;
             gmSo.ApplyModifiedPropertiesWithoutUndo();
 
             // EventSystem은 새 Input System 모듈만 쓴다.

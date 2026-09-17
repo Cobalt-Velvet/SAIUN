@@ -25,6 +25,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string startLabel = "시작";
         [SerializeField] private string stopLabel = "정지";
         [SerializeField] private string acknowledgeLabel = "확인";
+        [SerializeField] private string excuseLabel = "괜찮아요";
 
         [Header("색상 (실측 대기값)")]
         [SerializeField] private Color backgroundColor = new Color(0f, 0f, 0f, 0.55f);
@@ -95,7 +96,8 @@ namespace _SAIUN.Scripts.UI
                     break;
 
                 case PomodoroState.Interrupted:
-                    // 유예 중에는 취소할 수 없다. 버튼도 비활성이다.
+                    // 유예 중에는 취소 대신 세션 예외('지금은 괜찮아요')를 요청한다.
+                    gameManager.RequestExcuseDistraction();
                     break;
 
                 default:
@@ -120,10 +122,12 @@ namespace _SAIUN.Scripts.UI
             {
                 primaryButtonLabel.text = idle ? startLabel
                     : state == PomodoroState.Failed ? acknowledgeLabel
+                    : state == PomodoroState.Interrupted ? excuseLabel
                     : stopLabel;
             }
 
-            if (primaryButton != null) primaryButton.interactable = state != PomodoroState.Interrupted;
+            // 유예 중에는 감시자가 있을 때만(세션 예외 요청 가능) 버튼을 살린다.
+            if (primaryButton != null) primaryButton.interactable = state != PomodoroState.Interrupted || gameManager.Watcher != null;
 
             if (taskInput != null)
             {
