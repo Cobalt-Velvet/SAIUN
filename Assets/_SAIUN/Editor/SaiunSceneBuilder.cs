@@ -383,6 +383,8 @@ namespace _SAIUN.Editor
             scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
             scaler.matchWidthOrHeight = 0.5f;
 
+            SetupWindowController(windowController);
+
             SetupCamera();
 
             // 광원 공전: 씬의 Directional Light에 붙인다.
@@ -400,6 +402,7 @@ namespace _SAIUN.Editor
                 Debug.LogWarning("SaiunSceneBuilder: Directional Light가 없어 SunOrbitController를 붙이지 않았습니다.");
             }
 
+            EnsureDesktopGlass(canvasGo.transform, windowController);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
             EnsureGlassRim(canvasGo.transform);
@@ -517,6 +520,63 @@ namespace _SAIUN.Editor
         private static Sprite BuiltinSprite(string path)
         {
             return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
+        }
+
+        // 유리 설정은 씬에 직렬화돼 있어 C# 기본값을 바꿔도 반영되지 않는다. 여기서 맞춘다.
+        private static void SetupWindowController(WindowController controller)
+        {
+            if (controller == null)
+            {
+                Debug.LogWarning("SaiunSceneBuilder: WindowController가 없어 유리 설정을 건너뜁니다.");
+                return;
+            }
+
+            var so = new SerializedObject(controller);
+            so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.DesktopBlur;
+            so.FindProperty("extendFrame").boolValue = false;
+            so.FindProperty("excludeFromCapture").boolValue = true;
+            so.FindProperty("roundedCorners").boolValue = true;
+            so.FindProperty("customBorder").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            Debug.Log("SaiunSceneBuilder: 유리 배경을 DesktopBlur로 설정했습니다.");
+        }
+
+        // 창 뒤 화면을 흐리게 깔아 주는 층. 다른 UI보다 먼저 그려야 하므로 맨 앞에 둔다.
+        private static void EnsureDesktopGlass(Transform canvas, WindowController windowController)
+        {
+            Transform existing = canvas.Find("DesktopGlass");
+            GameObject glass = existing != null
+                ? existing.gameObject
+                : new GameObject("DesktopGlass", typeof(RectTransform), typeof(RawImage), typeof(DesktopGlassView));
+
+            glass.transform.SetParent(canvas, false);
+            glass.transform.SetAsFirstSibling();
+            Stretch(glass.GetComponent<RectTransform>());
+            glass.GetComponent<RawImage>().raycastTarget = false;
+
+            // 틴트는 흐린 화면 위에 얹는 별도 층이다.
+            Transform tintChild = glass.transform.Find("Tint");
+            GameObject tint = tintChild != null
+                ? tintChild.gameObject
+                : new GameObject("Tint", typeof(RectTransform), typeof(Image));
+            tint.transform.SetParent(glass.transform, false);
+            Stretch(tint.GetComponent<RectTransform>());
+            tint.GetComponent<Image>().raycastTarget = false;
+
+            var view = glass.GetComponent<DesktopGlassView>();
+            var so = new SerializedObject(view);
+            so.FindProperty("backdrop").objectReferenceValue = glass.GetComponent<RawImage>();
+            so.FindProperty("tintOverlay").objectReferenceValue = tint.GetComponent<Image>();
+            so.FindProperty("windowController").objectReferenceValue = windowController;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static void Stretch(RectTransform rt)
+        {
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
         }
 
         // 유리 테두리 하이라이트. 창 가장자리를 따라 그리므로 캔버스에서 가장 위에 둔다.

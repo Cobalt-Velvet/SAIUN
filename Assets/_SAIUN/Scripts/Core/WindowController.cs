@@ -26,6 +26,7 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
+        [DllImport("user32.dll", SetLastError = true)] static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
         [DllImport("user32.dll")] static extern int SetWindowCompositionAttribute(IntPtr hWnd, ref WINDOWCOMPOSITIONATTRIBDATA data); // spellchecker:ignore WINDOWCOMPOSITIONATTRIBDATA
         [DllImport("Dwmapi.dll")] static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset); // spellchecker:ignore Dwmapi
         [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
@@ -70,6 +71,10 @@ namespace _SAIUN.Scripts.Core
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
 
+        // 화면 캡처에서 이 창만 빼는 속성. 직접 흐림을 쓸 때 자기 자신을 다시 찍지 않으려면 필요하다.
+        const uint WDA_NONE = 0x0000;                  // spellchecker:ignore WDA
+        const uint WDA_EXCLUDEFROMCAPTURE = 0x0011;    // spellchecker:ignore EXCLUDEFROMCAPTURE
+
         // Windows 11 빌드 22621 이상에서 지원하는 창 속성.
         const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
         const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
@@ -79,6 +84,7 @@ namespace _SAIUN.Scripts.Core
         // 문서화되지 않은 합성 속성 상수.
         const int WCA_ACCENT_POLICY = 19;           // spellchecker:ignore WCA
         const int ACCENT_DISABLED = 0;
+        const int ACCENT_ENABLE_TRANSPARENTGRADIENT = 2;     // spellchecker:ignore TRANSPARENTGRADIENT
         const int ACCENT_ENABLE_BLURBEHIND = 3;              // spellchecker:ignore BLURBEHIND
         const int ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;       // spellchecker:ignore ACRYLICBLURBEHIND
 
@@ -110,11 +116,15 @@ namespace _SAIUN.Scripts.Core
             TintedAcrylic,
             /// <summary>틴트 Acrylic보다 가벼운 단순 블러. 뒷배경이 더 선명하게 비친다.</summary>
             TintedBlur,
+            /// <summary>블러 없이 색만 얇게 덮는다. 뒷배경이 또렷하게 그대로 비친다.</summary>
+            TransparentTint,
+            /// <summary>화면을 직접 읽어 흐린다. 뒷배경의 형태와 색이 그대로 남는 유일한 방식이다.</summary>
+            DesktopBlur,
         }
 
         [Header("유리 배경")]
         [Tooltip("창 뒤를 흐리는 방식. Tinted 계열만 농도를 조절할 수 있다.")]
-        [SerializeField] private GlassMode glass = GlassMode.TintedAcrylic;
+        [SerializeField] private GlassMode glass = GlassMode.DesktopBlur;
 
         [Tooltip("유리에 섞을 틴트 색. 팔레트의 어두운 톤을 기본으로 쓴다.")]
         [SerializeField] private Color glassTint = SaiunPalette.DeepJungle;
@@ -131,6 +141,12 @@ namespace _SAIUN.Scripts.Core
 
         [Tooltip("테두리를 그릴지 여부. 끄면 DWM 기본 테두리를 쓴다.")]
         [SerializeField] private bool customBorder = true;
+
+        [Tooltip("DWM 프레임을 클라이언트 영역까지 확장한다. 합성 블러를 쓸 때는 꺼야 배경이 제대로 비친다.")]
+        [SerializeField] private bool extendFrame;
+
+        [Tooltip("화면 녹화와 스크린샷에서 이 창을 제외한다. DesktopBlur가 자기 자신을 다시 찍는 것을 막는다.")]
+        [SerializeField] private bool excludeFromCapture = true;
 
         /// <summary>창 좌상단 스크린 좌표. 에디터에서는 (0,0).</summary>
         public Vector2Int Position { get; private set; }
@@ -190,11 +206,16 @@ namespace _SAIUN.Scripts.Core
             SetWindowLong(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
             SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, WindowWidth, WindowHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
-            var margins = new MARGINS { cxLeftWidth = -1 };
-            DwmExtendFrameIntoClientArea(_hwnd, ref margins);
-
             ReadOverrides();
+
+            if (extendFrame)
+            {
+                var margins = new MARGINS { cxLeftWidth = -1 };
+                DwmExtendFrameIntoClientArea(_hwnd, ref margins);
+            }
+
             ApplyGlass();
+            ApplyCaptureExclusion();
             ApplyCorners();
             ApplyBorder();
             SetAlwaysOnTop(true);
@@ -262,6 +283,16 @@ namespace _SAIUN.Scripts.Core
 #endif
         }
 
+        /// <summary>
+        /// 창 위치를 지금 다시 읽어 돌려준다.
+        /// 다른 프로그램이 창을 옮겼을 수도 있어, 화면을 읽기 전에는 이 값을 써야 한다.
+        /// </summary>
+        public Vector2Int RefreshAndGetPosition()
+        {
+            RefreshPosition();
+            return Position;
+        }
+
         /// <summary>유리 배경을 바꾼다. 틴트 색과 농도는 현재 설정값을 쓴다.</summary>
         public void SetGlass(GlassMode mode)
         {
@@ -311,6 +342,17 @@ namespace _SAIUN.Scripts.Core
                     SetAccent(ACCENT_ENABLE_BLURBEHIND, ToAbgr(glassTint, glassTintStrength));
                     break;
 
+                case GlassMode.TransparentTint:
+                    SetSystemBackdrop(1);
+                    SetAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT, ToAbgr(glassTint, glassTintStrength));
+                    break;
+
+                case GlassMode.DesktopBlur:
+                    // 창을 완전히 투명하게 두고, 흐림은 DesktopGlassView가 직접 그린다.
+                    SetSystemBackdrop(1);
+                    SetAccent(ACCENT_DISABLED, 0);
+                    break;
+
                 default:
                     SetAccent(ACCENT_DISABLED, 0);
                     SetSystemBackdrop(1);
@@ -358,6 +400,20 @@ namespace _SAIUN.Scripts.Core
             {
                 Marshal.FreeHGlobal(buffer);
             }
+#endif
+        }
+
+        /// <summary>
+        /// 화면 캡처에서 이 창을 뺀다. DesktopBlur는 화면을 그대로 읽으므로,
+        /// 제외하지 않으면 자기가 그린 유리를 다시 찍어 무한히 겹친다.
+        /// 끄면 OBS 같은 녹화 도구에도 보이지만 DesktopBlur는 쓸 수 없다.
+        /// </summary>
+        void ApplyCaptureExclusion()
+        {
+#if !UNITY_EDITOR
+            bool exclude = excludeFromCapture && glass == GlassMode.DesktopBlur;
+            bool ok = SetWindowDisplayAffinity(_hwnd, exclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
+            Debug.Log($"WindowController: 캡처 제외 {exclude} 적용 {(ok ? "성공" : "실패")} err={Marshal.GetLastWin32Error()}");
 #endif
         }
 
@@ -422,6 +478,14 @@ namespace _SAIUN.Scripts.Core
 
                     case "-border":
                         customBorder = value != "off";
+                        break;
+
+                    case "-frame":
+                        extendFrame = value != "off";
+                        break;
+
+                    case "-capture":
+                        excludeFromCapture = value != "on";
                         break;
                 }
             }
