@@ -1,12 +1,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
 
 namespace _SAIUN.Scripts.Distraction
 {
@@ -22,6 +22,14 @@ namespace _SAIUN.Scripts.Distraction
 
         [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+        [DllImport("kernel32.dll")] private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
+        [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr hObject);
+
+        // 패키지 앱(메모장 등)도 조회되도록 제한 정보 권한만 요청한다.
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const int MaxImagePathLength = 1024;
 
         [SerializeField] private PomodoroStateMachine stateMachine;
 
@@ -35,6 +43,9 @@ namespace _SAIUN.Scripts.Distraction
 
         /// <summary>유예 남은 시간(초).</summary>
         public float GraceRemainingSeconds { get; private set; }
+
+        /// <summary>마지막 폴링에서 본 전면 프로세스 이름. 진단용.</summary>
+        public string LastForegroundProcess { get; private set; }
 
         public bool IsWatching => _loop != null;
 
@@ -61,6 +72,7 @@ namespace _SAIUN.Scripts.Distraction
 
         private readonly HashSet<string> _sessionExceptions = new HashSet<string>();
         private Coroutine _loop;
+        private static bool s_lookupFailureLogged;
 
         // ---- 수명 주기 ----
 
@@ -71,6 +83,7 @@ namespace _SAIUN.Scripts.Distraction
 
             Blacklist.Load();
             GraceSeconds = graceSeconds;
+            Debug.Log($"ForegroundWatcher: 블랙리스트 {Blacklist.Blacklist.Count}개 / 화이트리스트 {Blacklist.Whitelist.Count}개 ({BlacklistStore.FilePath})");
 
 #if !UNITY_EDITOR
             ProcessNameProvider ??= GetForegroundProcessName;
@@ -111,6 +124,12 @@ namespace _SAIUN.Scripts.Distraction
         internal void Poll()
         {
             string process = ProcessNameProvider?.Invoke();
+            if (process != LastForegroundProcess)
+            {
+                // 전면 앱이 바뀔 때만 남긴다. 블랙리스트 진단용.
+                Debug.Log($"ForegroundWatcher: 전면 = {process ?? "(없음)"}");
+            }
+            LastForegroundProcess = process;
             bool distracting = !string.IsNullOrEmpty(process)
                                && Blacklist.IsDistracting(process)
                                && !IsExcusedThisSession(process);
@@ -186,6 +205,7 @@ namespace _SAIUN.Scripts.Distraction
         {
             if (_loop != null || !isActiveAndEnabled) return;
             _loop = StartCoroutine(Loop());
+            Debug.Log("ForegroundWatcher: 감시 시작");
         }
 
         private void StopLoop()
@@ -193,30 +213,52 @@ namespace _SAIUN.Scripts.Distraction
             if (_loop == null) return;
             StopCoroutine(_loop);
             _loop = null;
+            Debug.Log("ForegroundWatcher: 감시 중지");
         }
 
-        // 사양서 v1.1 6-1. 실패하면 null을 돌려 감지를 건너뛴다.
+        // 사양서 v1.1 6-1의 GetForegroundWindow 방식. 프로세스 이름은 System.Diagnostics.Process 대신
+        // QueryFullProcessImageName으로 얻는다(Mono의 Process는 패키지 앱에서 실패한다). 실패하면 null.
         private static string GetForegroundProcessName()
         {
 #if !UNITY_EDITOR
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return null;
+
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid == 0) return null;
+
+            IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (handle == IntPtr.Zero)
+            {
+                LogLookupFailureOnce($"OpenProcess 실패 pid={pid} err={Marshal.GetLastWin32Error()}");
+                return null;
+            }
+
             try
             {
-                IntPtr hwnd = GetForegroundWindow();
-                if (hwnd == IntPtr.Zero) return null;
-                GetWindowThreadProcessId(hwnd, out uint pid);
-                if (pid == 0) return null;
-                using (Process process = Process.GetProcessById((int)pid))
+                var buffer = new StringBuilder(MaxImagePathLength);
+                uint size = (uint)buffer.Capacity;
+                if (!QueryFullProcessImageName(handle, 0, buffer, ref size))
                 {
-                    return process.ProcessName;
+                    LogLookupFailureOnce($"QueryFullProcessImageName 실패 pid={pid} err={Marshal.GetLastWin32Error()}");
+                    return null;
                 }
+                return Path.GetFileName(buffer.ToString(0, (int)size));
             }
-            catch (Exception)
+            finally
             {
-                return null;
+                CloseHandle(handle);
             }
 #else
             return null;
 #endif
+        }
+
+        private static void LogLookupFailureOnce(string detail)
+        {
+            if (s_lookupFailureLogged) return;
+            s_lookupFailureLogged = true;
+            Debug.LogWarning($"ForegroundWatcher: 전면 프로세스 조회 실패 ({detail}). 이후 같은 경고는 생략합니다.");
         }
     }
 }
