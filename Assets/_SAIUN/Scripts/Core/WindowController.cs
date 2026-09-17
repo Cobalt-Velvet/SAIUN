@@ -155,6 +155,9 @@ namespace _SAIUN.Scripts.Core
         /// <summary>현재 적용된 유리 배경.</summary>
         public GlassMode CurrentGlass => glass;
 
+        /// <summary>창을 끌고 있는 중인지. 에디터에서는 드래그 경로가 없어 항상 false다.</summary>
+        public bool IsDragging => _dragging;
+
         /// <summary>투명 창 설정이 끝났을 때 1회 발행.</summary>
         public event Action OnReady;
 
