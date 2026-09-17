@@ -28,7 +28,9 @@ namespace _SAIUN.Scripts.UI
 
         [Header("색상 (실측 대기값)")]
         [SerializeField] private Color backgroundColor = new Color(0f, 0f, 0f, 0.55f);
-        [SerializeField] private Color textColor = Color.white;
+        [SerializeField] private Color inputTextColor = new Color(0.12f, 0.16f, 0.16f, 1f);
+        [SerializeField] private Color buttonColor = new Color(0.5f, 0.86f, 0.79f, 1f);      // 민트 계열 방향만 확정
+        [SerializeField] private Color buttonTextColor = new Color(0.12f, 0.16f, 0.16f, 1f);
 
         /// <summary>현재 버튼에 표시된 라벨.</summary>
         public string CurrentButtonLabel => primaryButtonLabel != null ? primaryButtonLabel.text : string.Empty;
@@ -138,13 +140,19 @@ namespace _SAIUN.Scripts.UI
         private void ApplyStyle()
         {
             if (background != null) background.color = backgroundColor;
-            if (primaryButtonLabel != null) primaryButtonLabel.color = textColor;
+
+            if (primaryButton != null && primaryButton.targetGraphic != null)
+            {
+                primaryButton.targetGraphic.color = buttonColor;
+            }
+            if (primaryButtonLabel != null) primaryButtonLabel.color = buttonTextColor;
+
             if (taskInput != null)
             {
-                if (taskInput.textComponent != null) taskInput.textComponent.color = textColor;
+                if (taskInput.textComponent != null) taskInput.textComponent.color = inputTextColor;
                 if (taskInput.placeholder is Graphic placeholder)
                 {
-                    placeholder.color = new Color(textColor.r, textColor.g, textColor.b, textColor.a * 0.5f);
+                    placeholder.color = new Color(inputTextColor.r, inputTextColor.g, inputTextColor.b, inputTextColor.a * 0.5f);
                 }
             }
         }
