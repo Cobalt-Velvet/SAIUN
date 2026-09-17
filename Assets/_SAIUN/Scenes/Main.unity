@@ -374,6 +374,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1c6ef39d886775842b1ccf746506450e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_SAIUN.Scripts.Core.WindowController
+  glass: 3
+  glassTint: {r: 0.14117648, g: 0.21960784, b: 0.17254902, a: 1}
+  glassTintStrength: 0.32
+  roundedCorners: 1
+  borderColor: {r: 0.98039216, g: 0.9529412, b: 0.8666667, a: 1}
+  customBorder: 1
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
@@ -741,6 +747,7 @@ RectTransform:
   m_Children:
   - {fileID: 1812618469}
   - {fileID: 1891241836}
+  - {fileID: 1335322149}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -748,6 +755,97 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
+--- !u!1 &1335322148
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1335322149}
+  - component: {fileID: 1335322152}
+  - component: {fileID: 1335322151}
+  - component: {fileID: 1335322150}
+  m_Layer: 0
+  m_Name: GlassRim
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1335322149
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1335322148}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1110599679}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1335322150
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1335322148}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5d05352b8f9325419c5c82c11add6cc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.UI.GlassRimView
+  target: {fileID: 1335322151}
+  rimColor: {r: 0.98039216, g: 0.9529412, b: 0.8666667, a: 1}
+  thickness: 1.5
+  cornerRadius: 8
+  topIntensity: 0.85
+  bottomIntensity: 0.18
+--- !u!114 &1335322151
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1335322148}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1344c3c82d62a2a41a3576d8abb8e3ea, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.RawImage
+  m_Material: {fileID: 0}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_RaycastTarget: 0
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Texture: {fileID: 0}
+  m_UVRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+--- !u!222 &1335322152
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1335322148}
+  m_CullTransparentMesh: 1
 --- !u!1001 &1812618468
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -402,6 +402,7 @@ namespace _SAIUN.Editor
 
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
+            EnsureGlassRim(canvasGo.transform);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -516,6 +517,26 @@ namespace _SAIUN.Editor
         private static Sprite BuiltinSprite(string path)
         {
             return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
+        }
+
+        // 유리 테두리 하이라이트. 창 가장자리를 따라 그리므로 캔버스에서 가장 위에 둔다.
+        private static void EnsureGlassRim(Transform canvas)
+        {
+            Transform existing = canvas.Find("GlassRim");
+            GameObject rim = existing != null
+                ? existing.gameObject
+                : new GameObject("GlassRim", typeof(RectTransform), typeof(RawImage), typeof(GlassRimView));
+
+            rim.transform.SetParent(canvas, false);
+            rim.transform.SetAsLastSibling();   // 하단 바보다 위에 그려야 테두리가 끊기지 않는다
+
+            var rt = rim.GetComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+
+            rim.GetComponent<RawImage>().raycastTarget = false;
         }
 
         // 사양서 2-4: 고정 Orthographic 아이소메트릭 카메라.

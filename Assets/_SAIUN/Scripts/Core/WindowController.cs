@@ -9,7 +9,7 @@ using UnityEngine.EventSystems;
 namespace _SAIUN.Scripts.Core
 {
     /// <summary>
-    /// Win32 투명 창·항상 위·드래그 이동.
+    /// Win32 투명 창·유리 배경·항상 위·드래그 이동.
     /// Win32 의존부는 이 클래스에만 둔다. 창 위치 저장·복원은 GameManager가 이 클래스의 API로 배선한다.
     /// GameManager.Start가 위치를 복원하기 전에 창 핸들이 준비돼야 하므로 실행 순서를 앞당긴다.
     /// </summary>
@@ -26,6 +26,7 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
+        [DllImport("user32.dll")] static extern int SetWindowCompositionAttribute(IntPtr hWnd, ref WINDOWCOMPOSITIONATTRIBDATA data); // spellchecker:ignore WINDOWCOMPOSITIONATTRIBDATA
         [DllImport("Dwmapi.dll")] static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset); // spellchecker:ignore Dwmapi
         [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
@@ -37,6 +38,24 @@ namespace _SAIUN.Scripts.Core
 
         [StructLayout(LayoutKind.Sequential)]
         struct RECT { public int left, top, right, bottom; }
+
+        // DWM 합성 속성. 문서화되지 않았지만 Windows 10 1803 이후로 형태가 바뀌지 않았다.
+        [StructLayout(LayoutKind.Sequential)]
+        struct ACCENT_POLICY // spellchecker:ignore ACCENT
+        {
+            public int AccentState;
+            public int AccentFlags;
+            public int GradientColor;   // 0xAABBGGRR
+            public int AnimationId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        struct WINDOWCOMPOSITIONATTRIBDATA
+        {
+            public int Attribute;
+            public IntPtr Data;
+            public int SizeOfData;
+        }
 
         const int  GWL_STYLE         = -16;
         const uint WS_POPUP          = 0x80000000;
@@ -51,9 +70,22 @@ namespace _SAIUN.Scripts.Core
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
 
-        // Windows 11 빌드 22621 이상에서 지원하는 시스템 배경 속성.
-        const int DWMWA_SYSTEMBACKDROP_TYPE = 38;   // spellchecker:ignore SYSTEMBACKDROP
+        // Windows 11 빌드 22621 이상에서 지원하는 창 속성.
         const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+        const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+        const int DWMWA_BORDER_COLOR = 34;
+        const int DWMWA_SYSTEMBACKDROP_TYPE = 38;   // spellchecker:ignore SYSTEMBACKDROP
+
+        // 문서화되지 않은 합성 속성 상수.
+        const int WCA_ACCENT_POLICY = 19;           // spellchecker:ignore WCA
+        const int ACCENT_DISABLED = 0;
+        const int ACCENT_ENABLE_BLURBEHIND = 3;              // spellchecker:ignore BLURBEHIND
+        const int ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;       // spellchecker:ignore ACRYLICBLURBEHIND
+
+        // 창 모서리를 둥글게. 2는 기본 반경, 3은 작은 반경이다.
+        const int DWMWCP_DONOTROUND = 1;   // spellchecker:ignore DWMWCP DONOTROUND
+        const int DWMWCP_ROUND = 2;
+        const int DWMWCP_ROUNDSMALL = 3;   // spellchecker:ignore ROUNDSMALL
 
         // 창 크기는 SceneMetrics가 단일 출처다. 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
         const int WindowWidth  = SceneMetrics.WindowWidth;
@@ -65,28 +97,49 @@ namespace _SAIUN.Scripts.Core
         // 해상도 변경이 적용되기를 기다리는 최대 시간(초).
         const float ResolutionTimeoutSeconds = 2f;
 
-        /// <summary>DWM이 창 뒤에 깔아주는 시스템 배경. 값은 DWM_SYSTEMBACKDROP_TYPE 그대로다.</summary>
-        public enum BackdropType
+        /// <summary>창 뒤에 깔리는 유리 배경의 종류.</summary>
+        public enum GlassMode
         {
-            /// <summary>배경 없음. 창 뒤로 바탕화면이 그대로 보인다.</summary>
-            None = 1,
-            /// <summary>Mica. 바탕화면 색을 크게 흐려 은은하게 깐다.</summary>
-            Mica = 2,
-            /// <summary>Acrylic. 창 뒤를 실제로 블러 처리한다. 유리에 가장 가깝다.</summary>
-            Acrylic = 3,
-            /// <summary>Mica Alt. Mica보다 대비가 강하다.</summary>
-            MicaAlt = 4,
+            /// <summary>배경 없음. 바탕화면이 그대로 비친다.</summary>
+            None,
+            /// <summary>DWM Mica. 바탕화면 색만 크게 흐린다. 투명도를 조절할 수 없다.</summary>
+            SystemMica,
+            /// <summary>DWM Acrylic. 투명도가 고정이라 뒷배경 색이 거의 묻힌다.</summary>
+            SystemAcrylic,
+            /// <summary>틴트 색과 농도를 직접 지정하는 Acrylic. 농도를 낮추면 뒷배경 색이 배어 나온다.</summary>
+            TintedAcrylic,
+            /// <summary>틴트 Acrylic보다 가벼운 단순 블러. 뒷배경이 더 선명하게 비친다.</summary>
+            TintedBlur,
         }
 
-        [Header("시스템 배경")]
-        [Tooltip("Windows 11의 DWM 시스템 배경. Acrylic은 창 뒤를 흐려 유리처럼 보인다. 창 전체에 적용되며, None으로 두면 바탕화면이 그대로 비친다.")]
-        [SerializeField] private BackdropType backdrop = BackdropType.Acrylic;
+        [Header("유리 배경")]
+        [Tooltip("창 뒤를 흐리는 방식. Tinted 계열만 농도를 조절할 수 있다.")]
+        [SerializeField] private GlassMode glass = GlassMode.TintedAcrylic;
+
+        [Tooltip("유리에 섞을 틴트 색. 팔레트의 어두운 톤을 기본으로 쓴다.")]
+        [SerializeField] private Color glassTint = SaiunPalette.DeepJungle;
+
+        [Tooltip("틴트 농도. 낮출수록 뒷배경 색이 그대로 배어 나온다.")]
+        [Range(0f, 1f)]
+        [SerializeField] private float glassTintStrength = 0.15f;
+
+        [Tooltip("창 모서리를 둥글게 깎는다. Windows 11에서만 동작한다.")]
+        [SerializeField] private bool roundedCorners = true;
+
+        [Tooltip("DWM이 그리는 1픽셀 테두리 색. 유리 가장자리를 또렷하게 만든다.")]
+        [SerializeField] private Color borderColor = SaiunPalette.Eggshell;
+
+        [Tooltip("테두리를 그릴지 여부. 끄면 DWM 기본 테두리를 쓴다.")]
+        [SerializeField] private bool customBorder = true;
 
         /// <summary>창 좌상단 스크린 좌표. 에디터에서는 (0,0).</summary>
         public Vector2Int Position { get; private set; }
 
         /// <summary>투명 창 설정이 끝나 MoveTo 등을 호출해도 되는 상태인지.</summary>
         public bool IsReady { get; private set; }
+
+        /// <summary>현재 적용된 유리 배경.</summary>
+        public GlassMode CurrentGlass => glass;
 
         /// <summary>투명 창 설정이 끝났을 때 1회 발행.</summary>
         public event Action OnReady;
@@ -136,9 +189,14 @@ namespace _SAIUN.Scripts.Core
 
             SetWindowLong(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
             SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, WindowWidth, WindowHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+
             var margins = new MARGINS { cxLeftWidth = -1 };
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
-            ApplyBackdrop(ResolveBackdrop());
+
+            ReadOverrides();
+            ApplyGlass();
+            ApplyCorners();
+            ApplyBorder();
             SetAlwaysOnTop(true);
             RefreshPosition();
 
@@ -204,39 +262,169 @@ namespace _SAIUN.Scripts.Core
 #endif
         }
 
-        /// <summary>
-        /// DWM 시스템 배경을 적용한다. Windows 11 22621 미만에서는 호출이 실패하고 무시된다.
-        /// 창 전체에 적용되므로 하단 바만 유리로 만들 수는 없다.
-        /// </summary>
-        public void ApplyBackdrop(BackdropType type)
+        /// <summary>유리 배경을 바꾼다. 틴트 색과 농도는 현재 설정값을 쓴다.</summary>
+        public void SetGlass(GlassMode mode)
+        {
+            glass = mode;
+            ApplyGlass();
+        }
+
+        /// <summary>틴트 색과 농도를 바꾼다. Tinted 계열에서만 효과가 있다.</summary>
+        public void SetGlassTint(Color tint, float strength)
+        {
+            glassTint = tint;
+            glassTintStrength = Mathf.Clamp01(strength);
+            ApplyGlass();
+        }
+
+        // ---- 유리 배경 ----
+
+        void ApplyGlass()
         {
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) return;
 
-            backdrop = type;
-
-            // 배경이 어두운 계열이라 다크 모드로 둬야 Acrylic 틴트가 맞는다.
+            // 어두운 틴트를 쓰므로 다크 모드로 둬야 시스템 배경 색조가 맞는다.
             int dark = 1;
             DwmSetWindowAttribute(_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
 
-            int value = (int)type;
-            int result = DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref value, sizeof(int));
-            Debug.Log($"WindowController: 시스템 배경 {type} 적용 결과 0x{result:X8}");
+            switch (glass)
+            {
+                case GlassMode.SystemMica:
+                    SetAccent(ACCENT_DISABLED, 0);
+                    SetSystemBackdrop(2);
+                    break;
+
+                case GlassMode.SystemAcrylic:
+                    SetAccent(ACCENT_DISABLED, 0);
+                    SetSystemBackdrop(3);
+                    break;
+
+                case GlassMode.TintedAcrylic:
+                    // 시스템 배경과 합성 속성을 같이 켜면 시스템 쪽이 이겨서 농도 조절이 먹지 않는다.
+                    SetSystemBackdrop(1);
+                    SetAccent(ACCENT_ENABLE_ACRYLICBLURBEHIND, ToAbgr(glassTint, glassTintStrength));
+                    break;
+
+                case GlassMode.TintedBlur:
+                    SetSystemBackdrop(1);
+                    SetAccent(ACCENT_ENABLE_BLURBEHIND, ToAbgr(glassTint, glassTintStrength));
+                    break;
+
+                default:
+                    SetAccent(ACCENT_DISABLED, 0);
+                    SetSystemBackdrop(1);
+                    break;
+            }
+
+            Debug.Log($"WindowController: 유리 배경 {glass}, 틴트 #{ColorUtility.ToHtmlStringRGB(glassTint)} 농도 {glassTintStrength:F2}");
 #endif
         }
 
-        // 실험 중에는 실행 인자로 배경을 바꿔 한 번의 빌드로 네 값을 모두 본다.
-        // 예: SAIUN.exe -backdrop acrylic
-        BackdropType ResolveBackdrop()
+        void SetSystemBackdrop(int type)
+        {
+#if !UNITY_EDITOR
+            int value = type;
+            DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref value, sizeof(int));
+#endif
+        }
+
+        void SetAccent(int state, int gradientColor)
+        {
+#if !UNITY_EDITOR
+            var policy = new ACCENT_POLICY
+            {
+                AccentState = state,
+                // 2는 네 변을 모두 그리라는 뜻이다. 틴트를 쓸 때만 의미가 있다.
+                AccentFlags = state == ACCENT_DISABLED ? 0 : 2,
+                GradientColor = gradientColor,
+                AnimationId = 0,
+            };
+
+            int size = Marshal.SizeOf(policy);
+            IntPtr buffer = Marshal.AllocHGlobal(size);
+            try
+            {
+                Marshal.StructureToPtr(policy, buffer, false);
+                var data = new WINDOWCOMPOSITIONATTRIBDATA
+                {
+                    Attribute = WCA_ACCENT_POLICY,
+                    Data = buffer,
+                    SizeOfData = size,
+                };
+                SetWindowCompositionAttribute(_hwnd, ref data);
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+#endif
+        }
+
+        void ApplyCorners()
+        {
+#if !UNITY_EDITOR
+            int preference = roundedCorners ? DWMWCP_ROUND : DWMWCP_DONOTROUND;
+            DwmSetWindowAttribute(_hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+#endif
+        }
+
+        void ApplyBorder()
+        {
+#if !UNITY_EDITOR
+            if (!customBorder) return;
+            int colorRef = ToColorRef(borderColor);
+            DwmSetWindowAttribute(_hwnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
+#endif
+        }
+
+        /// <summary>합성 속성이 쓰는 0xAABBGGRR 형식으로 바꾼다.</summary>
+        static int ToAbgr(Color color, float alpha)
+        {
+            int r = Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255);
+            int g = Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255);
+            int b = Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255);
+            int a = Mathf.Clamp(Mathf.RoundToInt(Mathf.Clamp01(alpha) * 255f), 0, 255);
+            return (a << 24) | (b << 16) | (g << 8) | r;
+        }
+
+        /// <summary>DWM 테두리가 쓰는 0x00BBGGRR 형식으로 바꾼다.</summary>
+        static int ToColorRef(Color color)
+        {
+            int r = Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255);
+            int g = Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255);
+            int b = Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255);
+            return (b << 16) | (g << 8) | r;
+        }
+
+        // 실험 중에는 실행 인자로 값을 바꿔 한 번의 빌드로 여러 조합을 본다.
+        // 예: SAIUN.exe -glass tintedacrylic -tint 0.2 -corners off
+        void ReadOverrides()
         {
             string[] args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
-                if (args[i] != "-backdrop") continue;
-                if (Enum.TryParse(args[i + 1], true, out BackdropType parsed)) return parsed;
-                Debug.LogWarning($"WindowController: 알 수 없는 -backdrop 값 {args[i + 1]}");
+                string value = args[i + 1];
+                switch (args[i])
+                {
+                    case "-glass":
+                        if (Enum.TryParse(value, true, out GlassMode parsed)) glass = parsed;
+                        else Debug.LogWarning($"WindowController: 알 수 없는 -glass 값 {value}");
+                        break;
+
+                    case "-tint":
+                        if (float.TryParse(value, out float strength)) glassTintStrength = Mathf.Clamp01(strength);
+                        break;
+
+                    case "-corners":
+                        roundedCorners = value != "off";
+                        break;
+
+                    case "-border":
+                        customBorder = value != "off";
+                        break;
+                }
             }
-            return backdrop;
         }
 
         // ---- 내부 ----
