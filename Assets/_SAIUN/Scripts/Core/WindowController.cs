@@ -47,16 +47,32 @@ namespace _SAIUN.Scripts.Core
         const uint WM_NCLBUTTONDOWN  = 0xA1;   // spellchecker:ignore NCLBUTTONDOWN
         const int  HT_CAPTION        = 0x2;
         const int  VK_LBUTTON        = 0x01;
+        const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
+
+        // 창 크기 확정값 (사양서 8장). 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
+        public const int WindowWidth  = 480;
+        public const int WindowHeight = 680;
         const string UNITY_WND_CLASS = "UnityWndClass";
         static readonly IntPtr HWND_TOPMOST   = new IntPtr(-1);
         static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2); // spellchecker:ignore NOTOPMOST
 
+        // 해상도 변경이 적용되기를 기다리는 최대 시간(초).
+        const float ResolutionTimeoutSeconds = 2f;
+
         /// <summary>창 좌상단 스크린 좌표. 에디터에서는 (0,0).</summary>
         public Vector2Int Position { get; private set; }
 
-        /// <summary>드래그가 끝나 창 위치가 바뀌었을 때 발행.</summary>
+        /// <summary>투명 창 설정이 끝나 MoveTo 등을 호출해도 되는 상태인지.</summary>
+        public bool IsReady { get; private set; }
+
+        /// <summary>투명 창 설정이 끝났을 때 1회 발행.</summary>
+        public event Action OnReady;
+
+        /// <summary>드래그가 끝나 창 위치가 바뀌었을 때 발행. 에디터 컴파일에서는 Win32 경로가 빠져 발행 지점이 없다.</summary>
+#pragma warning disable CS0067
         public event Action<Vector2Int> OnMoved;
+#pragma warning restore CS0067
 
         IntPtr _hwnd;
         bool _wasDown;
@@ -64,21 +80,49 @@ namespace _SAIUN.Scripts.Core
         void Start()
         {
 #if !UNITY_EDITOR
+            StartCoroutine(InitializeWindow());
+#else
+            IsReady = true;
+            OnReady?.Invoke();
+#endif
+        }
+
+#if !UNITY_EDITOR
+        // Unity는 마지막 창 해상도를 레지스트리에서 복원하고, 해상도 변경은 프레임 끝에 적용되면서
+        // 창 스타일을 초기화한다. 그래서 고정 크기가 적용된 뒤에 Win32 스타일을 입힌다.
+        System.Collections.IEnumerator InitializeWindow()
+        {
+            if (Screen.width != WindowWidth || Screen.height != WindowHeight)
+            {
+                Screen.SetResolution(WindowWidth, WindowHeight, FullScreenMode.Windowed);
+                float deadline = Time.realtimeSinceStartup + ResolutionTimeoutSeconds;
+                while ((Screen.width != WindowWidth || Screen.height != WindowHeight)
+                       && Time.realtimeSinceStartup < deadline)
+                {
+                    yield return null;
+                }
+                yield return null;   // 스타일 초기화가 끝난 다음 프레임
+            }
+
             _hwnd = FindWindow(UNITY_WND_CLASS, Application.productName);
             if (_hwnd == IntPtr.Zero) _hwnd = GetActiveWindow();
             if (_hwnd == IntPtr.Zero)
             {
                 Debug.LogWarning("WindowController: 창 핸들을 찾지 못해 투명 창 설정을 건너뜁니다.");
-                return;
+                yield break;
             }
 
             SetWindowLong(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, WindowWidth, WindowHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
             var margins = new MARGINS { cxLeftWidth = -1 };
             DwmExtendFrameIntoClientArea(_hwnd, ref margins);
             SetAlwaysOnTop(true);
             RefreshPosition();
-#endif
+
+            IsReady = true;
+            OnReady?.Invoke();
         }
+#endif
 
         void Update()
         {

@@ -72,13 +72,21 @@ namespace _SAIUN.Scripts.Core
         private void Start()
         {
             ApplyFrameRate();
-            RestoreWindow();
+
+            // 투명 창 설정이 끝난 뒤에 위치를 복원해야 한다.
+            if (windowController == null) return;
+            if (windowController.IsReady) RestoreWindow();
+            else windowController.OnReady += RestoreWindow;
         }
 
         private void OnDisable()
         {
             if (stateMachine != null) stateMachine.OnStateChanged -= HandleStateChanged;
-            if (windowController != null) windowController.OnMoved -= HandleWindowMoved;
+            if (windowController != null)
+            {
+                windowController.OnMoved -= HandleWindowMoved;
+                windowController.OnReady -= RestoreWindow;
+            }
         }
 
         private void OnApplicationFocus(bool hasFocus)
@@ -184,10 +192,10 @@ namespace _SAIUN.Scripts.Core
             OnSessionRecorded?.Invoke(record);
         }
 
-        // WindowController.Start가 창 스타일을 잡은 뒤에 위치를 복원해야 하므로 Start에서 호출한다.
         private void RestoreWindow()
         {
             if (windowController == null) return;
+            windowController.OnReady -= RestoreWindow;
 
             windowController.SetAlwaysOnTop(SettingsStore.AlwaysOnTop);
 
