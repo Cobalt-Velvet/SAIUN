@@ -28,6 +28,7 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
         [DllImport("user32.dll")] static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+        [DllImport("user32.dll")] static extern int GetSystemMetrics(int index);
         [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
         [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int width, int height);
         [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr hObject);
@@ -64,6 +65,15 @@ namespace _SAIUN.Scripts.Core
         const string DESKTOP_CLASS = "Progman";     // spellchecker:ignore Progman
         const string DESKTOP_TITLE = "Program Manager";
 
+        // 가상 화면(모든 모니터를 합친 영역) 범위.
+        const int SM_XVIRTUALSCREEN = 76;   // spellchecker:ignore XVIRTUALSCREEN
+        const int SM_YVIRTUALSCREEN = 77;   // spellchecker:ignore YVIRTUALSCREEN
+        const int SM_CXVIRTUALSCREEN = 78;  // spellchecker:ignore CXVIRTUALSCREEN
+        const int SM_CYVIRTUALSCREEN = 79;  // spellchecker:ignore CYVIRTUALSCREEN
+
+        // 주변 색을 잴 때 쓰는 띠의 개수. 위·아래·왼쪽·오른쪽.
+        const int AmbientStripCount = 4;
+
         /// <summary>축소해서 담아 둔 화면. BGRA 순서다.</summary>
         public Texture2D Texture { get; }
 
@@ -84,6 +94,12 @@ namespace _SAIUN.Scripts.Core
         private int _layerWidth;
         private int _layerHeight;
         private bool _layerFilled;
+
+        // 주변 색 측정용. 띠 하나를 1픽셀로 줄여 담으므로 4픽셀이면 충분하다.
+        private IntPtr _ambientDC;
+        private IntPtr _ambientBitmap;
+        private readonly byte[] _ambientBuffer = new byte[AmbientStripCount * 4];
+        private BITMAPINFO _ambientInfo;
 
         public DesktopCapture(int width, int height)
         {
@@ -112,6 +128,122 @@ namespace _SAIUN.Scripts.Core
                     biCompression = 0,
                 },
             };
+
+            _ambientInfo = new BITMAPINFO
+            {
+                bmiHeader = new BITMAPINFOHEADER
+                {
+                    biSize = Marshal.SizeOf(typeof(BITMAPINFOHEADER)),
+                    biWidth = AmbientStripCount,
+                    biHeight = 1,
+                    biPlanes = 1,
+                    biBitCount = 32,
+                    biCompression = 0,
+                },
+            };
+        }
+
+        /// <summary>
+        /// 창 바로 바깥을 둘러싼 띠의 평균 색을 잰다.
+        /// 창 안쪽이 아니라 바깥을 읽으므로 자기 자신이 섞이지 않는다.
+        /// 창 뒤에 무엇이 깔려 있든 그 색이 잡히므로, 유리가 주변에 반응하게 만들 수 있다.
+        /// </summary>
+        /// <summary>주변 색 측정 결과의 순서. 배열 첨자로 쓴다.</summary>
+        public const int AmbientTop = 0;
+        public const int AmbientBottom = 1;
+        public const int AmbientLeft = 2;
+        public const int AmbientRight = 3;
+
+        public bool SampleAmbient(int x, int y, int width, int height, int margin, int thickness, Color[] colors)
+        {
+            if (_disposed || colors == null || colors.Length < AmbientStripCount) return false;
+
+            IntPtr screenDC = GetDC(IntPtr.Zero);
+            if (screenDC == IntPtr.Zero) return false;
+
+            try
+            {
+                if (!EnsureAmbientBuffer(screenDC)) return false;
+
+                int screenX = GetSystemMetrics(SM_XVIRTUALSCREEN);
+                int screenY = GetSystemMetrics(SM_YVIRTUALSCREEN);
+                int screenRight = screenX + GetSystemMetrics(SM_CXVIRTUALSCREEN);
+                int screenBottom = screenY + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+
+                // 위, 아래, 왼쪽, 오른쪽 순서로 띠를 하나씩 1픽셀로 줄여 담는다.
+                var strips = new[]
+                {
+                    new RECT { left = x - margin, top = y - margin - thickness, right = x + width + margin, bottom = y - margin },
+                    new RECT { left = x - margin, top = y + height + margin, right = x + width + margin, bottom = y + height + margin + thickness },
+                    new RECT { left = x - margin - thickness, top = y - margin, right = x - margin, bottom = y + height + margin },
+                    new RECT { left = x + width + margin, top = y - margin, right = x + width + margin + thickness, bottom = y + height + margin },
+                };
+
+                SetStretchBltMode(_ambientDC, HALFTONE);
+
+                int sampled = 0;
+                var valid = new bool[AmbientStripCount];
+                for (int i = 0; i < strips.Length; i++)
+                {
+                    RECT strip = strips[i];
+                    if (strip.left < screenX || strip.top < screenY) continue;
+                    if (strip.right > screenRight || strip.bottom > screenBottom) continue;
+
+                    int stripWidth = strip.right - strip.left;
+                    int stripHeight = strip.bottom - strip.top;
+                    if (stripWidth <= 0 || stripHeight <= 0) continue;
+
+                    if (!StretchBlt(_ambientDC, i, 0, 1, 1, screenDC, strip.left, strip.top, stripWidth, stripHeight, SRCCOPY)) continue;
+                    valid[i] = true;
+                    sampled++;
+                }
+
+                if (sampled == 0) return false;
+                if (GetDIBits(_ambientDC, _ambientBitmap, 0, 1, _ambientBuffer, ref _ambientInfo, DIB_RGB_COLORS) == 0) return false;
+
+                // 읽히지 않은 방향은 읽힌 것들의 평균으로 메운다. 화면 가장자리에 붙었을 때를 위한 것이다.
+                Color average = Color.black;
+                for (int i = 0; i < AmbientStripCount; i++)
+                {
+                    if (!valid[i]) continue;
+                    average.r += _ambientBuffer[i * 4 + 2] / 255f;
+                    average.g += _ambientBuffer[i * 4 + 1] / 255f;
+                    average.b += _ambientBuffer[i * 4 + 0] / 255f;
+                }
+                average /= sampled;
+                average.a = 1f;
+
+                for (int i = 0; i < AmbientStripCount; i++)
+                {
+                    colors[i] = valid[i]
+                        ? new Color(_ambientBuffer[i * 4 + 2] / 255f, _ambientBuffer[i * 4 + 1] / 255f, _ambientBuffer[i * 4 + 0] / 255f, 1f)
+                        : average;
+                }
+                return true;
+            }
+            finally
+            {
+                ReleaseDC(IntPtr.Zero, screenDC);
+            }
+        }
+
+        private bool EnsureAmbientBuffer(IntPtr screenDC)
+        {
+            if (_ambientDC != IntPtr.Zero) return true;
+
+            _ambientDC = CreateCompatibleDC(screenDC);
+            if (_ambientDC == IntPtr.Zero) return false;
+
+            _ambientBitmap = CreateCompatibleBitmap(screenDC, AmbientStripCount, 1);
+            if (_ambientBitmap == IntPtr.Zero)
+            {
+                DeleteDC(_ambientDC);
+                _ambientDC = IntPtr.Zero;
+                return false;
+            }
+
+            SelectObject(_ambientDC, _ambientBitmap);
+            return true;
         }
 
         /// <summary>
@@ -267,6 +399,9 @@ namespace _SAIUN.Scripts.Core
             _disposed = true;
 
             ReleaseLayerBuffer();
+
+            if (_ambientBitmap != IntPtr.Zero) { DeleteObject(_ambientBitmap); _ambientBitmap = IntPtr.Zero; }
+            if (_ambientDC != IntPtr.Zero) { DeleteDC(_ambientDC); _ambientDC = IntPtr.Zero; }
 
             if (Texture == null) return;
             if (Application.isPlaying) UnityEngine.Object.Destroy(Texture);

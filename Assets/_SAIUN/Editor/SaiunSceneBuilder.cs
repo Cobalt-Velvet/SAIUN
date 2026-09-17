@@ -557,18 +557,25 @@ namespace _SAIUN.Editor
             glass.GetComponent<RawImage>().raycastTarget = false;
 
             // 틴트는 흐린 화면 위에 얹는 별도 층이다.
+            // 예전에는 단색 Image였고 지금은 기울기 텍스처를 쓰므로, 남아 있으면 갈아 끼운다.
             Transform tintChild = glass.transform.Find("Tint");
+            if (tintChild != null && tintChild.GetComponent<RawImage>() == null)
+            {
+                Object.DestroyImmediate(tintChild.gameObject);
+                tintChild = null;
+            }
+
             GameObject tint = tintChild != null
                 ? tintChild.gameObject
-                : new GameObject("Tint", typeof(RectTransform), typeof(Image));
+                : new GameObject("Tint", typeof(RectTransform), typeof(RawImage));
             tint.transform.SetParent(glass.transform, false);
             Stretch(tint.GetComponent<RectTransform>());
-            tint.GetComponent<Image>().raycastTarget = false;
+            tint.GetComponent<RawImage>().raycastTarget = false;
 
             var view = glass.GetComponent<DesktopGlassView>();
             var so = new SerializedObject(view);
             so.FindProperty("backdrop").objectReferenceValue = glass.GetComponent<RawImage>();
-            so.FindProperty("tintOverlay").objectReferenceValue = tint.GetComponent<Image>();
+            so.FindProperty("tintOverlay").objectReferenceValue = tint.GetComponent<RawImage>();
             so.FindProperty("windowController").objectReferenceValue = windowController;
             // 창 추적은 자주, 바탕화면 새로 받기는 드물게.
             so.FindProperty("refreshInterval").floatValue = 0.05f;
