@@ -5,7 +5,10 @@
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "Unity.InputSystem",
-        "Gilzoide.SqliteNet"
+        "Gilzoide.SqliteNet",
+        "VRM10",
+        "UniGLTF",
+        "UniHumanoid"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

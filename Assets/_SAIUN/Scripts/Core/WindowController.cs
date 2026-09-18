@@ -28,6 +28,7 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern int SetWindowCompositionAttribute(IntPtr hWnd, ref WINDOWCOMPOSITIONATTRIBDATA data); // spellchecker:ignore WINDOWCOMPOSITIONATTRIBDATA
         [DllImport("Dwmapi.dll")] static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset); // spellchecker:ignore Dwmapi
         [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+        [DllImport("comdlg32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern bool GetOpenFileName(ref OPENFILENAME lpofn); // spellchecker:ignore comdlg OPENFILENAME
 
         [StructLayout(LayoutKind.Sequential)]
         struct MARGINS { public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight; }
@@ -56,6 +57,35 @@ namespace _SAIUN.Scripts.Core
             public int SizeOfData;
         }
 
+        // 파일 열기 대화상자 (comdlg32).
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        struct OPENFILENAME
+        {
+            public int lStructSize;
+            public IntPtr hwndOwner;
+            public IntPtr hInstance;
+            public string lpstrFilter;
+            public string lpstrCustomFilter;
+            public int nMaxCustFilter;
+            public int nFilterIndex;
+            public IntPtr lpstrFile;
+            public int nMaxFile;
+            public string lpstrFileTitle;
+            public int nMaxFileTitle;
+            public string lpstrInitialDir;
+            public string lpstrTitle;
+            public int Flags;
+            public short nFileOffset;
+            public short nFileExtension;
+            public string lpstrDefExt;
+            public IntPtr lCustData;
+            public IntPtr lpfnHook;
+            public string lpTemplateName;
+            public IntPtr pvReserved;
+            public int dwReserved;
+            public int FlagsEx;
+        }
+
         const int  GWL_STYLE         = -16;
         const uint WS_POPUP          = 0x80000000;
         const uint WS_VISIBLE        = 0x10000000;
@@ -66,6 +96,12 @@ namespace _SAIUN.Scripts.Core
         const int  VK_LBUTTON        = 0x01;
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
+
+        const int OFN_NOCHANGEDIR    = 0x00000008; // spellchecker:ignore NOCHANGEDIR
+        const int OFN_PATHMUSTEXIST  = 0x00000800; // spellchecker:ignore PATHMUSTEXIST
+        const int OFN_FILEMUSTEXIST  = 0x00001000; // spellchecker:ignore FILEMUSTEXIST
+        const int OFN_EXPLORER       = 0x00080000;
+        const int MaxPathChars       = 4096;
 
         // 화면 캡처에서 이 창만 빼는 속성. 직접 흐림을 쓸 때 자기 자신을 다시 찍지 않으려면 필요하다.
         const uint WDA_NONE = 0x0000;                  // spellchecker:ignore WDA
@@ -321,6 +357,46 @@ namespace _SAIUN.Scripts.Core
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) return;
             SetWindowPos(_hwnd, alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+#endif
+        }
+
+        /// <summary>
+        /// 파일 열기 대화상자를 띄우고 고른 파일 경로를 돌려준다. 취소하면 null.
+        /// 대화상자가 떠 있는 동안 이 창은 멈춘다(모달).
+        /// </summary>
+        /// <param name="title">대화상자 제목</param>
+        /// <param name="filterName">형식 이름(예: "VRM 파일")</param>
+        /// <param name="extension">점 없는 확장자(예: "vrm")</param>
+        public string ShowOpenFileDialog(string title, string filterName, string extension)
+        {
+#if !UNITY_EDITOR
+            IntPtr buffer = Marshal.AllocHGlobal(MaxPathChars * sizeof(char));
+            try
+            {
+                // 빈 문자열로 시작해야 대화상자가 초기 파일 이름을 쓰지 않는다.
+                Marshal.WriteInt16(buffer, 0);
+                var ofn = new OPENFILENAME
+                {
+                    lStructSize = Marshal.SizeOf<OPENFILENAME>(),
+                    hwndOwner = _hwnd,
+                    // 이름\0패턴\0 쌍을 \0 하나로 끝낸다.
+                    lpstrFilter = $"{filterName} (*.{extension})\0*.{extension}\0\0",
+                    nFilterIndex = 1,
+                    lpstrFile = buffer,
+                    nMaxFile = MaxPathChars,
+                    lpstrTitle = title,
+                    lpstrDefExt = extension,
+                    Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
+                };
+                return GetOpenFileName(ref ofn) ? Marshal.PtrToStringUni(buffer) : null;
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(buffer);
+            }
+#else
+            string path = UnityEditor.EditorUtility.OpenFilePanel(title, string.Empty, extension);
+            return string.IsNullOrEmpty(path) ? null : path;
 #endif
         }
 

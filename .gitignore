@@ -106,3 +106,7 @@ InitTestScene*.unity*
 # Unity Performance Testing 패키지가 테스트 실행마다 만드는 산출물
 /[Aa]ssets/Resources/PerformanceTestRunInfo.json*
 /[Aa]ssets/Resources/PerformanceTestRunSettings.json*
+
+# 번들 기본 캐릭터 VRM. 서드파티 모델이 실수로 올라가지 않게 막아 둔다(자체 제작 VRM이면 풀어도 된다).
+/[Aa]ssets/StreamingAssets/Characters/
+/[Aa]ssets/StreamingAssets/Characters.meta

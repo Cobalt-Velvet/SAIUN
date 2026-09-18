@@ -57,6 +57,8 @@ namespace _SAIUN.Editor
         private const float TutorialBodyHeight = 92f;
         private const float TutorialButtonWidth = 120f;
         private static readonly Color TutorialDimColor = SaiunPalette.WithAlpha(SaiunPalette.DeepJungle, 0.6f);
+        private static readonly Vector2 DialogCardSize = new Vector2(400f, 200f);
+        private const float DialogBodyHeight = 70f;
 
         private static readonly Color PanelColor = SaiunPalette.BottomBarBackground;
         // 설정 글자 뒤로 시계·화단이 비치면 읽기 어려워 불투명하게 둔다.
@@ -100,6 +102,7 @@ namespace _SAIUN.Editor
             SessionPanelView panel = EnsureSessionPanel(canvas, gameManager, rebuild);
             EnsureSettingsScreen(canvas, gameManager, rebuild);
             EnsureTutorial(canvas, gameManager, bar, rebuild);
+            canvas.Find("Dialog")?.SetAsLastSibling();
 
             if (bar != null)
             {
@@ -242,6 +245,12 @@ namespace _SAIUN.Editor
 
             RectTransform content = ScrollArea(screen);
 
+            // 사양서 12-2-1. 파일 선택은 Windows 대화상자로 연다.
+            Section(content, "캐릭터");
+            TMP_Text characterName = Size(Text(content, "CharacterName", string.Empty, BodyFontSize, SaiunPalette.HudText), height: 22f);
+            Button importVrm = WideButton(content, "ImportVrm", "VRM 파일 불러오기 (200MB 이하)", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
+            Button resetCharacter = WideButton(content, "ResetCharacter", "기본 캐릭터로 초기화", RowColor, SaiunPalette.Eggshell);
+
             Section(content, "방해 앱");
             Sub(content, "블랙리스트");
             RectTransform blacklistRows = List(content, "BlacklistRows");
@@ -273,12 +282,17 @@ namespace _SAIUN.Editor
             Button resetData = WideButton(content, "ResetData", "전체 데이터 초기화", SaiunPalette.Warning, SaiunPalette.OnMainPoint);
 
             GameObject rowTemplate = ListRowTemplate(screen);
+            MessageDialogView dialog = EnsureDialog(canvas, rebuild);
 
             var so = new SerializedObject(view);
             so.FindProperty("gameManager").objectReferenceValue = gameManager;
             so.FindProperty("screen").objectReferenceValue = screen.gameObject;
             so.FindProperty("openButton").objectReferenceValue = gearButton;
             so.FindProperty("closeButton").objectReferenceValue = close;
+            so.FindProperty("characterText").objectReferenceValue = characterName;
+            so.FindProperty("importVrmButton").objectReferenceValue = importVrm;
+            so.FindProperty("resetCharacterButton").objectReferenceValue = resetCharacter;
+            so.FindProperty("dialog").objectReferenceValue = dialog;
             so.FindProperty("blacklistRows").objectReferenceValue = blacklistRows;
             so.FindProperty("whitelistRows").objectReferenceValue = whitelistRows;
             so.FindProperty("rowTemplate").objectReferenceValue = rowTemplate;
@@ -304,6 +318,65 @@ namespace _SAIUN.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
 
             screen.gameObject.SetActive(false);
+        }
+
+        // ---- 확인·경고 다이얼로그 ----
+
+        // 설정 화면·튜토리얼보다 위에 떠야 하므로 그 뒤(튜토리얼 다음)로 옮겨 둔다.
+        private static MessageDialogView EnsureDialog(Transform canvas, bool rebuild)
+        {
+            Transform existing = canvas.Find("Dialog");
+            if (existing != null && rebuild)
+            {
+                Object.DestroyImmediate(existing.gameObject);
+                existing = null;
+            }
+            if (existing != null) return existing.GetComponent<MessageDialogView>();
+
+            RectTransform root = NewUi("Dialog", canvas);
+            Stretch(root);
+            var view = root.gameObject.AddComponent<MessageDialogView>();
+
+            RectTransform overlay = NewUi("Overlay", root);
+            Stretch(overlay);
+            AddImage(overlay, TutorialDimColor, raycast: true);
+
+            RectTransform card = NewUi("Card", overlay);
+            card.anchorMin = card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.sizeDelta = DialogCardSize;
+            Image cardImage = AddImage(card, SaiunPalette.DeepJungle, raycast: true);
+            cardImage.sprite = BuiltinSprite("UI/Skin/UISprite.psd");
+            cardImage.type = Image.Type.Sliced;
+            VerticalStack(card, new RectOffset(20, 20, 16, 16), 8f);
+
+            TMP_Text title = Size(Text(card, "Title", string.Empty, TitleFontSize, SaiunPalette.HudText), height: 28f);
+            TMP_Text body = Size(Text(card, "Body", string.Empty, BodyFontSize, SaiunPalette.HudText, TextAlignmentOptions.TopLeft),
+                height: DialogBodyHeight);
+            body.textWrappingMode = TextWrappingModes.Normal;
+            body.overflowMode = TextOverflowModes.Overflow;
+
+            RectTransform buttons = NewUi("Buttons", card);
+            HorizontalStack(buttons, new RectOffset(0, 0, 0, 0));
+            Size(buttons, height: RowHeight);
+            Size(NewUi("Spacer", buttons), flexibleWidth: 1f);
+            Button cancel = ColoredButton(buttons, "Cancel", "취소", BodyFontSize, Color.clear, SaiunPalette.TeaGreen);
+            Size(cancel, width: TutorialButtonWidth - 20f, height: RowHeight);
+            Button confirm = ColoredButton(buttons, "Confirm", "확인", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
+            Size(confirm, width: TutorialButtonWidth, height: RowHeight);
+
+            var so = new SerializedObject(view);
+            so.FindProperty("dialog").objectReferenceValue = overlay.gameObject;
+            so.FindProperty("titleText").objectReferenceValue = title;
+            so.FindProperty("bodyText").objectReferenceValue = body;
+            so.FindProperty("confirmButton").objectReferenceValue = confirm;
+            so.FindProperty("confirmLabel").objectReferenceValue = confirm.GetComponentInChildren<TMP_Text>();
+            so.FindProperty("cancelButton").objectReferenceValue = cancel;
+            so.FindProperty("cancelLabel").objectReferenceValue = cancel.GetComponentInChildren<TMP_Text>();
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            overlay.gameObject.SetActive(false);
+            return view;
         }
 
         // ---- 첫 실행 튜토리얼 (14장) ----

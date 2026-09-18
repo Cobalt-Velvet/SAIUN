@@ -1,4 +1,5 @@
 using System.IO;
+using _SAIUN.Scripts.Character;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
@@ -77,6 +78,19 @@ namespace _SAIUN.Editor
 
         // 가산 파티클 재질의 HDR 배율
         private const float GlowIntensity = 2.5f;
+
+        // ---- 캐릭터 임시 배치 (P3-02 베젤 배치 전, 실측 대기) ----
+        // 발을 둘 창 픽셀. 사양서 2-3 "캐릭터 좌측"에 따라 Scene Layer 왼쪽 아래, 하단 바 바로 위에 세운다.
+        private static readonly Vector2 CharacterFeetPixel = new Vector2(104f, 604f);
+        // VRM은 +Z를 본다. 225도면 카메라를 정면으로 보고, 조금 덜 돌려 화단(오른쪽)을 향하게 한다.
+        private const float CharacterYawDegrees = 205f;
+
+        // 런타임에 Shader.Find로 찾는 VRM 셰이더. 씬 머티리얼이 쓰지 않아 빌드에 넣어 줘야 한다.
+        private static readonly string[] RuntimeVrmShaders =
+        {
+            "VRM10/Universal Render Pipeline/MToon10",
+            "UniGLTF/UniUnlit",
+        };
 
         // ---- 비 임시값 ----
         private const float RainDepth = 4f;          // 카메라에서 빗줄기까지 거리. 화단(약 8)보다 앞이다.
@@ -445,6 +459,7 @@ namespace _SAIUN.Editor
             Flowerbed bed = EnsureFlowerbed();
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsureWeather(camera, backdropCanvas.transform, stateMachine, bed);
+            EnsureCharacter(gameManager);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
 
@@ -870,6 +885,63 @@ namespace _SAIUN.Editor
             so.FindProperty("sproutBurst").objectReferenceValue = sprout;
             so.FindProperty("harvestBurst").objectReferenceValue = harvest;
             so.FindProperty("harvestGlow").objectReferenceValue = harvestGlow;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // ---- 캐릭터 (P3-01) ----
+
+        // 캐릭터 자리와 VRM 로더. 위치는 처음 만들 때만 정하고 이후엔 인스펙터 값을 지킨다.
+        private static void EnsureCharacter(GameManager gameManager)
+        {
+            GameObject characterGo = GameObject.Find("Character");
+            bool created = characterGo == null;
+            if (created) characterGo = new GameObject("Character");
+            var loader = EnsureComponent<VrmLoader>(characterGo);
+
+            if (created)
+            {
+                Vector3 feet = SceneMetrics.WindowPixelsToGround(CharacterFeetPixel);
+                characterGo.transform.SetPositionAndRotation(feet, Quaternion.Euler(0f, CharacterYawDegrees, 0f));
+            }
+
+            var loaderSo = new SerializedObject(loader);
+            loaderSo.FindProperty("characterRoot").objectReferenceValue = characterGo.transform;
+            loaderSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var gmSo = new SerializedObject(gameManager);
+            gmSo.FindProperty("character").objectReferenceValue = loader;
+            gmSo.ApplyModifiedPropertiesWithoutUndo();
+
+            IncludeRuntimeShaders();
+        }
+
+        // Graphics Settings의 Always Included Shaders에 VRM 셰이더를 넣는다. 이미 있으면 그대로 둔다.
+        private static void IncludeRuntimeShaders()
+        {
+            Object graphicsSettings = AssetDatabase.LoadAssetAtPath<Object>("ProjectSettings/GraphicsSettings.asset");
+            var so = new SerializedObject(graphicsSettings);
+            SerializedProperty list = so.FindProperty("m_AlwaysIncludedShaders");
+
+            foreach (string shaderName in RuntimeVrmShaders)
+            {
+                Shader shader = Shader.Find(shaderName);
+                if (shader == null)
+                {
+                    Debug.LogWarning($"SaiunSceneBuilder: 셰이더 {shaderName}를 찾지 못했습니다. UniVRM 패키지를 확인하세요.");
+                    continue;
+                }
+
+                bool present = false;
+                for (int i = 0; i < list.arraySize; i++)
+                {
+                    if (list.GetArrayElementAtIndex(i).objectReferenceValue == shader) present = true;
+                }
+                if (present) continue;
+
+                list.arraySize++;
+                list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = shader;
+                Debug.Log($"SaiunSceneBuilder: 빌드에 셰이더 포함 {shaderName}");
+            }
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
