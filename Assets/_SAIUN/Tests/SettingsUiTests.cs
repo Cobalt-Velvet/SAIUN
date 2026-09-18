@@ -1,16 +1,12 @@
-using System;
 using System.Collections;
-using System.IO;
 using System.Linq;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Distraction;
-using _SAIUN.Scripts.Timer;
 using _SAIUN.Scripts.UI;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
 
@@ -19,52 +15,18 @@ namespace _SAIUN.Tests
     /// <summary>
     /// P4-04: 시작을 누르면 세션 설정 패널이 뜨고 고른 값으로 시작한다.
     /// 기어로 여는 시스템 설정에서 방해 앱 목록·유예·창·사운드·데이터를 다룬다.
-    /// SaiunSceneBuilder가 조립한 메인 씬을 그대로 불러와 실제 버튼을 누른다.
-    /// DB·방해 앱 파일은 임시 경로로 돌리고, PlayerPrefs는 앱 키만 지운다.
     /// </summary>
-    public class SettingsUiTests
+    public class SettingsUiTests : MainSceneTestBase
     {
-        private const string SceneName = "Main";
-
-        private string _dbPath;
-        private string _blacklistPath;
-        private Scene _scene;
-        private GameManager _gm;
         private BottomBarView _bar;
         private SessionPanelView _panel;
         private SettingsScreenView _settings;
-        private double _now;
 
-        [UnitySetUp]
-        public IEnumerator SetUp()
+        protected override void OnSceneLoaded()
         {
-            _dbPath = Path.Combine(Application.temporaryCachePath, $"saiun_settings_{Guid.NewGuid():N}.db");
-            _blacklistPath = Path.Combine(Application.temporaryCachePath, $"blacklist_settings_{Guid.NewGuid():N}.json");
-            SaiunDatabase.PathOverride = _dbPath;
-            BlacklistStore.PathOverride = _blacklistPath;
-            SettingsStore.DeleteAll();
-
-            yield return SceneManager.LoadSceneAsync(SceneName, LoadSceneMode.Additive);
-            _scene = SceneManager.GetSceneByName(SceneName);
-            yield return null;   // Start까지 돌게 한 프레임 더 기다린다
-
-            _gm = Find<GameManager>();
             _bar = Find<BottomBarView>();
             _panel = Find<SessionPanelView>();
             _settings = Find<SettingsScreenView>();
-            _now = 1000d;
-            _gm.Timer.SetClock(() => _now);
-        }
-
-        [UnityTearDown]
-        public IEnumerator TearDown()
-        {
-            if (_scene.IsValid()) yield return SceneManager.UnloadSceneAsync(_scene);
-            SaiunDatabase.PathOverride = null;
-            BlacklistStore.PathOverride = null;
-            SettingsStore.DeleteAll();
-            if (File.Exists(_dbPath)) File.Delete(_dbPath);
-            if (File.Exists(_blacklistPath)) File.Delete(_blacklistPath);
         }
 
         // ---- 세션 설정 패널 (12-1) ----
@@ -76,7 +38,7 @@ namespace _SAIUN.Tests
             _bar.PrimaryButton.onClick.Invoke();
 
             Assert.IsTrue(_panel.IsOpen);
-            Assert.AreEqual(PomodoroState.Idle, _gm.StateMachine.CurrentState, "패널만 열고 시작하지 않는다");
+            Assert.AreEqual(PomodoroState.Idle, Gm.StateMachine.CurrentState, "패널만 열고 시작하지 않는다");
             Assert.AreEqual("집중 시작", _bar.CurrentButtonLabel);
 
             Field("focusField").Slider.value = 30;
@@ -84,9 +46,9 @@ namespace _SAIUN.Tests
             _bar.PrimaryButton.onClick.Invoke();
 
             Assert.IsFalse(_panel.IsOpen);
-            Assert.AreEqual(PomodoroState.Focus, _gm.StateMachine.CurrentState);
-            Assert.AreEqual(30, _gm.Timer.Config.FocusMinutes);
-            Assert.AreEqual(6, _gm.Timer.Config.TotalSets);
+            Assert.AreEqual(PomodoroState.Focus, Gm.StateMachine.CurrentState);
+            Assert.AreEqual(30, Gm.Timer.Config.FocusMinutes);
+            Assert.AreEqual(6, Gm.Timer.Config.TotalSets);
             Assert.AreEqual(30, SettingsStore.LoadSessionConfig().FocusMinutes, "마지막 값을 저장한다");
         }
 
@@ -98,7 +60,7 @@ namespace _SAIUN.Tests
 
             Assert.IsFalse(_panel.IsOpen);
             Assert.AreEqual("시작", _bar.CurrentButtonLabel);
-            Assert.AreEqual(PomodoroState.Idle, _gm.StateMachine.CurrentState);
+            Assert.AreEqual(PomodoroState.Idle, Gm.StateMachine.CurrentState);
         }
 
         [Test]
@@ -127,13 +89,13 @@ namespace _SAIUN.Tests
 
             CropButton("wheat").onClick.Invoke();
             _bar.PrimaryButton.onClick.Invoke();
-            Assert.AreEqual("wheat", _gm.Timer.Config.CropType);
+            Assert.AreEqual("wheat", Gm.Timer.Config.CropType);
         }
 
         [Test]
         public void 해금된_작물을_고르면_필요_설정까지_올리고_낮추면_대체_작물을_알린다()
         {
-            _gm.Database.Unlock("crop.tomato");
+            Gm.Database.Unlock("crop.tomato");
             _bar.PrimaryButton.onClick.Invoke();
 
             CropButton("tomato").onClick.Invoke();
@@ -160,7 +122,7 @@ namespace _SAIUN.Tests
         public IEnumerator 블랙리스트에_추가하고_지울_수_있다()
         {
             OpenSettings();
-            BlacklistStore lists = _gm.Watcher.Blacklist;
+            BlacklistStore lists = Gm.Watcher.Blacklist;
 
             TMP_InputField input = Get<TMP_InputField>(_settings, "blacklistInput");
             input.text = "Discord";
@@ -182,7 +144,7 @@ namespace _SAIUN.Tests
         {
             OpenSettings();
             _settings.AddToWhitelist("chrome");
-            Assert.IsFalse(_gm.Watcher.Blacklist.IsDistracting("chrome.exe"));
+            Assert.IsFalse(Gm.Watcher.Blacklist.IsDistracting("chrome.exe"));
         }
 
         [Test]
@@ -194,7 +156,7 @@ namespace _SAIUN.Tests
 
             grace.Slider.value = 12;
             Assert.AreEqual(12, SettingsStore.GraceSeconds);
-            Assert.AreEqual(12, _gm.Watcher.GraceSeconds);
+            Assert.AreEqual(12, Gm.Watcher.GraceSeconds);
 
             grace.Input.onEndEdit.Invoke("99");
             Assert.AreEqual(SettingsStore.MaxGraceSeconds, SettingsStore.GraceSeconds);
@@ -218,13 +180,13 @@ namespace _SAIUN.Tests
         [Test]
         public void 데이터_항목에_누적_기록이_보인다()
         {
-            _gm.Database.InsertSession(new SessionRecord
+            Gm.Database.InsertSession(new SessionRecord
             {
                 StartTime = SaiunDatabase.Now(), DurationMin = 25, SetsCompleted = 5,
                 CropType = "rice", Result = SessionRecord.ResultHarvested,
             });
-            _gm.Database.AddHarvest(1, "rice");
-            _gm.Database.AddHarvest(1, "rice");
+            Gm.Database.AddHarvest(1, "rice");
+            Gm.Database.AddHarvest(1, "rice");
 
             OpenSettings();
 
@@ -236,17 +198,17 @@ namespace _SAIUN.Tests
         [Test]
         public void 초기화는_두_번_확인한_뒤에야_지운다()
         {
-            _gm.Database.AddHarvest(0, "rice");
+            Gm.Database.AddHarvest(0, "rice");
             OpenSettings();
             Button reset = Button(_settings, "resetDataButton");
 
             reset.onClick.Invoke();
             reset.onClick.Invoke();
             Assert.AreEqual(2, _settings.ResetStep);
-            Assert.AreEqual(1, _gm.Database.GetHarvestCount(), "확인 중에는 지우지 않는다");
+            Assert.AreEqual(1, Gm.Database.GetHarvestCount(), "확인 중에는 지우지 않는다");
 
             reset.onClick.Invoke();
-            Assert.AreEqual(0, _gm.Database.GetHarvestCount());
+            Assert.AreEqual(0, Gm.Database.GetHarvestCount());
             Assert.AreEqual("초기화했어요", Get<TMP_Text>(_settings, "resetDataLabel").text);
             Assert.AreEqual("보유한 수확물이 없어요", Get<TMP_Text>(_settings, "inventoryText").text);
         }
@@ -269,8 +231,8 @@ namespace _SAIUN.Tests
         [Test]
         public void 세션_중에는_초기화하지_않는다()
         {
-            _gm.Database.AddHarvest(0, "rice");
-            _gm.RequestStart();
+            Gm.Database.AddHarvest(0, "rice");
+            Gm.RequestStart();
             OpenSettings();
 
             Button reset = Button(_settings, "resetDataButton");
@@ -278,7 +240,7 @@ namespace _SAIUN.Tests
             reset.onClick.Invoke();
             reset.onClick.Invoke();
 
-            Assert.AreEqual(1, _gm.Database.GetHarvestCount());
+            Assert.AreEqual(1, Gm.Database.GetHarvestCount());
             Assert.AreEqual("세션이 끝난 뒤에 할 수 있어요", Get<TMP_Text>(_settings, "resetDataLabel").text);
         }
 
@@ -287,7 +249,7 @@ namespace _SAIUN.Tests
         {
             SettingsStore.TutorialCompleted = true;
             bool requested = false;
-            _gm.OnTutorialRequested += () => requested = true;
+            Gm.OnTutorialRequested += () => requested = true;
             OpenSettings();
 
             Button(_settings, "tutorialButton").onClick.Invoke();
@@ -320,25 +282,5 @@ namespace _SAIUN.Tests
         private static SliderField Field(object owner, string name) => Get<SliderField>(owner, name);
 
         private static Button Button(object owner, string name) => Get<Button>(owner, name);
-
-        private static T Get<T>(object owner, string field) where T : class
-        {
-            var value = owner.GetType()
-                .GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                ?.GetValue(owner) as T;
-            Assert.IsNotNull(value, $"{owner.GetType().Name}.{field}이(가) 연결되지 않았다. Setup Main Scene을 다시 실행하세요.");
-            return value;
-        }
-
-        private T Find<T>() where T : Component
-        {
-            foreach (GameObject root in _scene.GetRootGameObjects())
-            {
-                var found = root.GetComponentInChildren<T>(true);
-                if (found != null) return found;
-            }
-            Assert.Fail($"메인 씬에 {typeof(T).Name}이(가) 없다");
-            return null;
-        }
     }
 }

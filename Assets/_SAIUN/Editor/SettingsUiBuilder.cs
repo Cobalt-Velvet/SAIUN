@@ -17,6 +17,11 @@ namespace _SAIUN.Editor
     public static class SettingsUiBuilder
     {
         private const string GearIconPath = "Assets/_SAIUN/Art/Textures/icon_gear.png";
+        private const string RingSpritePath = "Assets/_SAIUN/Art/Textures/ui_ring.png";
+        private const int RingSize = 48;
+        private const float RingRadius = 12f;
+        private const float RingThickness = 3f;
+        private const int RingBorder = 16;
         private const int GearIconSize = 64;
         private const int GearTeeth = 8;
         private const int GearSupersample = 4;
@@ -47,6 +52,12 @@ namespace _SAIUN.Editor
         private const float SmallFontSize = 12f;
         private const float IconFontSize = 22f;
 
+        private static readonly Vector2 TutorialCardSize = new Vector2(400f, 236f);
+        private const float TutorialCardOffsetY = 40f;
+        private const float TutorialBodyHeight = 92f;
+        private const float TutorialButtonWidth = 120f;
+        private static readonly Color TutorialDimColor = SaiunPalette.WithAlpha(SaiunPalette.DeepJungle, 0.6f);
+
         private static readonly Color PanelColor = SaiunPalette.BottomBarBackground;
         // 설정 글자 뒤로 시계·화단이 비치면 읽기 어려워 불투명하게 둔다.
         private static readonly Color ScreenColor = SaiunPalette.DeepJungle;
@@ -74,7 +85,7 @@ namespace _SAIUN.Editor
 
             Build(canvas.transform, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath), gameManager, bar, rebuild: true);
 
-            // 알림·유리 테두리는 설정 화면보다 위에 있어야 한다.
+            // 알림·유리 테두리는 설정 화면·튜토리얼보다 위에 있어야 한다.
             canvas.transform.Find("ScreenAlert")?.SetAsLastSibling();
             canvas.transform.Find("GlassRim")?.SetAsLastSibling();
 
@@ -88,6 +99,7 @@ namespace _SAIUN.Editor
             s_font = font;
             SessionPanelView panel = EnsureSessionPanel(canvas, gameManager, rebuild);
             EnsureSettingsScreen(canvas, gameManager, rebuild);
+            EnsureTutorial(canvas, gameManager, bar, rebuild);
 
             if (bar != null)
             {
@@ -285,6 +297,161 @@ namespace _SAIUN.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
 
             screen.gameObject.SetActive(false);
+        }
+
+        // ---- 첫 실행 튜토리얼 (14장) ----
+
+        private static void EnsureTutorial(Transform canvas, GameManager gameManager, BottomBarView bar, bool rebuild)
+        {
+            Transform existing = canvas.Find("Tutorial");
+            if (existing != null && rebuild)
+            {
+                Object.DestroyImmediate(existing.gameObject);
+                existing = null;
+            }
+
+            if (existing != null)
+            {
+                existing.SetAsLastSibling();
+                SetReference(existing.GetComponent<TutorialView>(), "gameManager", gameManager);
+                return;
+            }
+
+            RectTransform root = NewUi("Tutorial", canvas);
+            Stretch(root);
+            var view = root.gameObject.AddComponent<TutorialView>();
+
+            RectTransform overlay = NewUi("Overlay", root);
+            Stretch(overlay);
+            // 뒤를 흐리게 덮고 클릭을 막는다.
+            AddImage(overlay, TutorialDimColor, raycast: true);
+
+            RectTransform highlight = NewUi("Highlight", overlay);
+            Image ring = AddImage(highlight, SaiunPalette.Eggshell, raycast: false);
+            ring.sprite = EnsureRingSprite();
+            ring.type = Image.Type.Sliced;
+
+            RectTransform card = NewUi("Card", overlay);
+            card.anchorMin = card.anchorMax = new Vector2(0.5f, 0.5f);
+            card.pivot = new Vector2(0.5f, 0.5f);
+            card.anchoredPosition = new Vector2(0f, TutorialCardOffsetY);
+            card.sizeDelta = TutorialCardSize;
+            Image cardImage = AddImage(card, SaiunPalette.DeepJungle, raycast: true);
+            cardImage.sprite = BuiltinSprite("UI/Skin/UISprite.psd");
+            cardImage.type = Image.Type.Sliced;
+            VerticalStack(card, new RectOffset(20, 20, 16, 16), 6f);
+
+            TMP_Text step = Size(Text(card, "Step", string.Empty, SmallFontSize, SaiunPalette.TeaGreen), height: 18f);
+            TMP_Text title = Size(Text(card, "Title", string.Empty, TitleFontSize + 2f, SaiunPalette.HudText), height: 30f);
+            TMP_Text body = Size(Text(card, "Body", string.Empty, BodyFontSize, SaiunPalette.HudText, TextAlignmentOptions.TopLeft),
+                height: TutorialBodyHeight);
+            body.textWrappingMode = TextWrappingModes.Normal;
+            body.overflowMode = TextOverflowModes.Overflow;
+
+            RectTransform buttons = NewUi("Buttons", card);
+            HorizontalStack(buttons, new RectOffset(0, 0, 0, 0));
+            Size(buttons, height: RowHeight);
+            Button skip = ColoredButton(buttons, "Skip", "건너뛰기", BodyFontSize, Color.clear, SaiunPalette.TeaGreen);
+            Size(skip, width: TutorialButtonWidth - 20f, height: RowHeight);
+            Size(NewUi("Spacer", buttons), flexibleWidth: 1f);
+            Button next = ColoredButton(buttons, "Next", "다음", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
+            Size(next, width: TutorialButtonWidth, height: RowHeight);
+
+            // 사양서 14장 세 단계. 캐릭터 항목은 P3에서 설정 화면에 붙는다.
+            RectTransform gear = canvas.Find("Settings/Gear") as RectTransform;
+            RectTransform start = bar != null && bar.PrimaryButton != null ? (RectTransform)bar.PrimaryButton.transform : null;
+            var steps = new[]
+            {
+                new TutorialStep("캐릭터 설정",
+                    "오른쪽 위 기어 아이콘에서 캐릭터를 바꿀 수 있어요.\n기본 캐릭터로 시작해도 괜찮아요.", gear),
+                new TutorialStep("작물 심기",
+                    "시작 버튼을 누르면 세션 설정이 열려요.\n작물 목록에서 심을 작물을 고르세요.", start),
+                new TutorialStep("포모도로 시작",
+                    "집중 시간과 세트 수를 정하고 시작하세요.\n집중 중에 방해 앱으로 넘어가 유예 시간 안에 돌아오지 않으면 작물이 시들어요.", start),
+            };
+
+            var so = new SerializedObject(view);
+            so.FindProperty("gameManager").objectReferenceValue = gameManager;
+            so.FindProperty("overlay").objectReferenceValue = overlay.gameObject;
+            so.FindProperty("stepText").objectReferenceValue = step;
+            so.FindProperty("titleText").objectReferenceValue = title;
+            so.FindProperty("bodyText").objectReferenceValue = body;
+            so.FindProperty("nextButton").objectReferenceValue = next;
+            so.FindProperty("nextLabel").objectReferenceValue = next.GetComponentInChildren<TMP_Text>();
+            so.FindProperty("skipButton").objectReferenceValue = skip;
+            so.FindProperty("highlight").objectReferenceValue = highlight;
+            SerializedProperty stepsProperty = so.FindProperty("steps");
+            stepsProperty.arraySize = steps.Length;
+            for (int i = 0; i < steps.Length; i++)
+            {
+                SerializedProperty element = stepsProperty.GetArrayElementAtIndex(i);
+                element.FindPropertyRelative("title").stringValue = steps[i].Title;
+                element.FindPropertyRelative("body").stringValue = steps[i].Body;
+                element.FindPropertyRelative("target").objectReferenceValue = steps[i].Target;
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            overlay.gameObject.SetActive(false);
+        }
+
+        // 둥근 모서리 테두리. 9-slice로 늘려 어떤 버튼에도 두른다.
+        private static Sprite EnsureRingSprite()
+        {
+            if (!File.Exists(RingSpritePath))
+            {
+                var texture = new Texture2D(RingSize, RingSize, TextureFormat.RGBA32, false);
+                var pixels = new Color32[RingSize * RingSize];
+                float half = RingSize / 2f;
+                for (int y = 0; y < RingSize; y++)
+                {
+                    for (int x = 0; x < RingSize; x++)
+                    {
+                        int inside = 0;
+                        for (int sy = 0; sy < GearSupersample; sy++)
+                        {
+                            for (int sx = 0; sx < GearSupersample; sx++)
+                            {
+                                float px = x + (sx + 0.5f) / GearSupersample - half;
+                                float py = y + (sy + 0.5f) / GearSupersample - half;
+                                float inset = -RoundedBoxDistance(px, py, half, half, RingRadius);
+                                if (inset >= 0f && inset <= RingThickness) inside++;
+                            }
+                        }
+                        byte alpha = (byte)Mathf.RoundToInt(inside / (float)(GearSupersample * GearSupersample) * 255f);
+                        pixels[y * RingSize + x] = new Color32(255, 255, 255, alpha);
+                    }
+                }
+                texture.SetPixels32(pixels);
+                texture.Apply();
+                File.WriteAllBytes(RingSpritePath, texture.EncodeToPNG());
+                Object.DestroyImmediate(texture);
+                AssetDatabase.ImportAsset(RingSpritePath, ImportAssetOptions.ForceSynchronousImport);
+            }
+
+            if (AssetImporter.GetAtPath(RingSpritePath) is TextureImporter importer
+                && (importer.textureType != TextureImporterType.Sprite || importer.spriteImportMode != SpriteImportMode.Single
+                    || importer.spriteBorder != Vector4.one * RingBorder))
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.spriteBorder = Vector4.one * RingBorder;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Sprite>(RingSpritePath);
+        }
+
+        /// <summary>둥근 사각형의 부호 있는 거리. 안쪽이 음수, 경계가 0이다.</summary>
+        private static float RoundedBoxDistance(float px, float py, float halfWidth, float halfHeight, float radius)
+        {
+            float qx = Mathf.Abs(px) - (halfWidth - radius);
+            float qy = Mathf.Abs(py) - (halfHeight - radius);
+            float outsideX = Mathf.Max(qx, 0f);
+            float outsideY = Mathf.Max(qy, 0f);
+            float outside = Mathf.Sqrt(outsideX * outsideX + outsideY * outsideY);
+            float inside = Mathf.Min(Mathf.Max(qx, qy), 0f);
+            return outside + inside - radius;
         }
 
         // 설정 화면 본문. 세로로 길어지므로 스크롤한다.
