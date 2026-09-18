@@ -59,6 +59,12 @@ namespace _SAIUN.Scripts.Core
         /// <summary>작물이 새로 해금됐을 때 1회 발행.</summary>
         public event Action<CropDefinition> OnCropUnlocked;
 
+        /// <summary>전체 데이터 초기화가 끝난 직후 발행.</summary>
+        public event Action OnDataReset;
+
+        /// <summary>튜토리얼을 다시 보여 달라는 요청. 튜토리얼 뷰가 구독한다.</summary>
+        public event Action OnTutorialRequested;
+
         private SessionConfig _currentConfig;
         private string _sessionStartTime;
         private bool _hasFocus = true;
@@ -189,6 +195,58 @@ namespace _SAIUN.Scripts.Core
         {
             if (watcher == null) return;
             watcher.ExcuseCurrentProcess();
+        }
+
+        // ---- 시스템 설정 요청 (사양서 v1.1 12-2) ----
+
+        /// <summary>항상 위를 켜거나 끄고 저장한다.</summary>
+        public void RequestSetAlwaysOnTop(bool alwaysOnTop)
+        {
+            SettingsStore.AlwaysOnTop = alwaysOnTop;
+            if (windowController != null) windowController.SetAlwaysOnTop(alwaysOnTop);
+        }
+
+        /// <summary>창을 우측 상단 기본 위치로 옮기고, 저장된 위치를 지운다.</summary>
+        public void RequestResetWindowPosition()
+        {
+            SettingsStore.ClearWindowPosition();
+            if (windowController != null) windowController.MoveToDefaultPosition();
+        }
+
+        /// <summary>유예 시간을 바꾸고 저장한다. 범위 밖 값은 5~30초로 자른다.</summary>
+        public void RequestSetGraceSeconds(int seconds)
+        {
+            SettingsStore.GraceSeconds = seconds;
+            if (watcher != null) watcher.GraceSeconds = SettingsStore.GraceSeconds;
+        }
+
+        public void RequestSetSoundEnabled(bool enabled)
+        {
+            SettingsStore.SoundEnabled = enabled;
+        }
+
+        public void RequestSetSoundVolume(float volume)
+        {
+            SettingsStore.SoundVolume = volume;
+        }
+
+        /// <summary>튜토리얼을 다시 보여 준다. 완료 표시를 지우고 요청을 알린다.</summary>
+        public void RequestReplayTutorial()
+        {
+            SettingsStore.TutorialCompleted = false;
+            OnTutorialRequested?.Invoke();
+        }
+
+        /// <summary>
+        /// 세션·수확·보유량·해금 기록을 모두 지운다. 설정값과 방해 앱 목록은 남긴다.
+        /// 진행 중인 세션의 기록이 초기화 직후 다시 쌓이지 않도록 Idle에서만 받는다.
+        /// </summary>
+        public bool RequestResetAllData()
+        {
+            if (stateMachine.CurrentState != PomodoroState.Idle || database == null) return false;
+            database.DeleteAllRows();
+            OnDataReset?.Invoke();
+            return true;
         }
 
         /// <summary>작물을 심을 수 있게 해금됐는지. 기본 작물은 항상 참이다.</summary>

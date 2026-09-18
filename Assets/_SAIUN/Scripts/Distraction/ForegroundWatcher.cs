@@ -26,6 +26,14 @@ namespace _SAIUN.Scripts.Distraction
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
         [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr hObject);
+        [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+        [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern int GetWindowTextLength(IntPtr hWnd);
+        [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        private const uint GW_OWNER = 4;
 
         // 패키지 앱(메모장 등)도 조회되도록 제한 정보 권한만 요청한다.
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
@@ -116,6 +124,45 @@ namespace _SAIUN.Scripts.Distraction
         public bool IsExcusedThisSession(string processName)
         {
             return _sessionExceptions.Contains(BlacklistStore.Normalize(processName));
+        }
+
+        /// <summary>
+        /// 지금 화면에 창을 띄우고 있는 앱의 실행 파일 이름(사양서 v1.1 12-2-2 "실행 중 목록에서 선택").
+        /// 제목이 있는 보이는 최상위 창만 세고, 이 앱 자신은 뺀다. 이름순, 중복 없음.
+        /// </summary>
+        public static List<string> GetRunningAppNames()
+        {
+            var names = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+#if !UNITY_EDITOR
+            s_windowPids.Clear();
+            EnumWindows(CollectWindow, IntPtr.Zero);
+            foreach (uint pid in s_windowPids)
+            {
+                // 관리자 권한 앱 등은 조회가 막힌다. 목록용이므로 조용히 건너뛴다.
+                string name = GetProcessName(pid, logFailure: false);
+                if (!string.IsNullOrEmpty(name)) names.Add(name);
+            }
+            s_windowPids.Clear();
+#else
+            // 에디터에서는 창 열거 대신 프로세스 목록으로 미리보기만 한다.
+            foreach (System.Diagnostics.Process process in System.Diagnostics.Process.GetProcesses())
+            {
+                try
+                {
+                    names.Add(process.ProcessName + ".exe");
+                }
+                catch (Exception)
+                {
+                    // 종료 중인 프로세스는 건너뛴다.
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+#endif
+            names.Remove(Application.productName + ".exe");
+            return new List<string>(names);
         }
 
         // ---- 폴링 ----
@@ -225,12 +272,31 @@ namespace _SAIUN.Scripts.Distraction
             if (hwnd == IntPtr.Zero) return null;
 
             GetWindowThreadProcessId(hwnd, out uint pid);
-            if (pid == 0) return null;
+            return pid == 0 ? null : GetProcessName(pid, logFailure: true);
+#else
+            return null;
+#endif
+        }
 
+#if !UNITY_EDITOR
+        private static readonly HashSet<uint> s_windowPids = new HashSet<uint>();
+
+        // EnumWindows 콜백. 작업 표시줄에 나오는 창(보임·제목 있음·소유자 없음)만 모은다.
+        [AOT.MonoPInvokeCallback(typeof(EnumWindowsProc))]
+        private static bool CollectWindow(IntPtr hwnd, IntPtr lParam)
+        {
+            if (!IsWindowVisible(hwnd) || GetWindowTextLength(hwnd) == 0 || GetWindow(hwnd, GW_OWNER) != IntPtr.Zero) return true;
+            GetWindowThreadProcessId(hwnd, out uint pid);
+            if (pid != 0) s_windowPids.Add(pid);
+            return true;
+        }
+
+        private static string GetProcessName(uint pid, bool logFailure)
+        {
             IntPtr handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
             if (handle == IntPtr.Zero)
             {
-                LogLookupFailureOnce($"OpenProcess 실패 pid={pid} err={Marshal.GetLastWin32Error()}");
+                if (logFailure) LogLookupFailureOnce($"OpenProcess 실패 pid={pid} err={Marshal.GetLastWin32Error()}");
                 return null;
             }
 
@@ -240,7 +306,7 @@ namespace _SAIUN.Scripts.Distraction
                 uint size = (uint)buffer.Capacity;
                 if (!QueryFullProcessImageName(handle, 0, buffer, ref size))
                 {
-                    LogLookupFailureOnce($"QueryFullProcessImageName 실패 pid={pid} err={Marshal.GetLastWin32Error()}");
+                    if (logFailure) LogLookupFailureOnce($"QueryFullProcessImageName 실패 pid={pid} err={Marshal.GetLastWin32Error()}");
                     return null;
                 }
                 return Path.GetFileName(buffer.ToString(0, (int)size));
@@ -249,10 +315,8 @@ namespace _SAIUN.Scripts.Distraction
             {
                 CloseHandle(handle);
             }
-#else
-            return null;
-#endif
         }
+#endif
 
         private static void LogLookupFailureOnce(string detail)
         {

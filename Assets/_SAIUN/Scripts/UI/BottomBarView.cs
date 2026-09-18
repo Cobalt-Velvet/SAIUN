@@ -18,12 +18,16 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private TMP_InputField taskInput;
         [SerializeField] private Image background;
 
+        [Tooltip("시작 전에 여는 세션 설정 패널. 없으면 누르자마자 저장된 설정으로 시작한다.")]
+        [SerializeField] private SessionPanelView sessionPanel;
+
         [Header("버튼 라벨")]
         [SerializeField] private string startLabel = "시작";
         [SerializeField] private string stopLabel = "정지";
         [SerializeField] private string acknowledgeLabel = "확인";
         [SerializeField] private string excuseLabel = "괜찮아요";
         [SerializeField] private string harvestLabel = "수확";
+        [SerializeField] private string confirmLabel = "집중 시작";
 
         [Header("색상")]
         [SerializeField] private Color backgroundColor = SaiunPalette.BottomBarBackground;
@@ -72,6 +76,7 @@ namespace _SAIUN.Scripts.UI
         {
             if (gameManager == null) return;
             gameManager.StateMachine.OnStateChanged += HandleStateChanged;
+            if (sessionPanel != null) sessionPanel.OnOpenChanged += HandlePanelOpenChanged;
             Refresh(gameManager.StateMachine.CurrentState);
         }
 
@@ -79,6 +84,16 @@ namespace _SAIUN.Scripts.UI
         {
             if (gameManager == null) return;
             gameManager.StateMachine.OnStateChanged -= HandleStateChanged;
+            if (sessionPanel != null) sessionPanel.OnOpenChanged -= HandlePanelOpenChanged;
+        }
+
+        /// <summary>세션 설정 패널을 연결한다. 씬 조립과 테스트에서 쓴다.</summary>
+        public void SetSessionPanel(SessionPanelView panel)
+        {
+            if (sessionPanel != null && isActiveAndEnabled) sessionPanel.OnOpenChanged -= HandlePanelOpenChanged;
+            sessionPanel = panel;
+            if (sessionPanel != null && isActiveAndEnabled) sessionPanel.OnOpenChanged += HandlePanelOpenChanged;
+            if (gameManager != null) Refresh(gameManager.StateMachine.CurrentState);
         }
 
         // ---- 이벤트 ----
@@ -94,7 +109,10 @@ namespace _SAIUN.Scripts.UI
             {
                 case PomodoroState.Idle:
                     if (taskInput != null) gameManager.SetTaskText(taskInput.text);
-                    gameManager.RequestStart();
+                    // 사양서 v1.1 12-1: 시작을 누르면 먼저 세션 설정 패널을 띄우고, 한 번 더 누르면 시작한다.
+                    if (sessionPanel == null) gameManager.RequestStart();
+                    else if (sessionPanel.IsOpen) sessionPanel.Confirm();
+                    else sessionPanel.Open();
                     break;
 
                 case PomodoroState.Failed:
@@ -116,6 +134,11 @@ namespace _SAIUN.Scripts.UI
             }
         }
 
+        private void HandlePanelOpenChanged(bool open)
+        {
+            Refresh(gameManager.StateMachine.CurrentState);
+        }
+
         private void HandleTaskChanged(string text)
         {
             if (gameManager.StateMachine.CurrentState != PomodoroState.Idle) return;
@@ -133,7 +156,8 @@ namespace _SAIUN.Scripts.UI
 
             if (primaryButtonLabel != null)
             {
-                primaryButtonLabel.text = idle ? startLabel
+                bool panelOpen = sessionPanel != null && sessionPanel.IsOpen;
+                primaryButtonLabel.text = idle ? (panelOpen ? confirmLabel : startLabel)
                     : state == PomodoroState.Failed ? acknowledgeLabel
                     : state == PomodoroState.Interrupted ? excuseLabel
                     : IsHarvestHighlighted ? harvestLabel

@@ -437,6 +437,12 @@ namespace _SAIUN.Editor
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
+
+            // 세션 설정 패널과 시스템 설정 화면(P4-04). 하단 바보다 위, 알림·테두리보다 아래에 둔다.
+            Transform barTransform = canvasGo.transform.Find("BottomBar");
+            SettingsUiBuilder.Build(canvasGo.transform, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath),
+                gameManager, barTransform != null ? barTransform.GetComponent<BottomBarView>() : null, rebuild: false);
+
             EnsureScreenAlert(canvasGo.transform, gameManager);
             EnsureSound(gameManager);
             EnsureGlassRim(canvasGo.transform);
