@@ -25,6 +25,8 @@ namespace _SAIUN.Scripts.Data
             public const string SoundVolume = "sound.volume";
             public const string DistractionGraceSeconds = "distraction.graceSeconds";
             public const string TutorialCompleted = "tutorial.completed";
+            public const string WeatherRandom = "weather.random";
+            public const string WeatherFocusLinked = "weather.focusLinked";
         }
 
         // ---- 기본값 (사양서 7장·8장) ----
@@ -36,6 +38,8 @@ namespace _SAIUN.Scripts.Data
         public const int MinGraceSeconds = 5;
         public const int MaxGraceSeconds = 30;
         public const bool DefaultTutorialCompleted = false;
+        public const bool DefaultWeatherRandom = true;
+        public const bool DefaultWeatherFocusLinked = true;
 
         private const int True = 1;
         private const int False = 0;
@@ -148,6 +152,22 @@ namespace _SAIUN.Scripts.Data
             set => SetBool(Keys.TutorialCompleted, value);
         }
 
+        // ---- 날씨 트리거 (사양서 v1.1 10-1, 중복 선택 가능) ----
+
+        /// <summary>세트마다 날씨가 무작위로 바뀐다.</summary>
+        public static bool WeatherRandom
+        {
+            get => GetBool(Keys.WeatherRandom, DefaultWeatherRandom);
+            set => SetBool(Keys.WeatherRandom, value);
+        }
+
+        /// <summary>방해 앱을 감지하면 먹구름·비로 바뀐다.</summary>
+        public static bool WeatherFocusLinked
+        {
+            get => GetBool(Keys.WeatherFocusLinked, DefaultWeatherFocusLinked);
+            set => SetBool(Keys.WeatherFocusLinked, value);
+        }
+
         // ---- 초기화 ----
 
         /// <summary>이 앱이 쓰는 키만 지운다. PlayerPrefs.DeleteAll은 쓰지 않는다.</summary>
@@ -166,6 +186,8 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.SoundVolume);
             PlayerPrefs.DeleteKey(Keys.DistractionGraceSeconds);
             PlayerPrefs.DeleteKey(Keys.TutorialCompleted);
+            PlayerPrefs.DeleteKey(Keys.WeatherRandom);
+            PlayerPrefs.DeleteKey(Keys.WeatherFocusLinked);
             PlayerPrefs.Save();
         }
 

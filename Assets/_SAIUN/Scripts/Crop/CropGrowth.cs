@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Timer;
+using _SAIUN.Scripts.Weather;
 using UnityEngine;
 
 namespace _SAIUN.Scripts.Crop
@@ -42,6 +43,9 @@ namespace _SAIUN.Scripts.Crop
         [SerializeField] private Flowerbed flowerbed;
         [SerializeField] private CropCatalog catalog;
 
+        [Tooltip("바람. 없으면 바람 없이 제자리에서 흔들린다.")]
+        [SerializeField] private WeatherController weather;
+
         [Header("성장 연출")]
         [Tooltip("단계가 바뀔 때 새 모델이 커지는 시간(초)")]
         [SerializeField, Min(0f)] private float growPopSeconds = 0.35f;
@@ -78,6 +82,12 @@ namespace _SAIUN.Scripts.Crop
 
         [Tooltip("흔들림 세기가 목표로 따라붙는 빠르기")]
         [SerializeField, Min(0f)] private float swayResponse = 4f;
+
+        [Tooltip("바람 세기 1당 더해지는 흔들림 폭(도)")]
+        [SerializeField, Min(0f)] private float swayPerWind = 1.2f;
+
+        [Tooltip("바람 세기 1당 바람 쪽으로 눕는 각(도)")]
+        [SerializeField, Min(0f)] private float leanPerWind = 2.5f;
 
         [Header("사망")]
         [SerializeField, Min(0f)] private float witherSeconds = 2.4f;
@@ -337,17 +347,22 @@ namespace _SAIUN.Scripts.Crop
         private void Sway(float deltaTime)
         {
             bool alarmed = stateMachine != null && stateMachine.CurrentState == PomodoroState.Interrupted;
+            float wind = weather != null ? weather.WindStrength : 0f;
             float blend = 1f - Mathf.Exp(-swayResponse * deltaTime);
-            _swayAmplitude = Mathf.Lerp(_swayAmplitude, alarmed ? interruptedSwayDegrees : swayDegrees, blend);
+            float amplitude = (alarmed ? interruptedSwayDegrees : swayDegrees) + wind * swayPerWind;
+            _swayAmplitude = Mathf.Lerp(_swayAmplitude, amplitude, blend);
             _swayFrequency = Mathf.Lerp(_swayFrequency, alarmed ? interruptedSwayFrequency : swayFrequency, blend);
 
             // 주파수가 바뀌어도 튀지 않도록 각을 누적한다.
             _swayAngle = Mathf.Repeat(_swayAngle + deltaTime * _swayFrequency * Mathf.PI * 2f, Mathf.PI * 2f);
 
+            // 바람이 불어 가는 쪽으로 눕고, 그 둘레로 흔들린다. 이 축으로 양의 각을 주면 윗부분이 바람 쪽으로 기운다.
+            Vector3 axis = weather != null ? Vector3.Cross(Vector3.up, weather.WindDirection) : Vector3.forward;
+            float lean = wind * leanPerWind;
             foreach (Plant plant in _plants)
             {
-                float degrees = Mathf.Sin(_swayAngle + plant.Phase) * _swayAmplitude;
-                plant.Root.localRotation = Quaternion.AngleAxis(degrees, Vector3.forward) * plant.BaseRotation;
+                float degrees = lean + Mathf.Sin(_swayAngle + plant.Phase) * _swayAmplitude;
+                plant.Root.localRotation = Quaternion.AngleAxis(degrees, axis) * plant.BaseRotation;
             }
         }
 

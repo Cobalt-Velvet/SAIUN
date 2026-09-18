@@ -13,7 +13,8 @@ namespace _SAIUN.Scripts.UI
 {
     /// <summary>
     /// 기어 아이콘으로 여는 시스템 설정 화면 (사양서 v1.1 12-2, P4-04).
-    /// 방해 앱·창·사운드·데이터를 다룬다. 캐릭터(VRM)와 날씨 항목은 해당 기능(P3·P2-05)과 함께 붙인다.
+    /// 방해 앱·날씨·창·사운드·데이터를 다룬다. 캐릭터(VRM) 항목은 P3와 함께 붙인다.
+    /// 날씨 트리거 중 실제 날씨 연동은 API 키가 정해질 때까지 두지 않는다.
     /// 실행 중인 시스템에 닿는 설정은 GameManager에 요청하고, 방해 앱 목록은 감시자의 저장소를 직접 고친다(바로 저장된다).
     /// </summary>
     public class SettingsScreenView : MonoBehaviour
@@ -45,6 +46,10 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private TMP_InputField whitelistInput;
         [SerializeField] private Button whitelistAddButton;
         [SerializeField] private SliderField graceField;
+
+        [Header("날씨")]
+        [SerializeField] private Toggle weatherRandomToggle;
+        [SerializeField] private Toggle weatherFocusToggle;
 
         [Header("창")]
         [SerializeField] private Toggle alwaysOnTopToggle;
@@ -140,6 +145,8 @@ namespace _SAIUN.Scripts.UI
 
             graceField.Setup(graceLabel, SettingsStore.MinGraceSeconds, SettingsStore.MaxGraceSeconds, SettingsStore.GraceSeconds);
             volumeField.Setup(volumeLabel, 0, PercentScale, Mathf.RoundToInt(SettingsStore.SoundVolume * PercentScale));
+            if (weatherRandomToggle != null) weatherRandomToggle.SetIsOnWithoutNotify(SettingsStore.WeatherRandom);
+            if (weatherFocusToggle != null) weatherFocusToggle.SetIsOnWithoutNotify(SettingsStore.WeatherFocusLinked);
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.SetIsOnWithoutNotify(SettingsStore.AlwaysOnTop);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
 
@@ -211,6 +218,8 @@ namespace _SAIUN.Scripts.UI
 
             graceField.OnValueChanged += gameManager.RequestSetGraceSeconds;
             volumeField.OnValueChanged += percent => gameManager.RequestSetSoundVolume(percent / (float)PercentScale);
+            if (weatherRandomToggle != null) weatherRandomToggle.onValueChanged.AddListener(gameManager.RequestSetWeatherRandom);
+            if (weatherFocusToggle != null) weatherFocusToggle.onValueChanged.AddListener(gameManager.RequestSetWeatherFocusLinked);
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.onValueChanged.AddListener(gameManager.RequestSetAlwaysOnTop);
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);
             if (resetPositionButton != null) resetPositionButton.onClick.AddListener(gameManager.RequestResetWindowPosition);

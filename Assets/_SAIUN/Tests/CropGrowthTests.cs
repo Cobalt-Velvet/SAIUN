@@ -5,6 +5,7 @@ using System.Reflection;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Timer;
+using _SAIUN.Scripts.Weather;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -241,6 +242,28 @@ namespace _SAIUN.Tests
 
             Assert.Greater(calm, 0.5f, "평소에도 조금은 흔들린다");
             Assert.Greater(alarmed, calm * 2f);
+        }
+
+        [Test]
+        public void 바람이_불면_바람_쪽으로_눕는다()
+        {
+            var weatherGo = Own(new GameObject("Weather"));
+            weatherGo.SetActive(false);
+            var weather = weatherGo.AddComponent<WeatherController>();
+            typeof(WeatherController).GetField("stateMachine", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(weather, _sm);
+            weatherGo.SetActive(true);
+            var randoms = new Queue<float>(new[] { 1f, 0.25f, 1f });   // 세기 5, 방향 +X
+            weather.SetSources(() => 0f, () => randoms.Count > 0 ? randoms.Dequeue() : 0.5f);
+
+            Set("weather", weather);
+            Set("swayDegrees", 0f);
+            Set("swayResponse", 1000f);
+            _timer.StartSession(Config(sets: 1, crop: "rice"));
+
+            typeof(CropGrowth).GetMethod("Sway", BindingFlags.NonPublic | BindingFlags.Instance)
+                .Invoke(_growth, new object[] { 0.01f });
+            Vector3 up = _growth.GetPlantRoot(0).rotation * Vector3.up;
+            Assert.Greater(up.x, 0.05f, "바람이 불어 가는 +X 쪽으로 기운다");
         }
 
         // ---- 도우미 ----

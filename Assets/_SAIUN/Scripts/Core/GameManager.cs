@@ -230,6 +230,18 @@ namespace _SAIUN.Scripts.Core
             SettingsStore.SoundVolume = volume;
         }
 
+        /// <summary>날씨 트리거 '랜덤'을 켜거나 끈다. 다음 세트부터 반영된다.</summary>
+        public void RequestSetWeatherRandom(bool enabled)
+        {
+            SettingsStore.WeatherRandom = enabled;
+        }
+
+        /// <summary>날씨 트리거 '집중 상태 연동'을 켜거나 끈다. 다음 상태 전이부터 반영된다.</summary>
+        public void RequestSetWeatherFocusLinked(bool enabled)
+        {
+            SettingsStore.WeatherFocusLinked = enabled;
+        }
+
         /// <summary>튜토리얼을 다시 보여 준다. 완료 표시를 지우고 요청을 알린다.</summary>
         public void RequestReplayTutorial()
         {

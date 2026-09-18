@@ -6,6 +6,7 @@ using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.Lighting;
 using _SAIUN.Scripts.Timer;
 using _SAIUN.Scripts.UI;
+using _SAIUN.Scripts.Weather;
 using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -76,6 +77,14 @@ namespace _SAIUN.Editor
 
         // 가산 파티클 재질의 HDR 배율
         private const float GlowIntensity = 2.5f;
+
+        // ---- 비 임시값 ----
+        private const float RainDepth = 4f;          // 카메라에서 빗줄기까지 거리. 화단(약 8)보다 앞이다.
+        private const float RainFallSpeed = 9f;      // RainEffect 기본값과 같게 둔다
+        private const float RainDropSize = 0.016f;
+        private const float RainStreakPerSpeed = 0.03f;
+        private const float RainMargin = 0.6f;       // 화면 밖에서 생겨 화면 밖에서 사라지게 두르는 여유(유닛)
+        private const int RainMaxParticles = 1500;
 
         [MenuItem("SAIUN/Build All (TMP·Font·Prefabs·Scene)")]
         public static void BuildAll()
@@ -435,6 +444,7 @@ namespace _SAIUN.Editor
             EnsureDesktopGlass(backdropCanvas.transform, canvasGo.transform, windowController);
             Flowerbed bed = EnsureFlowerbed();
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
+            EnsureWeather(camera, backdropCanvas.transform, stateMachine, bed);
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
 
@@ -860,6 +870,126 @@ namespace _SAIUN.Editor
             so.FindProperty("sproutBurst").objectReferenceValue = sprout;
             so.FindProperty("harvestBurst").objectReferenceValue = harvest;
             so.FindProperty("harvestGlow").objectReferenceValue = harvestGlow;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // ---- 자연 현상 (P2-05) ----
+
+        private static void EnsureWeather(Camera camera, Transform backdropCanvas, PomodoroStateMachine stateMachine, Flowerbed bed)
+        {
+            GameObject weatherGo = GameObject.Find("Weather") ?? new GameObject("Weather");
+            var weather = EnsureComponent<WeatherController>(weatherGo);
+            var weatherSo = new SerializedObject(weather);
+            weatherSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
+            weatherSo.ApplyModifiedPropertiesWithoutUndo();
+
+            EnsureClouds(backdropCanvas, weather);
+            if (camera != null) EnsureRain(camera, weather);
+
+            // 작물은 바람을 따라 눕고 흔들린다.
+            if (bed != null && bed.TryGetComponent(out CropGrowth growth))
+            {
+                var growthSo = new SerializedObject(growth);
+                growthSo.FindProperty("weather").objectReferenceValue = weather;
+                growthSo.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
+        // 뭉게구름: 유리 배경 바로 위, 3D 씬 뒤. Sky Layer에만 띄운다.
+        private static void EnsureClouds(Transform backdropCanvas, WeatherController weather)
+        {
+            Transform existing = backdropCanvas.Find("Clouds");
+            GameObject clouds = existing != null
+                ? existing.gameObject
+                : new GameObject("Clouds", typeof(RectTransform), typeof(CloudLayer));
+            clouds.transform.SetParent(backdropCanvas, false);
+            clouds.transform.SetSiblingIndex(1);   // DesktopGlass 바로 다음
+
+            var rt = (RectTransform)clouds.transform;
+            rt.anchorMin = new Vector2(0f, 1f);
+            rt.anchorMax = new Vector2(1f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta = new Vector2(0f, SceneMetrics.SkyLayerHeight);
+
+            Transform templateChild = clouds.transform.Find("CloudTemplate");
+            GameObject template = templateChild != null
+                ? templateChild.gameObject
+                : new GameObject("CloudTemplate", typeof(RectTransform), typeof(Image));
+            template.transform.SetParent(clouds.transform, false);
+            var image = template.GetComponent<Image>();
+            image.raycastTarget = false;
+            template.SetActive(false);
+
+            Sprite[] sprites = WeatherArtBuilder.EnsureCloudSprites();
+
+            var so = new SerializedObject(clouds.GetComponent<CloudLayer>());
+            so.FindProperty("weather").objectReferenceValue = weather;
+            so.FindProperty("area").objectReferenceValue = rt;
+            so.FindProperty("cloudTemplate").objectReferenceValue = image;
+            // 시계 글자 뒤로 지나가도 대비가 남도록 옅게 둔다(0.45는 글자가 흐려졌다).
+            so.FindProperty("clearColor").colorValue = SaiunPalette.WithAlpha(SaiunPalette.Eggshell, 0.32f);
+            SerializedProperty spriteList = so.FindProperty("sprites");
+            spriteList.arraySize = sprites.Length;
+            for (int i = 0; i < sprites.Length; i++) spriteList.GetArrayElementAtIndex(i).objectReferenceValue = sprites[i];
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 비: 카메라 자식으로 화면 위쪽 가장자리 밖에서 생겨 아래로 떨어진다.
+        private static void EnsureRain(Camera camera, WeatherController weather)
+        {
+            Transform existing = camera.transform.Find("Rain");
+            GameObject rainGo = existing != null ? existing.gameObject : new GameObject("Rain");
+            rainGo.transform.SetParent(camera.transform, false);
+
+            float halfHeight = SceneMetrics.CameraOrthographicSize;
+            float halfWidth = SceneMetrics.PixelsToWorld(SceneMetrics.WindowWidth) / 2f;
+            rainGo.transform.localPosition = new Vector3(0f, halfHeight + RainMargin / 2f, RainDepth);
+            rainGo.transform.localRotation = Quaternion.identity;
+
+            var rain = EnsureComponent<ParticleSystem>(rainGo);
+            rain.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            ParticleSystem.MainModule main = rain.main;
+            main.loop = true;
+            main.playOnAwake = true;
+            main.duration = 1f;
+            main.startLifetime = (halfHeight * 2f + RainMargin * 2f) / RainFallSpeed;
+            main.startSpeed = 0f;
+            main.startSize = RainDropSize;
+            main.startColor = Color.white;
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            main.maxParticles = RainMaxParticles;
+
+            ParticleSystem.EmissionModule emission = rain.emission;
+            emission.rateOverTime = 0f;
+
+            // 바람으로 기울어도 화면 가장자리가 비지 않게 옆으로 넉넉히 뿌린다.
+            ParticleSystem.ShapeModule shape = rain.shape;
+            shape.shapeType = ParticleSystemShapeType.Box;
+            shape.scale = new Vector3((halfWidth + RainMargin) * 2f, 0.05f, 0.5f);
+
+            ParticleSystem.VelocityOverLifetimeModule velocity = rain.velocityOverLifetime;
+            velocity.enabled = true;
+            velocity.space = ParticleSystemSimulationSpace.Local;
+            velocity.x = 0f;
+            velocity.y = -RainFallSpeed;
+            velocity.z = 0f;
+
+            var renderer = rainGo.GetComponent<ParticleSystemRenderer>();
+            renderer.renderMode = ParticleSystemRenderMode.Stretch;
+            renderer.velocityScale = RainStreakPerSpeed;
+            renderer.lengthScale = 1f;
+            renderer.cameraVelocityScale = 0f;
+            renderer.sharedMaterial = WeatherArtBuilder.EnsureRainMaterial();
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            var effect = EnsureComponent<RainEffect>(rainGo);
+            var so = new SerializedObject(effect);
+            so.FindProperty("weather").objectReferenceValue = weather;
+            so.FindProperty("rain").objectReferenceValue = rain;
+            so.FindProperty("fallSpeed").floatValue = RainFallSpeed;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 

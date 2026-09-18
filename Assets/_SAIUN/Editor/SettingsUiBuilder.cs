@@ -252,6 +252,11 @@ namespace _SAIUN.Editor
             (TMP_InputField whitelistInput, Button whitelistAdd) = InputWithButton(content, "WhitelistAdd", "항상 허용할 프로세스");
             SliderField grace = SliderRow(content, "Grace");
 
+            // 사양서 12-2-3. 실제 날씨 연동은 API 키가 정해지면 붙인다.
+            Section(content, "날씨");
+            Toggle weatherRandom = ToggleRow(content, "WeatherRandom", "랜덤 날씨 (세트마다)");
+            Toggle weatherFocus = ToggleRow(content, "WeatherFocus", "집중 상태 연동 (방해 앱이면 먹구름)");
+
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
             Button resetPosition = WideButton(content, "ResetPosition", "창 위치 초기화", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
@@ -284,6 +289,8 @@ namespace _SAIUN.Editor
             so.FindProperty("whitelistInput").objectReferenceValue = whitelistInput;
             so.FindProperty("whitelistAddButton").objectReferenceValue = whitelistAdd;
             so.FindProperty("graceField").objectReferenceValue = grace;
+            so.FindProperty("weatherRandomToggle").objectReferenceValue = weatherRandom;
+            so.FindProperty("weatherFocusToggle").objectReferenceValue = weatherFocus;
             so.FindProperty("alwaysOnTopToggle").objectReferenceValue = alwaysOnTop;
             so.FindProperty("resetPositionButton").objectReferenceValue = resetPosition;
             so.FindProperty("soundToggle").objectReferenceValue = sound;
