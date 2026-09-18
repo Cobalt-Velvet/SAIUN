@@ -438,6 +438,7 @@ namespace _SAIUN.Editor
             EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
             EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
             EnsureScreenAlert(canvasGo.transform, gameManager);
+            EnsureSound(gameManager);
             EnsureGlassRim(canvasGo.transform);
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -663,6 +664,27 @@ namespace _SAIUN.Editor
             so.FindProperty("gameManager").objectReferenceValue = gameManager;
             so.FindProperty("edgeGlow").objectReferenceValue = glowImage;
             so.FindProperty("dimOverlay").objectReferenceValue = dimImage;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 효과음(P5-01). 임시 음원을 만들고 AudioSource 하나로 재생한다.
+        private static void EnsureSound(GameManager gameManager)
+        {
+            System.Collections.Generic.Dictionary<string, AudioClip> clips = SoundPlaceholderBuilder.BuildMissing();
+
+            GameObject go = GameObject.Find("Sound") ?? new GameObject("Sound", typeof(AudioSource), typeof(SoundView));
+            var source = go.GetComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.spatialBlend = 0f;
+
+            var so = new SerializedObject(go.GetComponent<SoundView>());
+            so.FindProperty("gameManager").objectReferenceValue = gameManager;
+            so.FindProperty("source").objectReferenceValue = source;
+            so.FindProperty("completeClip").objectReferenceValue = clips[SoundPlaceholderBuilder.Complete];
+            so.FindProperty("transitionClip").objectReferenceValue = clips[SoundPlaceholderBuilder.Transition];
+            so.FindProperty("harvestClip").objectReferenceValue = clips[SoundPlaceholderBuilder.Harvest];
+            so.FindProperty("warningClip").objectReferenceValue = clips[SoundPlaceholderBuilder.Warning];
+            so.FindProperty("deathClip").objectReferenceValue = clips[SoundPlaceholderBuilder.Death];
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
