@@ -49,6 +49,12 @@ namespace _SAIUN.Scripts.Crop
         public float SurfaceHeight => surfaceHeight;
         public float CropYOffset => cropYOffset;
 
+        /// <summary>화분 테두리 폭.</summary>
+        public float RimWidth => rimWidth;
+
+        /// <summary>화분 윗면(테두리) 높이. 흙은 이보다 조금 솟아 있다.</summary>
+        public float RimHeight => Mathf.Max(0f, surfaceHeight - soilRaise);
+
         /// <summary>흙 윗면의 가로(열 방향)·세로(행 방향) 월드 길이. 테두리는 뺀다.</summary>
         public Vector2 GridSize => new Vector2(Columns * cellSize, Rows * cellSize);
 
@@ -71,7 +77,7 @@ namespace _SAIUN.Scripts.Crop
         public void FitVisuals()
         {
             Vector2 grid = GridSize;
-            float planterHeight = Mathf.Max(0f, surfaceHeight - soilRaise);
+            float planterHeight = RimHeight;
 
             if (planter != null)
             {

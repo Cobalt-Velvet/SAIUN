@@ -20,6 +20,8 @@ namespace _SAIUN.Scripts.Weather
         public const float MaxWindChangeSeconds = 120f;
 
         private const float FullTurnDegrees = 360f;
+        // 이보다 약하면 비가 그친 것으로 보고 마르기 시작한다(강도는 0으로 서서히 줄어 딱 0이 되지 않는다).
+        private const float RainingThreshold = 0.01f;
 
         [SerializeField] private PomodoroStateMachine stateMachine;
 
@@ -47,6 +49,13 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("먹구름이 몰려오고 걷히는 빠르기(1/초)")]
         [SerializeField, Min(0f)] private float stormResponse = 1.5f;
 
+        [Header("젖음")]
+        [Tooltip("강도 1인 비를 맞으면 흠뻑 젖기까지 걸리는 시간(초)")]
+        [SerializeField, Min(0.1f)] private float secondsToSoak = 25f;
+
+        [Tooltip("비가 그친 뒤 다 마르기까지 걸리는 시간(초)")]
+        [SerializeField, Min(0.1f)] private float secondsToDry = 150f;
+
         /// <summary>바람 세기 0~5.</summary>
         public float WindStrength { get; private set; }
 
@@ -58,6 +67,9 @@ namespace _SAIUN.Scripts.Weather
 
         /// <summary>먹구름 정도 0~1.</summary>
         public float Storminess { get; private set; }
+
+        /// <summary>젖은 정도 0~1. 비를 맞는 동안 오르고 그치면 천천히 마른다. 흙·화분·캐릭터가 읽는다.</summary>
+        public float Wetness { get; private set; }
 
         /// <summary>바람 세기를 0~1로 줄인 값. 표현 쪽에서 쓰기 편하게.</summary>
         public float WindAmount => WindStrength / MaxWindStrength;
@@ -117,6 +129,11 @@ namespace _SAIUN.Scripts.Weather
             float rainGoal = Mathf.Max(_rainTarget, _stormTarget * stormRainIntensity);
             RainIntensity = Mathf.Lerp(RainIntensity, rainGoal, Blend(rainResponse, deltaTime));
             Storminess = Mathf.Lerp(Storminess, _stormTarget, Blend(stormResponse, deltaTime));
+
+            // 비가 세면 빨리 젖고, 그치면 일정한 빠르기로 마른다.
+            Wetness = RainIntensity > RainingThreshold
+                ? Mathf.Min(1f, Wetness + RainIntensity * deltaTime / secondsToSoak)
+                : Mathf.Max(0f, Wetness - deltaTime / secondsToDry);
         }
 
         /// <summary>테스트용 시계·난수 교체. null이면 원래 것으로 되돌린다.</summary>

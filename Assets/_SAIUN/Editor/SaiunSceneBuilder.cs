@@ -39,6 +39,8 @@ namespace _SAIUN.Editor
         private const string MaterialFolder = "Assets/_SAIUN/Art/Materials";
         private const string PlanterMaterialPath = MaterialFolder + "/Flowerbed_Planter.mat";
         private const string SoilMaterialPath = MaterialFolder + "/Flowerbed_Soil.mat";
+        private const string VaneMaterialPath = MaterialFolder + "/WeatherVane_Metal.mat";
+        private const string VaneAccentMaterialPath = MaterialFolder + "/WeatherVane_Accent.mat";
         private const string ShadowCatcherMaterialPath = MaterialFolder + "/ShadowCatcher.mat";
         private const string LitShaderName = "Universal Render Pipeline/Lit";
         private const string ShadowCatcherShaderName = "SAIUN/ShadowCatcher";
@@ -106,6 +108,48 @@ namespace _SAIUN.Editor
         private const float RainStreakPerSpeed = 0.03f;
         private const float RainMargin = 0.6f;       // 화면 밖에서 생겨 화면 밖에서 사라지게 두르는 여유(유닛)
         private const int RainMaxParticles = 1500;
+
+        // ---- 빗방울 튐 임시값 ----
+        private const float SplashDropSize = 0.03f;
+        private const float SplashSpeedMin = 0.45f;
+        private const float SplashSpeedMax = 0.9f;
+        private const float SplashLifetime = 0.3f;
+        private const float SplashGravity = 0.6f;
+
+        // ---- 바람 임시값 ----
+        private const float WindDepth = 3.6f;             // 비보다 조금 앞. 화단(약 8)보다 앞이다.
+        private const float WindStreakWidth = 0.035f;     // 바람결 굵기(유닛)
+        private const float WindStreakAlpha = 0.65f;
+        private const float WindStreakTrail = 0.45f;      // 꼬리 길이(알갱이 수명에 대한 비율). 빠를수록 길다.
+        private const float WindStreakVertexSpacing = 0.04f;
+        private const float WindStreakWave = 0.25f;       // 바람결이 굽이치는 난류 세기
+        private const float WindStreakWaveFrequency = 0.9f;
+        private const float WindStreakLifetimeMin = 0.9f;
+        private const float WindStreakLifetimeMax = 1.6f;
+        private const float WindLeafSizeMin = 0.13f;
+        private const float WindLeafSizeMax = 0.2f;
+        private const float WindLeafLifetime = 8f;        // 가장 느린 잎도 화면을 건널 만큼
+        private const float WindLeafSpin = 3.5f;          // 잎이 도는 빠르기(라디안/초)
+        private const float WindLeafFlutter = 0.35f;      // 잎이 오르내리는 난류 세기
+        private const float WindLeafFlutterFrequency = 0.6f;
+        private const float WindBandHeight = 0.7f;        // 카드 높이 중 바람이 지나는 띠의 비율
+        private const float WindBandLift = 0.4f;          // 띠를 카드 가운데보다 올리는 거리(유닛). 시계 쪽에서 흐른다.
+
+        // ---- 풍향계 임시값 (유닛, 화단 기준) ----
+        private const float VanePoleHeight = 1.15f;
+        private const float VanePoleThickness = 0.04f;
+        private const float VaneShaftLength = 0.62f;
+        private const float VaneBarThickness = 0.024f;
+        private const float VaneHeadSize = 0.11f;
+        private const float VaneTailHeight = 0.17f;
+        private const float VaneTailLength = 0.22f;
+        private const float VaneCompassLength = 0.34f;
+        private const float VaneCompassHeight = 0.72f;    // 기둥 높이에 대한 동서남북 막대 위치
+        private const float CupsLift = 0.18f;             // 화살표 위로 풍속계가 올라간 높이
+        private const float CupArmLength = 0.2f;
+        private const float CupSize = 0.08f;
+        private const int CupCount = 3;
+        private const float VaneSmoothness = 0.55f;
 
         [MenuItem("SAIUN/Build All (TMP·Font·Prefabs·Scene)")]
         public static void BuildAll()
@@ -468,6 +512,7 @@ namespace _SAIUN.Editor
             EnsureWeather(camera, backdropCard, stateMachine, bed);
             EnsureCharacter(gameManager);
             EnsurePrefabInstance<TimerHudView>(uiCard, "TimerHud", TimerHudPrefabPath, gameManager);
+            KeepCloudsOffHud(backdropCard, uiCard.Find("TimerHud"));
 
             // 하단 바는 3D 씬 뒤(카메라 공간)에 둔다. 하단 베젤에 걸터앉은 캐릭터가 바 앞에 보여야 한다.
             Transform barCard = EnsureCard(EnsureBarCanvas(camera).transform);
@@ -1028,6 +1073,13 @@ namespace _SAIUN.Editor
             poseSo.FindProperty("loader").objectReferenceValue = loader;
             poseSo.ApplyModifiedPropertiesWithoutUndo();
 
+            // 바람에 머리카락·옷자락이 날리고, 비에 젖는다(P3-05).
+            var characterWeather = EnsureComponent<CharacterWeather>(characterGo);
+            var weatherSo = new SerializedObject(characterWeather);
+            weatherSo.FindProperty("loader").objectReferenceValue = loader;
+            weatherSo.FindProperty("weather").objectReferenceValue = Object.FindFirstObjectByType<WeatherController>();
+            weatherSo.ApplyModifiedPropertiesWithoutUndo();
+
             var gmSo = new SerializedObject(gameManager);
             gmSo.FindProperty("character").objectReferenceValue = loader;
             gmSo.ApplyModifiedPropertiesWithoutUndo();
@@ -1076,15 +1128,25 @@ namespace _SAIUN.Editor
             weatherSo.ApplyModifiedPropertiesWithoutUndo();
 
             EnsureClouds(backdropCanvas, weather);
-            if (camera != null) EnsureRain(camera, weather);
+            if (camera != null)
+            {
+                RainEffect rain = EnsureRain(camera, weather);
+                if (bed != null) EnsureSplash(rain, bed);
+                EnsureWind(camera, weather);
+            }
+
+            if (bed == null) return;
 
             // 작물은 바람을 따라 눕고 흔들린다.
-            if (bed != null && bed.TryGetComponent(out CropGrowth growth))
+            if (bed.TryGetComponent(out CropGrowth growth))
             {
                 var growthSo = new SerializedObject(growth);
                 growthSo.FindProperty("weather").objectReferenceValue = weather;
                 growthSo.ApplyModifiedPropertiesWithoutUndo();
             }
+
+            EnsureWeatherVane(bed, weather);
+            EnsureSurfaceWetness(bed, weather);
         }
 
         // 뭉게구름: 유리 배경 바로 위, 3D 씬 뒤. Sky Layer에만 띄운다.
@@ -1104,31 +1166,51 @@ namespace _SAIUN.Editor
             rt.anchoredPosition = Vector2.zero;
             rt.sizeDelta = new Vector2(0f, SceneMetrics.SkyLayerHeight);
 
+            // 예전 스프라이트 구름 틀(Image)은 셰이더 구름 틀(RawImage)로 바꾼다. 한 오브젝트에 Graphic은 하나뿐이다.
             Transform templateChild = clouds.transform.Find("CloudTemplate");
+            if (templateChild != null && templateChild.GetComponent<RawImage>() == null)
+            {
+                Object.DestroyImmediate(templateChild.gameObject);
+                templateChild = null;
+            }
             GameObject template = templateChild != null
                 ? templateChild.gameObject
-                : new GameObject("CloudTemplate", typeof(RectTransform), typeof(Image));
+                : new GameObject("CloudTemplate", typeof(RectTransform), typeof(RawImage));
             template.transform.SetParent(clouds.transform, false);
-            var image = template.GetComponent<Image>();
+            var image = template.GetComponent<RawImage>();
+            image.material = WeatherArtBuilder.EnsureCloudMaterial();
             image.raycastTarget = false;
             template.SetActive(false);
 
-            Sprite[] sprites = WeatherArtBuilder.EnsureCloudSprites();
-
             var so = new SerializedObject(clouds.GetComponent<CloudLayer>());
             so.FindProperty("weather").objectReferenceValue = weather;
+            so.FindProperty("sun").objectReferenceValue = Object.FindFirstObjectByType<SunOrbitController>();
             so.FindProperty("area").objectReferenceValue = rt;
             so.FindProperty("cloudTemplate").objectReferenceValue = image;
-            // 시계 글자 뒤로 지나가도 대비가 남도록 옅게 둔다(0.45는 글자가 흐려졌다).
-            so.FindProperty("clearColor").colorValue = SaiunPalette.WithAlpha(SaiunPalette.Eggshell, 0.32f);
-            SerializedProperty spriteList = so.FindProperty("sprites");
-            spriteList.arraySize = sprites.Length;
-            for (int i = 0; i < sprites.Length; i++) spriteList.GetArrayElementAtIndex(i).objectReferenceValue = sprites[i];
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 구름이 시계 글자 뒤로 지나가면 옅어지게 한다. 시계는 구름보다 나중에 만들어져 따로 잇는다.
+        private static void KeepCloudsOffHud(Transform backdropCanvas, Transform hud)
+        {
+            Transform clouds = backdropCanvas.Find("Clouds");
+            if (clouds == null || hud == null) return;
+            var texts = new System.Collections.Generic.List<TMP_Text>();
+            foreach (string name in new[] { "PrimaryText", "SecondaryText" })
+            {
+                Transform child = hud.Find(name);
+                if (child != null && child.TryGetComponent(out TMP_Text text)) texts.Add(text);
+            }
+
+            var so = new SerializedObject(clouds.GetComponent<CloudLayer>());
+            SerializedProperty list = so.FindProperty("keepClear");
+            list.arraySize = texts.Count;
+            for (int i = 0; i < texts.Count; i++) list.GetArrayElementAtIndex(i).objectReferenceValue = texts[i];
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // 비: 카메라 자식으로 화면 위쪽 가장자리 밖에서 생겨 아래로 떨어진다.
-        private static void EnsureRain(Camera camera, WeatherController weather)
+        private static RainEffect EnsureRain(Camera camera, WeatherController weather)
         {
             Transform existing = camera.transform.Find("Rain");
             GameObject rainGo = existing != null ? existing.gameObject : new GameObject("Rain");
@@ -1185,6 +1267,294 @@ namespace _SAIUN.Editor
             so.FindProperty("rain").objectReferenceValue = rain;
             so.FindProperty("fallSpeed").floatValue = RainFallSpeed;
             so.ApplyModifiedPropertiesWithoutUndo();
+            return effect;
+        }
+
+        // 빗방울이 화분·흙에 부딪혀 튀는 물방울. RainEffect가 화단 위 아무 곳에 Emit한다.
+        private static void EnsureSplash(RainEffect rain, Flowerbed bed)
+        {
+            ParticleSystem splash = EnsureParticles(bed.transform, "RainSplash", WeatherArtBuilder.EnsureRainMaterial(), ps =>
+            {
+                ParticleSystem.MainModule main = ps.main;
+                main.duration = 1f;
+                main.loop = false;
+                main.playOnAwake = false;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(SplashLifetime * 0.7f, SplashLifetime);
+                main.startSpeed = new ParticleSystem.MinMaxCurve(SplashSpeedMin, SplashSpeedMax);
+                main.startSize = new ParticleSystem.MinMaxCurve(SplashDropSize * 0.6f, SplashDropSize);
+                main.startColor = Color.white;
+                main.gravityModifier = SplashGravity;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                main.maxParticles = RainMaxParticles / 4;
+
+                ParticleSystem.EmissionModule emission = ps.emission;
+                emission.rateOverTime = 0f;
+
+                // 위로 벌어지는 작은 왕관 모양
+                ParticleSystem.ShapeModule shape = ps.shape;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle = 35f;
+                shape.radius = 0.01f;
+                shape.rotation = new Vector3(-90f, 0f, 0f);
+
+                ParticleSystem.ColorOverLifetimeModule fade = ps.colorOverLifetime;
+                fade.enabled = true;
+                fade.color = AlphaGradient(new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f));
+            });
+
+            Vector2 grid = bed.GridSize;
+            float rim = bed.RimWidth * 2f;
+            var so = new SerializedObject(rain);
+            so.FindProperty("splash").objectReferenceValue = splash;
+            so.FindProperty("splashArea").objectReferenceValue = bed.transform;
+            so.FindProperty("splashSize").vector2Value = new Vector2(grid.x + rim, grid.y + rim);
+            so.FindProperty("splashHeight").floatValue = bed.SurfaceHeight;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 눈에 보이는 바람: 카메라 자식이라 화면 기준으로 흐른다. 카드 안에서만 지나간다.
+        private static void EnsureWind(Camera camera, WeatherController weather)
+        {
+            Transform existing = camera.transform.Find("Wind");
+            GameObject windGo = existing != null ? existing.gameObject : new GameObject("Wind");
+            windGo.transform.SetParent(camera.transform, false);
+            // 카메라가 다리 영역 절반만큼 내려가 있어 카드 한가운데는 카메라 위쪽에 있다.
+            windGo.transform.localPosition = new Vector3(0f, SceneMetrics.CameraDownShift + WindBandLift, WindDepth);
+            windGo.transform.localRotation = Quaternion.identity;
+
+            float cardWidth = SceneMetrics.PixelsToWorld(SceneMetrics.WindowWidth);
+            float bandHeight = SceneMetrics.PixelsToWorld(SceneMetrics.WindowHeight) * WindBandHeight;
+
+            Material windMaterial = WeatherArtBuilder.EnsureWindMaterial();
+            ParticleSystem streaks = EnsureParticles(windGo.transform, "Streaks", windMaterial, ps =>
+            {
+                ParticleSystem.MainModule main = ps.main;
+                main.duration = 1f;
+                main.loop = true;
+                main.playOnAwake = true;
+                main.startLifetime = new ParticleSystem.MinMaxCurve(WindStreakLifetimeMin, WindStreakLifetimeMax);
+                main.startSpeed = 0f;
+                main.startSize = WindStreakWidth;
+                main.startColor = new Color(1f, 1f, 1f, WindStreakAlpha);
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+                // 머리 알갱이는 그리지 않고 꼬리만 그린다. 가운데가 굵고 양 끝이 가늘다.
+                ParticleSystem.TrailModule trails = ps.trails;
+                trails.enabled = true;
+                trails.mode = ParticleSystemTrailMode.PerParticle;
+                trails.ratio = 1f;
+                trails.lifetime = WindStreakTrail;
+                trails.minVertexDistance = WindStreakVertexSpacing;
+                trails.worldSpace = false;
+                trails.dieWithParticles = true;
+                trails.inheritParticleColor = true;
+                trails.sizeAffectsWidth = true;
+                trails.textureMode = ParticleSystemTrailTextureMode.Stretch;
+                trails.widthOverTrail = new ParticleSystem.MinMaxCurve(1f,
+                    new AnimationCurve(new Keyframe(0f, 0f), new Keyframe(0.5f, 1f), new Keyframe(1f, 0f)));
+
+                ParticleSystem.NoiseModule noise = ps.noise;
+                noise.enabled = true;
+                noise.strength = WindStreakWave;
+                noise.frequency = WindStreakWaveFrequency;
+                noise.scrollSpeed = WindStreakWaveFrequency;
+                noise.damping = true;
+
+                ParticleSystem.EmissionModule emission = ps.emission;
+                emission.rateOverTime = 0f;
+
+                // 카드 전체에서 생겨 잠깐 흐르다 사라진다.
+                ParticleSystem.ShapeModule shape = ps.shape;
+                shape.shapeType = ParticleSystemShapeType.Box;
+                shape.position = Vector3.zero;
+                shape.scale = new Vector3(cardWidth, bandHeight, 0.3f);
+
+                ParticleSystem.VelocityOverLifetimeModule velocity = ps.velocityOverLifetime;
+                velocity.enabled = true;
+                velocity.space = ParticleSystemSimulationSpace.Local;
+                velocity.x = 0f;
+                velocity.y = 0f;
+                velocity.z = 0f;
+
+                ParticleSystem.ColorOverLifetimeModule fade = ps.colorOverLifetime;
+                fade.enabled = true;
+                fade.color = AlphaGradient(
+                    new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.3f), new GradientAlphaKey(0f, 1f));
+            });
+            var streakRenderer = streaks.GetComponent<ParticleSystemRenderer>();
+            streakRenderer.renderMode = ParticleSystemRenderMode.None;
+            streakRenderer.trailMaterial = windMaterial;
+
+            ParticleSystem leaves = EnsureParticles(windGo.transform, "Leaves", WeatherArtBuilder.EnsureLeafMaterial(), ps =>
+            {
+                ParticleSystem.MainModule main = ps.main;
+                main.duration = 1f;
+                main.loop = true;
+                main.playOnAwake = true;
+                main.startLifetime = WindLeafLifetime;
+                main.startSpeed = 0f;
+                main.startSize = new ParticleSystem.MinMaxCurve(WindLeafSizeMin, WindLeafSizeMax);
+                main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+                main.startColor = new ParticleSystem.MinMaxGradient(SaiunPalette.JungleTeal, SaiunPalette.TeaGreen);
+                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+                ParticleSystem.EmissionModule emission = ps.emission;
+                emission.rateOverTime = 0f;
+
+                // 바람이 오는 쪽 가장자리의 세로 띠. 가로 위치는 WindEffect가 바람 방향에 맞춘다.
+                ParticleSystem.ShapeModule shape = ps.shape;
+                shape.shapeType = ParticleSystemShapeType.Box;
+                shape.position = Vector3.zero;
+                shape.scale = new Vector3(0.1f, bandHeight, 0.3f);
+
+                ParticleSystem.VelocityOverLifetimeModule velocity = ps.velocityOverLifetime;
+                velocity.enabled = true;
+                velocity.space = ParticleSystemSimulationSpace.Local;
+                velocity.x = 0f;
+                velocity.y = 0f;
+                velocity.z = 0f;
+
+                ParticleSystem.RotationOverLifetimeModule spin = ps.rotationOverLifetime;
+                spin.enabled = true;
+                spin.z = new ParticleSystem.MinMaxCurve(-WindLeafSpin, WindLeafSpin);
+
+                // 난류로 오르내리며 팔랑인다.
+                ParticleSystem.NoiseModule noise = ps.noise;
+                noise.enabled = true;
+                noise.strength = WindLeafFlutter;
+                noise.frequency = WindLeafFlutterFrequency;
+                noise.scrollSpeed = WindLeafFlutterFrequency;
+                noise.damping = true;
+
+                ParticleSystem.ColorOverLifetimeModule fade = ps.colorOverLifetime;
+                fade.enabled = true;
+                fade.color = AlphaGradient(
+                    new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.05f),
+                    new GradientAlphaKey(1f, 0.9f), new GradientAlphaKey(0f, 1f));
+            });
+
+            var effect = EnsureComponent<WindEffect>(windGo);
+            var so = new SerializedObject(effect);
+            so.FindProperty("weather").objectReferenceValue = weather;
+            so.FindProperty("streaks").objectReferenceValue = streaks;
+            so.FindProperty("leaves").objectReferenceValue = leaves;
+            so.FindProperty("edgeOffset").floatValue = cardWidth / 2f + RainMargin / 2f;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 풍향계와 풍속계: 화분 뒤 모서리(+X,+Z) 테두리 위에 선다. 기둥 그림자가 해를 따라 늘었다 줄었다 한다.
+        private static void EnsureWeatherVane(Flowerbed bed, WeatherController weather)
+        {
+            Shader lit = Shader.Find(LitShaderName);
+            if (lit == null) return;
+            Material metal = EnsureMaterial(VaneMaterialPath, lit, m =>
+            {
+                m.SetColor("_BaseColor", SaiunPalette.DeepJungle);
+                m.SetFloat("_Smoothness", VaneSmoothness);
+            });
+            Material accent = EnsureMaterial(VaneAccentMaterialPath, lit, m =>
+            {
+                m.SetColor("_BaseColor", SaiunPalette.TropicalTeal);
+                m.SetFloat("_Smoothness", VaneSmoothness);
+            });
+
+            Transform root = EnsureChild(bed.transform, "WeatherVane");
+            Vector2 grid = bed.GridSize;
+            float corner = bed.RimWidth / 2f;
+            root.localPosition = new Vector3(grid.x / 2f + corner, bed.RimHeight, grid.y / 2f + corner);
+            root.localRotation = Quaternion.identity;
+            root.localScale = Vector3.one;
+
+            // Cylinder 기본 높이는 2다.
+            Place(EnsurePrimitiveChild(root, "Pole", PrimitiveType.Cylinder, metal, ShadowCastingMode.On),
+                new Vector3(0f, VanePoleHeight / 2f, 0f), Quaternion.identity,
+                new Vector3(VanePoleThickness, VanePoleHeight / 2f, VanePoleThickness));
+
+            // 동서남북 막대: 방향을 읽는 기준. 월드 축에 고정이다.
+            float compassY = VanePoleHeight * VaneCompassHeight;
+            Place(EnsurePrimitiveChild(root, "CompassX", PrimitiveType.Cube, metal, ShadowCastingMode.On),
+                new Vector3(0f, compassY, 0f), Quaternion.identity,
+                new Vector3(VaneCompassLength, VaneBarThickness / 2f, VaneBarThickness / 2f));
+            Place(EnsurePrimitiveChild(root, "CompassZ", PrimitiveType.Cube, metal, ShadowCastingMode.On),
+                new Vector3(0f, compassY, 0f), Quaternion.identity,
+                new Vector3(VaneBarThickness / 2f, VaneBarThickness / 2f, VaneCompassLength));
+
+            // 화살표: 앞(+Z)이 화살촉, 뒤가 바람을 받는 꼬리 날개다.
+            Transform vane = EnsureChild(root, "Vane");
+            vane.localPosition = new Vector3(0f, VanePoleHeight, 0f);
+            vane.localScale = Vector3.one;
+            Place(EnsurePrimitiveChild(vane, "Shaft", PrimitiveType.Cube, metal, ShadowCastingMode.On),
+                Vector3.zero, Quaternion.identity,
+                new Vector3(VaneBarThickness, VaneBarThickness, VaneShaftLength));
+            Place(EnsurePrimitiveChild(vane, "Head", PrimitiveType.Cube, accent, ShadowCastingMode.On),
+                new Vector3(0f, 0f, VaneShaftLength / 2f), Quaternion.Euler(0f, 45f, 0f),
+                new Vector3(VaneHeadSize, VaneBarThickness, VaneHeadSize));
+            Place(EnsurePrimitiveChild(vane, "Tail", PrimitiveType.Cube, accent, ShadowCastingMode.On),
+                new Vector3(0f, VaneTailHeight / 4f, -VaneShaftLength / 2f + VaneTailLength / 2f), Quaternion.identity,
+                new Vector3(VaneBarThickness / 2f, VaneTailHeight, VaneTailLength));
+
+            // 풍속계: 화살표 위에서 컵 세 개가 돈다.
+            Place(EnsurePrimitiveChild(root, "CupStem", PrimitiveType.Cylinder, metal, ShadowCastingMode.On),
+                new Vector3(0f, VanePoleHeight + CupsLift / 2f, 0f), Quaternion.identity,
+                new Vector3(VaneBarThickness, CupsLift / 2f, VaneBarThickness));
+            Transform cups = EnsureChild(root, "Cups");
+            cups.localPosition = new Vector3(0f, VanePoleHeight + CupsLift, 0f);
+            cups.localScale = Vector3.one;
+            for (int i = 0; i < CupCount; i++)
+            {
+                Transform arm = EnsureChild(cups, $"Arm_{i}");
+                arm.localPosition = Vector3.zero;
+                arm.localRotation = Quaternion.Euler(0f, 360f / CupCount * i, 0f);
+                arm.localScale = Vector3.one;
+                Place(EnsurePrimitiveChild(arm, "Rod", PrimitiveType.Cube, metal, ShadowCastingMode.On),
+                    new Vector3(0f, 0f, CupArmLength / 2f), Quaternion.identity,
+                    new Vector3(VaneBarThickness / 2f, VaneBarThickness / 2f, CupArmLength));
+                // 접선 방향으로 납작한 컵. 바람을 받는 오목한 면이 한쪽을 향한다.
+                Place(EnsurePrimitiveChild(arm, "Cup", PrimitiveType.Sphere, accent, ShadowCastingMode.On),
+                    new Vector3(0f, 0f, CupArmLength), Quaternion.identity,
+                    new Vector3(CupSize / 2f, CupSize, CupSize));
+            }
+
+            var component = EnsureComponent<WeatherVane>(root.gameObject);
+            var so = new SerializedObject(component);
+            so.FindProperty("weather").objectReferenceValue = weather;
+            so.FindProperty("vane").objectReferenceValue = vane;
+            so.FindProperty("cups").objectReferenceValue = cups;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 비에 젖는 흙·화분. 작물은 런타임에 생겨서 넣지 않는다.
+        private static void EnsureSurfaceWetness(Flowerbed bed, WeatherController weather)
+        {
+            var surfaces = new System.Collections.Generic.List<Renderer>();
+            Transform planter = bed.transform.Find("Planter");
+            if (planter != null && planter.TryGetComponent(out Renderer planterRenderer)) surfaces.Add(planterRenderer);
+            Transform soil = bed.transform.Find("Soil");
+            if (soil != null) surfaces.AddRange(soil.GetComponentsInChildren<Renderer>(true));
+
+            var wetness = EnsureComponent<SurfaceWetness>(bed.gameObject);
+            var so = new SerializedObject(wetness);
+            so.FindProperty("weather").objectReferenceValue = weather;
+            SerializedProperty list = so.FindProperty("surfaces");
+            list.arraySize = surfaces.Count;
+            for (int i = 0; i < surfaces.Count; i++) list.GetArrayElementAtIndex(i).objectReferenceValue = surfaces[i];
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static Transform EnsureChild(Transform parent, string name)
+        {
+            Transform child = parent.Find(name);
+            if (child != null) return child;
+            child = new GameObject(name).transform;
+            child.SetParent(parent, false);
+            return child;
+        }
+
+        private static void Place(Transform target, Vector3 position, Quaternion rotation, Vector3 scale)
+        {
+            target.localPosition = position;
+            target.localRotation = rotation;
+            target.localScale = scale;
         }
 
         // 빛 알갱이용 가산 재질. URP 머티리얼 인스펙터가 블렌드 모드를 고를 때 넣는 값을 직접 넣는다.

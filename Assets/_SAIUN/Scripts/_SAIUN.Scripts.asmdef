@@ -8,7 +8,9 @@
         "Gilzoide.SqliteNet",
         "VRM10",
         "UniGLTF",
-        "UniHumanoid"
+        "UniHumanoid",
+        "SpringBoneJobs",
+        "Unity.Mathematics"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
