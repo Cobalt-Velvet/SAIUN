@@ -281,6 +281,9 @@ namespace _SAIUN.Editor
             Button tutorial = WideButton(content, "Tutorial", "튜토리얼 다시 보기", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
             Button resetData = WideButton(content, "ResetData", "전체 데이터 초기화", SaiunPalette.Warning, SaiunPalette.OnMainPoint);
 
+            Section(content, "앱");
+            Button quit = WideButton(content, "Quit", "SAIUN 종료", RowColor, SaiunPalette.Eggshell);
+
             GameObject rowTemplate = ListRowTemplate(screen);
             MessageDialogView dialog = EnsureDialog(canvas, rebuild);
 
@@ -314,6 +317,7 @@ namespace _SAIUN.Editor
             so.FindProperty("inventoryText").objectReferenceValue = inventory;
             so.FindProperty("tutorialButton").objectReferenceValue = tutorial;
             so.FindProperty("resetDataButton").objectReferenceValue = resetData;
+            so.FindProperty("quitButton").objectReferenceValue = quit;
             so.FindProperty("resetDataLabel").objectReferenceValue = resetData.GetComponentInChildren<TMP_Text>();
             so.ApplyModifiedPropertiesWithoutUndo();
 

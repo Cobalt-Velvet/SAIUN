@@ -259,6 +259,46 @@ namespace _SAIUN.Tests
             Assert.IsFalse(_settings.IsOpen, "튜토리얼이 보이도록 설정을 닫는다");
         }
 
+        [Test]
+        public void 종료는_확인을_받고_진행_중인_세션을_정지로_기록한_뒤_끈다()
+        {
+            bool quit = false;
+            Gm.OnQuitRequested += () => quit = true;
+            Gm.RequestStart();
+            OpenSettings();
+
+            Button(_settings, "quitButton").onClick.Invoke();
+            MessageDialogView dialog = Get<MessageDialogView>(_settings, "dialog");
+            Assert.IsTrue(dialog.IsShowing, "바로 끄지 않고 확인을 받는다");
+            Assert.IsFalse(quit);
+            StringAssert.Contains("정지", dialog.Body);
+
+            dialog.Close();
+            Assert.IsFalse(quit, "취소하면 끄지 않는다");
+        }
+
+        [Test]
+        public void 종료_요청은_세션을_기록한다()
+        {
+            // RequestQuit은 에디터 재생을 멈추므로, 기록 순서만 확인하려고 종료 이벤트에서 결과를 본다.
+            int sessionsAtQuit = -1;
+            Gm.OnQuitRequested += () => sessionsAtQuit = Gm.Database.GetSessionCount();
+            Gm.RequestStart();
+
+            QuitWithoutStopping();
+            Assert.AreEqual(1, sessionsAtQuit, "끄기 전에 진행 중 세션을 기록한다");
+            Assert.AreEqual(PomodoroState.Idle, Gm.StateMachine.CurrentState);
+        }
+
+        // RequestQuit 안의 에디터 정지를 피하려고 같은 정리 단계만 밟는다.
+        private void QuitWithoutStopping()
+        {
+            System.Reflection.MethodInfo method = typeof(GameManager).GetMethod("PrepareQuit",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            Assert.IsNotNull(method, "PrepareQuit이 없다");
+            method.Invoke(Gm, null);
+        }
+
         // ---- 도우미 ----
 
         private void OpenSettings()

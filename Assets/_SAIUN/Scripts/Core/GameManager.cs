@@ -71,6 +71,9 @@ namespace _SAIUN.Scripts.Core
         /// <summary>튜토리얼을 다시 보여 달라는 요청. 튜토리얼 뷰가 구독한다.</summary>
         public event Action OnTutorialRequested;
 
+        /// <summary>앱을 끄기 직전. 세션 기록은 이미 끝난 뒤다. 테스트에서 종료를 가로챌 때도 쓴다.</summary>
+        public event Action OnQuitRequested;
+
         private SessionConfig _currentConfig;
         private string _sessionStartTime;
         private bool _hasFocus = true;
@@ -285,6 +288,33 @@ namespace _SAIUN.Scripts.Core
             database.DeleteAllRows();
             OnDataReset?.Invoke();
             return true;
+        }
+
+        /// <summary>
+        /// 앱을 끈다. 진행 중인 세션은 정지 버튼을 누른 것처럼 먼저 기록한 뒤 끈다.
+        /// 에디터에서는 재생만 멈춘다.
+        /// </summary>
+        public void RequestQuit()
+        {
+            PrepareQuit();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+
+        // 세션을 정리하고 종료를 알린다. 테스트는 실제로 끄지 않고 이것만 부른다.
+        private void PrepareQuit()
+        {
+            if (stateMachine != null && stateMachine.CurrentState != PomodoroState.Idle)
+            {
+                // 유예·실패 중에는 Idle로 바로 갈 수 없어 전이표를 따라 정리한다.
+                if (stateMachine.CurrentState == PomodoroState.Interrupted) stateMachine.ChangeState(PomodoroState.Failed);
+                if (stateMachine.CurrentState == PomodoroState.Failed) stateMachine.ChangeState(PomodoroState.Idle);
+                else timer.Cancel();
+            }
+            OnQuitRequested?.Invoke();
         }
 
         /// <summary>작물을 심을 수 있게 해금됐는지. 기본 작물은 항상 참이다.</summary>

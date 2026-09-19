@@ -75,6 +75,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private Button tutorialButton;
         [SerializeField] private Button resetDataButton;
         [SerializeField] private TMP_Text resetDataLabel;
+        [SerializeField] private Button quitButton;
 
         [Tooltip("초기화 확인 단계가 이 시간 안에 이어지지 않으면 처음으로 돌아간다(초)")]
         [SerializeField, Min(1f)] private float resetConfirmSeconds = 5f;
@@ -105,6 +106,10 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string unreadableMessage = "VRM 파일을 읽지 못했어요. 손상됐거나 지원하지 않는 버전일 수 있어요.\n지금 캐릭터를 그대로 둡니다.";
         [SerializeField] private string noHumanoidTitle = "포즈를 바꿀 수 없어요";
         [SerializeField] private string noHumanoidMessage = "뼈대 정보가 부족해 기본 자세로 둡니다.";
+        [SerializeField] private string quitTitle = "SAIUN을 끌까요?";
+        [SerializeField] private string quitIdleBody = "다음에 켜면 지금 설정 그대로 시작해요.";
+        [SerializeField] private string quitSessionBody = "진행 중인 세션은 정지한 것으로 기록돼요.";
+        [SerializeField] private string quitConfirm = "종료";
 
         /// <summary>화면이 열려 있는지.</summary>
         public bool IsOpen => screen != null && screen.activeSelf;
@@ -254,6 +259,18 @@ namespace _SAIUN.Scripts.UI
             }, cancelLabel);
         }
 
+        /// <summary>종료를 확인받는다. 세션 중이면 정지로 기록된다고 알린다.</summary>
+        public void ConfirmQuit()
+        {
+            bool running = gameManager.StateMachine.CurrentState != PomodoroState.Idle;
+            if (dialog == null)
+            {
+                gameManager.RequestQuit();
+                return;
+            }
+            dialog.Show(quitTitle, running ? quitSessionBody : quitIdleBody, quitConfirm, gameManager.RequestQuit, cancelLabel);
+        }
+
         /// <summary>테스트용 시계 교체.</summary>
         internal void SetClock(Func<float> clock)
         {
@@ -291,6 +308,7 @@ namespace _SAIUN.Scripts.UI
                 gameManager.RequestReplayTutorial();
             });
             if (resetDataButton != null) resetDataButton.onClick.AddListener(PressResetData);
+            if (quitButton != null) quitButton.onClick.AddListener(ConfirmQuit);
         }
 
         private static void AddFromInput(TMP_InputField input, Func<string, bool> add)
