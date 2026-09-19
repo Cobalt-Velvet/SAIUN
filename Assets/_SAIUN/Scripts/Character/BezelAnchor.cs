@@ -5,7 +5,9 @@ namespace _SAIUN.Scripts.Character
 {
     /// <summary>
     /// 캐릭터를 창 하단 베젤에 걸터앉힌다 (P3-02, 사양서 v1.1 2-2·8-3·8-4).
-    /// 엉덩이(Hips 본)가 유리 카드 아래 모서리(= 창 하단 베젤)의 지정 픽셀에 오도록 캐릭터 자리를 옮긴다.
+    /// 앉은 면(두 고관절 가운데에서 허벅지 두께만큼 아래, 곧 허벅지·엉덩이 아랫면)이
+    /// 유리 카드 아래 모서리(= 창 하단 베젤)의 지정 픽셀에 오도록 캐릭터 자리를 옮긴다.
+    /// 엉덩이 뼈를 선에 맞추면 선이 허벅지를 가로질러 선 위가 아니라 선에 꿰어 앉은 것처럼 보였다(2026-09-20 사용자 지적).
     /// 상반신은 카드 안에, 다리는 카드 아래 다리 영역(바탕화면 위)에 그려진다.
     /// 2026-09-19 사용자 지시: 베젤은 "하단"이다. 캐릭터는 정면(화면)을 본다.
     /// 카메라가 고정 Orthographic이라 픽셀 차이를 카메라 축 방향 이동으로 바꾸면 된다(8-4의 수식을 일반화).
@@ -19,20 +21,23 @@ namespace _SAIUN.Scripts.Character
         [SerializeField] private Transform characterRoot;
 
         [Header("자리 (실측 대기)")]
-        [Tooltip("엉덩이를 둘 창 픽셀 x. 사양서 2-3 '캐릭터 좌측'.")]
+        [Tooltip("앉을 창 픽셀 x. 사양서 2-3 '캐릭터 좌측'.")]
         [SerializeField] private float seatX = 84f;
 
-        [Tooltip("하단 베젤에서 엉덩이를 내리는 픽셀. 양수면 아래(창 밖)로 내려 앉는다.")]
+        [Tooltip("하단 베젤에서 앉은 면을 내리는 픽셀. 양수면 아래(창 밖)로 내려 앉는다.")]
         [SerializeField] private float seatDrop;
+
+        [Tooltip("고관절에서 허벅지 아랫면까지의 깊이(엉덩이 폭 단위). 이 아랫면이 베젤 선에 얹힌다.")]
+        [SerializeField, Min(0f)] private float thighDepth = 0.25f;
 
         [Tooltip("화면을 정면으로 보게 돌린다")]
         [SerializeField] private bool faceViewer = true;
 
-        /// <summary>엉덩이를 둘 창 픽셀(카드 기준, y는 아래로).</summary>
+        /// <summary>앉은 면을 둘 창 픽셀(카드 기준, y는 아래로).</summary>
         public Vector2 SeatPixel => new Vector2(seatX, SceneMetrics.WindowHeight + seatDrop);
 
-        /// <summary>마지막으로 잰 엉덩이 픽셀.</summary>
-        public Vector2 HipPixel { get; private set; }
+        /// <summary>마지막으로 잰 앉은 면의 픽셀.</summary>
+        public Vector2 ContactPixel { get; private set; }
 
         private Animator _animator;
 
@@ -54,31 +59,47 @@ namespace _SAIUN.Scripts.Character
             if (loader != null) loader.OnCharacterLoaded -= Bind;
         }
 
-        // 포즈(Update) 뒤에 맞춘다. 엉덩이 높이는 다리를 흔들어도 변하지 않아, 처음 한 번 옮긴 뒤로는 거의 움직이지 않는다.
+        // 포즈(Update) 뒤에 맞춘다. 앉은 면은 발을 까딱여도 변하지 않아, 처음 한 번 옮긴 뒤로는 거의 움직이지 않는다.
         private void LateUpdate()
         {
             Align();
         }
 
-        /// <summary>엉덩이를 자리 픽셀에 맞춘다. 테스트는 직접 부른다.</summary>
+        /// <summary>앉은 면을 자리 픽셀에 맞춘다. 테스트는 직접 부른다.</summary>
         internal void Align()
         {
             if (_animator == null) return;
-            Transform hips = _animator.GetBoneTransform(HumanBodyBones.Hips);
-            if (hips == null) return;
 
             Quaternion camera = SceneMetrics.CameraRotation;
             // 카메라를 마주 보게: 모델 앞(+Z)이 카메라 쪽, 위가 화면 위.
             if (faceViewer) characterRoot.rotation = Quaternion.LookRotation(-(camera * Vector3.forward), camera * Vector3.up);
 
-            HipPixel = SceneMetrics.WorldToWindowPixels(hips.position);
-            Vector2 delta = SeatPixel - HipPixel;
+            if (!TryGetSeatSurface(out Vector3 seat)) return;
+            ContactPixel = SceneMetrics.WorldToWindowPixels(seat);
+            Vector2 delta = SeatPixel - ContactPixel;
             if (delta.sqrMagnitude < 0.0001f) return;
 
             // 화면 y는 아래로 늘어나므로 위쪽 축에는 부호를 뒤집어 준다.
             characterRoot.position += camera * Vector3.right * SceneMetrics.PixelsToWorld(delta.x)
                                       - camera * Vector3.up * SceneMetrics.PixelsToWorld(delta.y);
-            HipPixel = SeatPixel;
+            ContactPixel = SeatPixel;
+        }
+
+        /// <summary>
+        /// 앉은 면의 월드 위치: 두 고관절 가운데에서 허벅지 두께만큼 몸 아래쪽.
+        /// 손으로 짚을 높이도 이 면을 기준으로 잡는다(CharacterPose).
+        /// </summary>
+        internal bool TryGetSeatSurface(out Vector3 point)
+        {
+            point = default;
+            if (_animator == null) return false;
+            Transform left = _animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg);
+            Transform right = _animator.GetBoneTransform(HumanBodyBones.RightUpperLeg);
+            if (left == null || right == null) return false;
+
+            float hipWidth = Vector3.Distance(left.position, right.position);
+            point = (left.position + right.position) / 2f - _animator.transform.up * (thighDepth * hipWidth);
+            return true;
         }
 
         private void Bind(GameObject model)

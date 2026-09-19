@@ -89,9 +89,8 @@ namespace _SAIUN.Editor
 
             Build(canvas, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath), gameManager, bar, rebuild: true);
 
-            // 알림·유리 테두리·모서리 지우개는 설정 화면·튜토리얼보다 위에 있어야 한다.
+            // 알림·모서리 지우개는 설정 화면·튜토리얼보다 위에 있어야 한다. 유리 테두리는 하단 바 캔버스에 있다.
             canvas.Find("ScreenAlert")?.SetAsLastSibling();
-            canvas.Find("GlassRim")?.SetAsLastSibling();
             canvas.Find("CardCorners")?.SetAsLastSibling();
 
             EditorSceneManager.MarkSceneDirty(scene);

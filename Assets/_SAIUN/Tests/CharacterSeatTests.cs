@@ -54,12 +54,18 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 엉덩이는_창_하단_베젤의_자리_픽셀에_있다()
+        public void 허벅지_아랫면이_창_하단_베젤_선에_얹힌다()
         {
-            Vector2 hip = Pixel(HumanBodyBones.Hips);
             Assert.AreEqual(SceneMetrics.WindowHeight, _anchor.SeatPixel.y, 0.001f, "하단 베젤 = 카드 아래 모서리");
-            Assert.AreEqual(_anchor.SeatPixel.x, hip.x, 0.5f);
-            Assert.AreEqual(_anchor.SeatPixel.y, hip.y, 0.5f);
+            Assert.IsTrue(_anchor.TryGetSeatSurface(out Vector3 seat));
+            Vector2 contact = SceneMetrics.WorldToWindowPixels(seat);
+            Assert.AreEqual(_anchor.SeatPixel.x, contact.x, 0.5f);
+            Assert.AreEqual(_anchor.SeatPixel.y, contact.y, 0.5f);
+
+            // 선이 허벅지를 가로지르지 않는다: 고관절과 엉덩이 뼈는 선보다 위(카드 안)에 있다.
+            Assert.Less(Pixel(HumanBodyBones.LeftUpperLeg).y, SceneMetrics.WindowHeight);
+            Assert.Less(Pixel(HumanBodyBones.RightUpperLeg).y, SceneMetrics.WindowHeight);
+            Assert.Less(Pixel(HumanBodyBones.Hips).y, SceneMetrics.WindowHeight);
         }
 
         [Test]
@@ -132,8 +138,8 @@ namespace _SAIUN.Tests
             Vector2 hip = Pixel(HumanBodyBones.Hips);
             Vector2 near = SceneMetrics.WorldToWindowPixels(nearWrist.position);
             Vector2 prop = SceneMetrics.WorldToWindowPixels(propWrist.position);
-            Assert.AreEqual(SceneMetrics.WindowHeight, near.y, 30f, "가까운 손이 베젤을 짚는다");
-            Assert.AreEqual(SceneMetrics.WindowHeight, prop.y, 30f, "기대는 손이 베젤을 짚는다");
+            Assert.AreEqual(SceneMetrics.WindowHeight, near.y, 15f, "가까운 손이 베젤을 짚는다");
+            Assert.AreEqual(SceneMetrics.WindowHeight, prop.y, 15f, "기대는 손이 베젤을 짚는다");
             Assert.Greater(Mathf.Abs(prop.x - hip.x), Mathf.Abs(near.x - hip.x), "기대는 손이 더 멀리 짚는다");
             Assert.Less((prop.x - hip.x) * (near.x - hip.x), 0f, "두 손은 엉덩이 양옆에 있다");
         }

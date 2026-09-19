@@ -31476,7 +31476,6 @@ RectTransform:
   - {fileID: 154259887}
   - {fileID: 910399266}
   - {fileID: 1435504443}
-  - {fileID: 1335322149}
   - {fileID: 279971824}
   m_Father: {fileID: 1110599679}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -42995,7 +42994,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 790618099}
+  m_Father: {fileID: 2093565645}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
@@ -60704,6 +60703,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Character.CharacterPose
   loader: {fileID: 2066538696}
+  anchor: {fileID: 2066538699}
   rightOverLeft: 1
   bottomThighForward: -0.42
   bottomKneeBend: -0.12
@@ -60715,8 +60715,8 @@ MonoBehaviour:
   recline: -0.6
   chestRecline: -0.3
   leanToProp: 0.2
-  nearHand: {x: 1.4, y: -0.1, z: -1.2}
-  propHand: {x: 2.6, y: -0.1, z: -1}
+  nearHand: {x: 1.4, y: 0.1, z: -1.2}
+  propHand: {x: 2, y: 0.1, z: -0.5}
   elbowHint: {x: 0.15, y: 0, z: -1}
   armsDown: -0.62
   wristBend: 0.5
@@ -60738,6 +60738,7 @@ MonoBehaviour:
   characterRoot: {fileID: 2066538697}
   seatX: 84
   seatDrop: 0
+  thighDepth: 0.25
   faceViewer: 1
 --- !u!114 &2066538700
 MonoBehaviour:
@@ -61052,6 +61053,7 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1891241836}
+  - {fileID: 1335322149}
   m_Father: {fileID: 151438021}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}

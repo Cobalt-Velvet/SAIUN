@@ -524,7 +524,7 @@ namespace _SAIUN.Editor
 
             EnsureScreenAlert(uiCard, gameManager);
             EnsureSound(gameManager);
-            EnsureGlassRim(uiCard);
+            EnsureGlassRim(barCard, uiCard);
             EnsureCardCorners(uiCard);
 
             EditorSceneManager.MarkSceneDirty(scene);
@@ -777,14 +777,16 @@ namespace _SAIUN.Editor
         }
 
         // 유리 테두리 하이라이트. 창 가장자리를 따라 그리므로 캔버스에서 가장 위에 둔다.
-        private static void EnsureGlassRim(Transform canvas)
+        // 유리 테두리는 하단 바와 같은 카메라 공간 캔버스에 둔다. 캐릭터가 베젤에 앉아 테두리 앞에 있으므로
+        // 오버레이에 두면 아래 테두리 선이 허벅지 위로 그어진다(2026-09-20 사용자 지적). 예전 오버레이 테두리는 옮긴다.
+        private static void EnsureGlassRim(Transform barCard, Transform uiCard)
         {
-            Transform existing = canvas.Find("GlassRim");
+            Transform existing = barCard.Find("GlassRim") ?? uiCard.Find("GlassRim");
             GameObject rim = existing != null
                 ? existing.gameObject
                 : new GameObject("GlassRim", typeof(RectTransform), typeof(RawImage), typeof(GlassRimView));
 
-            rim.transform.SetParent(canvas, false);
+            rim.transform.SetParent(barCard, false);
             rim.transform.SetAsLastSibling();   // 하단 바보다 위에 그려야 테두리가 끊기지 않는다
 
             var rt = rim.GetComponent<RectTransform>();
@@ -1071,6 +1073,7 @@ namespace _SAIUN.Editor
 
             var poseSo = new SerializedObject(pose);
             poseSo.FindProperty("loader").objectReferenceValue = loader;
+            poseSo.FindProperty("anchor").objectReferenceValue = anchor;
             poseSo.ApplyModifiedPropertiesWithoutUndo();
 
             // 바람에 머리카락·옷자락이 날리고, 비에 젖는다(P3-05).

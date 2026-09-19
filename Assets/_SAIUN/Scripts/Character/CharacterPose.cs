@@ -7,7 +7,7 @@ namespace _SAIUN.Scripts.Character
     /// 하단 베젤에 걸터앉아 다리를 꼬고, 상체를 조금 젖혀 두 손으로 베젤을 짚는다. 위에 올린 발을 가볍게 까딱인다.
     /// 상태별 포즈(사양서 v1.1 8-6)는 클립이 생기면 여기에 붙인다.
     /// 몸통·다리는 휴머노이드 근육값으로 만들어 모델마다 뼈 축이 달라도 같게 먹는다.
-    /// 손은 근육값으로는 모델 체형마다 닿는 곳이 달라, 엉덩이 기준 목표점에 두 관절 IK로 짚게 한다.
+    /// 손은 근육값으로는 모델 체형마다 닿는 곳이 달라, 앉은 면(BezelAnchor) 기준 목표점에 두 관절 IK로 짚게 한다.
     /// 근육값 기준(실측): 허벅지 Front-Back −0.67이면 수평, −1이면 30° 더 들린다. 정강이 Stretch 1이 폄, −0.12면 수평 허벅지에서 수직.
     /// 단, 허리를 젖히면 유니티가 몸 중심 방향을 지키려고 골반을 뒤로 눕혀(젖힘 −0.6·−0.3에서 약 23°) 허벅지가 그만큼 들린다.
     /// 그래서 허벅지 값은 젖힌 상태에서 수평이 되도록 잡았다.
@@ -15,6 +15,9 @@ namespace _SAIUN.Scripts.Character
     public class CharacterPose : MonoBehaviour
     {
         [SerializeField] private VrmLoader loader;
+
+        [Tooltip("앉은 면을 알려 준다. 손은 이 면을 짚는다. 없으면 엉덩이 뼈 높이를 쓴다.")]
+        [SerializeField] private BezelAnchor anchor;
 
         [Header("다리 꼬기 (근육값 −1~1, 실측 대기)")]
         [Tooltip("오른 다리를 위로 꼰다. 끄면 왼 다리가 위다. 베젤을 짚고 기대는 팔은 위 다리의 반대쪽이다.")]
@@ -51,13 +54,13 @@ namespace _SAIUN.Scripts.Character
         [Tooltip("기대는 팔 쪽으로 허리를 기울이는 정도(Spine Left-Right)")]
         [SerializeField, Range(-1f, 1f)] private float leanToProp = 0.2f;
 
-        [Header("손 짚기 (엉덩이 폭 단위: x 바깥쪽, y 위, z 앞)")]
-        // 엉덩이 뼈가 베젤 선에 맞춰져 있어, 화면에서 베젤을 짚으려면 손목이 엉덩이 높이 근처에 와야 한다.
+        [Header("손 짚기 (앉은 면 기준, 엉덩이 폭 단위: x 바깥쪽, y 위, z 앞)")]
+        // 손목은 손바닥 두께만큼 앉은 면(= 베젤 선) 위에 둔다.
         [Tooltip("위 다리 쪽 손. 엉덩이 옆 조금 뒤를 짚는다.")]
-        [SerializeField] private Vector3 nearHand = new Vector3(1.4f, -0.1f, -1.2f);
+        [SerializeField] private Vector3 nearHand = new Vector3(1.4f, 0.1f, -1.2f);
 
         [Tooltip("반대쪽 손. 옆으로 멀리, 뒤를 짚어 몸을 기댄다.")]
-        [SerializeField] private Vector3 propHand = new Vector3(2.6f, -0.1f, -1f);
+        [SerializeField] private Vector3 propHand = new Vector3(2f, 0.1f, -0.5f);
 
         [Tooltip("팔꿈치가 향할 쪽(같은 단위 방향). 뒤로 굽혀야 정면에서 팔이 곧게 뻗어 보인다.")]
         [SerializeField] private Vector3 elbowHint = new Vector3(0.15f, 0f, -1f);
@@ -117,6 +120,7 @@ namespace _SAIUN.Scripts.Character
         private void Awake()
         {
             if (loader == null) loader = GetComponent<VrmLoader>();
+            if (anchor == null) anchor = GetComponent<BezelAnchor>();
             if (s_parts == null) FindMuscles();
         }
 
@@ -172,7 +176,7 @@ namespace _SAIUN.Scripts.Character
             PlaceHands(top);
         }
 
-        // 엉덩이 폭을 잣대로 두 손의 목표점을 정하고 팔을 뻗는다. 위 다리 쪽 손은 가까이, 반대쪽은 멀리 짚어 기댄다.
+        // 엉덩이 폭을 잣대로 앉은 면 위에 두 손의 목표점을 정하고 팔을 뻗는다. 위 다리 쪽 손은 가까이, 반대쪽은 멀리 짚어 기댄다.
         private void PlaceHands(int top)
         {
             Transform hips = _animator.GetBoneTransform(HumanBodyBones.Hips);
@@ -183,8 +187,9 @@ namespace _SAIUN.Scripts.Character
             float unit = Vector3.Distance(leftLeg.position, rightLeg.position);
             Transform body = _animator.transform;
 
-            NearHandTarget = BodyPoint(hips.position, body, unit, nearHand, top);
-            PropHandTarget = BodyPoint(hips.position, body, unit, propHand, 1 - top);
+            Vector3 origin = anchor != null && anchor.TryGetSeatSurface(out Vector3 seat) ? seat : hips.position;
+            NearHandTarget = BodyPoint(origin, body, unit, nearHand, top);
+            PropHandTarget = BodyPoint(origin, body, unit, propHand, 1 - top);
             Reach(top, NearHandTarget, BodyDirection(body, elbowHint, top));
             Reach(1 - top, PropHandTarget, BodyDirection(body, elbowHint, 1 - top));
         }
