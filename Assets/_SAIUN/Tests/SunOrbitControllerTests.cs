@@ -6,7 +6,10 @@ using UnityEngine;
 
 namespace _SAIUN.Tests
 {
-    /// <summary>P2-01: 진행률 0/0.5/1이 수평각 +70/0/−70으로 매핑되고, FOCUS에서만 갱신된다.</summary>
+    /// <summary>
+    /// P2-01: 진행률 0/0.5/1이 수평각 +70/0/−70으로 매핑되고, FOCUS에서만 갱신된다.
+    /// 고도는 해 뜰 때·질 때 낮고 한낮에 높아 그림자가 길어졌다 짧아진다(2026-09-19 사용자 지시).
+    /// </summary>
     public class SunOrbitControllerTests
     {
         private GameObject _go;
@@ -50,13 +53,68 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 적용하면_광원_회전이_수직45도_수평각이_된다()
+        public void 적용하면_광원이_그_진행률의_고도와_수평각이_된다()
         {
             _orbit.Apply(0.25f);
 
             Assert.AreEqual(35f, _orbit.HorizontalAngle, 0.001f);
-            float angle = Quaternion.Angle(_light.transform.rotation, Quaternion.Euler(45f, 35f, 0f));
+            float angle = Quaternion.Angle(_light.transform.rotation, Quaternion.Euler(_orbit.Elevation, 35f, 0f));
             Assert.Less(angle, 0.01f);
+        }
+
+        [Test]
+        public void 고도는_양_끝에서_낮고_한낮에_가장_높다()
+        {
+            Assert.AreEqual(22f, SunOrbitController.ElevationFor(0f, 22f, 68f), 0.001f);
+            Assert.AreEqual(68f, SunOrbitController.ElevationFor(0.5f, 22f, 68f), 0.001f);
+            Assert.AreEqual(22f, SunOrbitController.ElevationFor(1f, 22f, 68f), 0.001f);
+            Assert.AreEqual(
+                SunOrbitController.ElevationFor(0.2f, 22f, 68f),
+                SunOrbitController.ElevationFor(0.8f, 22f, 68f), 0.001f, "아침과 저녁이 대칭이다");
+        }
+
+        [Test]
+        public void 아침_그림자는_한낮보다_길다()
+        {
+            _orbit.Apply(0f);
+            float morning = ShadowLength();
+            _orbit.Apply(0.5f);
+            float noon = ShadowLength();
+
+            Assert.Greater(morning, noon * 3f, "높이 1인 물체의 그림자 길이");
+        }
+
+        [Test]
+        public void 고도_변화를_끄면_사양서의_45도_고정이다()
+        {
+            typeof(SunOrbitController)
+                .GetField("varyElevation", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .SetValue(_orbit, false);
+
+            _orbit.Apply(0f);
+            Assert.AreEqual(SunOrbitController.VerticalAngle, _orbit.Elevation, 0.001f);
+            _orbit.Apply(0.5f);
+            Assert.AreEqual(SunOrbitController.VerticalAngle, _orbit.Elevation, 0.001f);
+        }
+
+        [Test]
+        public void 빛은_아침에_따뜻하고_한낮에_희며_약간_약하다()
+        {
+            _orbit.Apply(0f);
+            Color morning = _light.color;
+            float morningIntensity = _light.intensity;
+            _orbit.Apply(0.5f);
+
+            Assert.Greater(morning.r - morning.b, 0.1f, "아침 빛은 붉은 쪽으로 기운다");
+            Assert.AreEqual(Color.white, _light.color);
+            Assert.Less(morningIntensity, _light.intensity);
+            Assert.AreEqual(_light.color, _orbit.SunColor);
+        }
+
+        // 높이 1인 막대의 그림자가 바닥에 드리우는 길이.
+        private float ShadowLength()
+        {
+            return 1f / Mathf.Tan(_orbit.Elevation * Mathf.Deg2Rad);
         }
 
         [Test]

@@ -69,6 +69,8 @@ namespace _SAIUN.Editor
         private const float PlaceholderSmoothness = 0.15f;
         private const float ShadowStrength = 0.55f;
         private const float ShadowFadeWidth = 0.8f;
+        // 해가 22도까지 낮아지면 작물 그림자가 키의 2.5배로 늘어난다. 그만큼 받이를 넓게 깐다.
+        private const float ShadowGroundMargin = 2.4f;
 
         // 유리 배경은 모든 투명 오브젝트보다 먼저 그려야 그림자·파티클을 덮지 않는다.
         private const int BackdropSortingOrder = -1000;
@@ -447,6 +449,7 @@ namespace _SAIUN.Editor
                 var orbitSo = new SerializedObject(orbit);
                 orbitSo.FindProperty("sun").objectReferenceValue = sun;
                 orbitSo.FindProperty("timer").objectReferenceValue = timer;
+                orbitSo.FindProperty("intensity").floatValue = SunIntensity;
                 orbitSo.ApplyModifiedPropertiesWithoutUndo();
             }
             else
@@ -838,6 +841,7 @@ namespace _SAIUN.Editor
 
             var so = new SerializedObject(bed);
             so.FindProperty("planter").objectReferenceValue = planter;
+            so.FindProperty("shadowMargin").floatValue = ShadowGroundMargin;
             so.FindProperty("soilRoot").objectReferenceValue = soilRoot;
             so.FindProperty("shadowGround").objectReferenceValue = ground;
             so.ApplyModifiedPropertiesWithoutUndo();
