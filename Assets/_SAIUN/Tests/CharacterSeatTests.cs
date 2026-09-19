@@ -11,7 +11,8 @@ using UnityEngine.TestTools;
 namespace _SAIUN.Tests
 {
     /// <summary>
-    /// P3-02·P3-04: 캐릭터는 화면을 정면으로 보고 엉덩이를 창 하단 베젤에 걸친 채 앉아, 다리를 창 밖으로 늘어뜨려 흔든다.
+    /// P3-02·P3-04: 캐릭터는 화면을 정면으로 보고 엉덩이를 창 하단 베젤에 걸친 채 앉는다.
+    /// 2026-09-19 참고 그림처럼 다리를 꼬아 창 밖으로 늘어뜨리고, 상체를 젖혀 두 손으로 베젤을 짚으며, 위에 올린 발을 까딱인다.
     /// 실제 VRM이 필요해 저장소 밖(gitignore)의 로컬 모델이 있을 때만 돈다.
     /// </summary>
     public class CharacterSeatTests
@@ -96,25 +97,75 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 다리를_번갈아_흔든다()
+        public void 다리를_꼬아_위_무릎을_아래_무릎에_얹는다()
         {
-            _pose.Apply(0f);
-            Vector3 leftStart = FootLocal(HumanBodyBones.LeftFoot);
-            Vector3 rightStart = FootLocal(HumanBodyBones.RightFoot);
+            bool rightTop = _pose.RightOverLeft;
+            Vector3 topHip = Local(rightTop ? HumanBodyBones.RightUpperLeg : HumanBodyBones.LeftUpperLeg);
+            Vector3 bottomHip = Local(rightTop ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg);
+            Vector3 topKnee = Local(rightTop ? HumanBodyBones.RightLowerLeg : HumanBodyBones.LeftLowerLeg);
+            Vector3 bottomKnee = Local(rightTop ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg);
+            float hipWidth = Mathf.Abs(topHip.x - bottomHip.x);
 
-            // 흔들기 주기의 1/4이 지나면 발이 앞뒤로 움직여 있다.
+            // 위 무릎은 제 고관절보다 아래 다리 쪽으로 넘어가, 아래 무릎과 가로로 거의 겹친다.
+            Assert.Greater((topKnee.x - topHip.x) * Mathf.Sign(bottomHip.x - topHip.x), 0f, "위 다리가 안쪽으로 넘어간다");
+            Assert.Greater(Mathf.Abs(topKnee.x - topHip.x), hipWidth * 0.5f);
+            Assert.Less(Mathf.Abs(topKnee.x - bottomKnee.x), hipWidth, "두 무릎이 겹친다");
+            Assert.Greater(topKnee.y, bottomKnee.y, "위 무릎이 아래 무릎보다 높다");
+        }
+
+        [Test]
+        public void 두_손으로_베젤을_짚는다()
+        {
+            // 목표점은 포즈를 입힐 때의 엉덩이 기준이다. 자리를 맞춘 뒤 한 번 더 입힌다(앱에서는 매 프레임).
+            _pose.Apply(0f);
+            bool rightTop = _pose.RightOverLeft;
+            Transform nearWrist = _animator.GetBoneTransform(rightTop ? HumanBodyBones.RightHand : HumanBodyBones.LeftHand);
+            Transform propWrist = _animator.GetBoneTransform(rightTop ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+            float armLength = ArmLength(rightTop);
+
+            float nearMiss = Vector3.Distance(nearWrist.position, _pose.NearHandTarget);
+            float propMiss = Vector3.Distance(propWrist.position, _pose.PropHandTarget);
+            Assert.Less(nearMiss, armLength * 0.05f, $"near hand reaches its target (miss {nearMiss:F3}, arm {armLength:F3})");
+            Assert.Less(propMiss, armLength * 0.05f, $"prop hand reaches its target (miss {propMiss:F3}, arm {armLength:F3})");
+
+            // 화면에서: 두 손목이 베젤 높이에 있고, 기대는 손은 엉덩이에서 멀리, 가까운 손은 반대쪽 가까이 있다.
+            Vector2 hip = Pixel(HumanBodyBones.Hips);
+            Vector2 near = SceneMetrics.WorldToWindowPixels(nearWrist.position);
+            Vector2 prop = SceneMetrics.WorldToWindowPixels(propWrist.position);
+            Assert.AreEqual(SceneMetrics.WindowHeight, near.y, 30f, "가까운 손이 베젤을 짚는다");
+            Assert.AreEqual(SceneMetrics.WindowHeight, prop.y, 30f, "기대는 손이 베젤을 짚는다");
+            Assert.Greater(Mathf.Abs(prop.x - hip.x), Mathf.Abs(near.x - hip.x), "기대는 손이 더 멀리 짚는다");
+            Assert.Less((prop.x - hip.x) * (near.x - hip.x), 0f, "두 손은 엉덩이 양옆에 있다");
+        }
+
+        [Test]
+        public void 위에_올린_발만_까딱인다()
+        {
+            bool rightTop = _pose.RightOverLeft;
+            HumanBodyBones topFoot = rightTop ? HumanBodyBones.RightFoot : HumanBodyBones.LeftFoot;
+            HumanBodyBones bottomFoot = rightTop ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot;
+
+            _pose.Apply(0f);
+            Vector3 topStart = Local(topFoot);
+            Vector3 bottomStart = Local(bottomFoot);
+
+            // 까딱이는 주기의 1/4이 지나면 위 발이 가장 멀리 가 있다.
             float frequency = (float)typeof(CharacterPose)
-                .GetField("swingFrequency", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .GetField("bobFrequency", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 .GetValue(_pose);
             _pose.Apply(0.25f / frequency);
-            Vector3 leftLater = FootLocal(HumanBodyBones.LeftFoot);
-            Vector3 rightLater = FootLocal(HumanBodyBones.RightFoot);
 
-            float leftMove = leftLater.z - leftStart.z;
-            float rightMove = rightLater.z - rightStart.z;
-            Assert.Greater(Mathf.Abs(leftMove), 0.03f, "왼발이 앞뒤로 움직인다");
-            Assert.Greater(Mathf.Abs(rightMove), 0.03f, "오른발이 앞뒤로 움직인다");
-            Assert.Less(leftMove * rightMove, 0f, "두 발이 반대로 움직인다");
+            Assert.Greater(Vector3.Distance(Local(topFoot), topStart), 0.02f, "위 발이 움직인다");
+            // 위 다리가 움직이면 몸 중심이 조금 옮겨 아래 발도 1픽셀 안쪽으로 따라 움직인다.
+            Assert.Less(Vector3.Distance(Local(bottomFoot), bottomStart), SceneMetrics.PixelsToWorld(1f), "아래 발은 가만히 있다");
+        }
+
+        private float ArmLength(bool rightTop)
+        {
+            Transform upper = _animator.GetBoneTransform(rightTop ? HumanBodyBones.RightUpperArm : HumanBodyBones.LeftUpperArm);
+            Transform lower = _animator.GetBoneTransform(rightTop ? HumanBodyBones.RightLowerArm : HumanBodyBones.LeftLowerArm);
+            Transform hand = _animator.GetBoneTransform(rightTop ? HumanBodyBones.RightHand : HumanBodyBones.LeftHand);
+            return Vector3.Distance(upper.position, lower.position) + Vector3.Distance(lower.position, hand.position);
         }
 
         private Vector2 Pixel(HumanBodyBones bone)
@@ -122,7 +173,7 @@ namespace _SAIUN.Tests
             return SceneMetrics.WorldToWindowPixels(_animator.GetBoneTransform(bone).position);
         }
 
-        private Vector3 FootLocal(HumanBodyBones bone)
+        private Vector3 Local(HumanBodyBones bone)
         {
             return _go.transform.InverseTransformPoint(_animator.GetBoneTransform(bone).position);
         }

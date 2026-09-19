@@ -60704,16 +60704,24 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Character.CharacterPose
   loader: {fileID: 2066538696}
-  thighForward: -1
-  kneeBend: -0.45
-  legsApart: 0.08
+  rightOverLeft: 1
+  bottomThighForward: -0.42
+  bottomKneeBend: -0.12
+  bottomLegIn: 0
+  topThighForward: -0.58
+  topKneeBend: -0.3
+  topLegIn: -0.45
+  footPoint: -0.5
+  recline: -0.6
+  chestRecline: -0.3
+  leanToProp: 0.2
+  nearHand: {x: 1.4, y: -0.1, z: -1.2}
+  propHand: {x: 2.6, y: -0.1, z: -1}
+  elbowHint: {x: 0.15, y: 0, z: -1}
   armsDown: -0.62
-  armsForward: 0.3
-  elbowStretch: 0.75
-  leanForward: 0.08
-  swingAmount: 0.32
-  swingFrequency: 0.7
-  swingOffset: 0.5
+  wristBend: 0.5
+  bobAmount: 0.1
+  bobFrequency: 0.6
 --- !u!114 &2066538699
 MonoBehaviour:
   m_ObjectHideFlags: 0
