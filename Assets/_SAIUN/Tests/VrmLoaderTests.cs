@@ -91,7 +91,7 @@ namespace _SAIUN.Tests
         }
 
         [UnityTest]
-        public IEnumerator 실제_VRM을_불러오면_MToon_URP로_그리고_팔을_내린다()
+        public IEnumerator 실제_VRM을_불러오면_MToon_URP로_그리고_그림자를_드리우지_않는다()
         {
             string path = Path.GetFullPath(LocalSamplePath);
             if (!File.Exists(path)) Assert.Ignore("로컬 샘플 VRM이 없어 건너뛴다.");
@@ -121,11 +121,11 @@ namespace _SAIUN.Tests
             }
             Assert.IsTrue(anyMToon, "MToon 머티리얼이 URP 셰이더를 써야 한다: " + string.Join(", ", shaders));
 
-            // T 포즈가 아니라 팔을 내린 자세다.
-            Animator animator = model.GetComponent<Animator>();
-            Transform upperArm = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
-            Transform hand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
-            Assert.Less(hand.position.y, upperArm.position.y - 0.1f, "손이 어깨보다 아래에 있다");
+            // 창 베젤에 앉아 있어 화단 바닥에 그림자를 드리우지 않는다.
+            foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>())
+            {
+                Assert.AreEqual(UnityEngine.Rendering.ShadowCastingMode.Off, renderer.shadowCastingMode);
+            }
         }
 
         [UnityTest]

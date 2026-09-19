@@ -167,19 +167,38 @@ namespace _SAIUN.Scripts.UI
             if (pointing) FitHighlight(step.Target);
         }
 
-        // 가리키는 UI의 네 모서리를 테두리의 부모 좌표로 옮겨 그 사각형에 맞춘다.
+        // 가리키는 UI의 네 모서리를 화면 좌표를 거쳐 테두리의 부모 좌표로 옮겨 그 사각형에 맞춘다.
+        // 하단 바처럼 다른(카메라 공간) 캔버스에 있는 UI도 가리키므로 월드 좌표를 그대로 쓰지 않는다.
         private void FitHighlight(RectTransform target)
         {
             if (target == null) return;
             var parent = (RectTransform)highlight.parent;
             target.GetWorldCorners(_corners);
-            Vector2 min = parent.InverseTransformPoint(_corners[0]);
-            Vector2 max = parent.InverseTransformPoint(_corners[2]);
+            Camera targetCamera = CanvasCamera(target);
+            Camera ownCamera = CanvasCamera(parent);
+            Vector2 min = ToLocal(parent, _corners[0], targetCamera, ownCamera);
+            Vector2 max = ToLocal(parent, _corners[2], targetCamera, ownCamera);
 
             highlight.anchorMin = highlight.anchorMax = parent.pivot;
             highlight.pivot = new Vector2(0.5f, 0.5f);
             highlight.anchoredPosition = (min + max) / 2f;
             highlight.sizeDelta = max - min + Vector2.one * (highlightPadding * 2f);
+        }
+
+        private static Vector2 ToLocal(RectTransform parent, Vector3 world, Camera from, Camera to)
+        {
+            Vector2 screen = RectTransformUtility.WorldToScreenPoint(from, world);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, screen, to, out Vector2 local);
+            return local;
+        }
+
+        // 오버레이 캔버스는 카메라가 없다(null). 카메라 공간 캔버스는 그 카메라로 화면에 옮긴다.
+        private static Camera CanvasCamera(Transform element)
+        {
+            Canvas canvas = element.GetComponentInParent<Canvas>();
+            if (canvas == null) return null;
+            canvas = canvas.rootCanvas;
+            return canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
         }
     }
 }

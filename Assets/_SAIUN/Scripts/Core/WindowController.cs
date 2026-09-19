@@ -19,6 +19,8 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
         [DllImport("user32.dll")] static extern IntPtr GetActiveWindow();
         [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hWnd, int nIndex, uint dwNewLong);
+        [DllImport("user32.dll")] static extern uint GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll")] static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
         [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
         [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
@@ -87,6 +89,11 @@ namespace _SAIUN.Scripts.Core
         }
 
         const int  GWL_STYLE         = -16;
+        const int  GWL_EXSTYLE       = -20; // spellchecker:ignore EXSTYLE
+        const uint WS_EX_TRANSPARENT = 0x00000020;
+        const uint WS_EX_LAYERED     = 0x00080000;
+        const uint LWA_ALPHA         = 0x00000002;
+        const byte OpaqueAlpha       = 255;
         const uint WS_POPUP          = 0x80000000;
         const uint WS_VISIBLE        = 0x10000000;
         const uint SWP_NOSIZE        = 0x0001; // spellchecker:ignore NOSIZE
@@ -112,6 +119,7 @@ namespace _SAIUN.Scripts.Core
         const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
         const int DWMWA_BORDER_COLOR = 34;
         const int DWMWA_SYSTEMBACKDROP_TYPE = 38;   // spellchecker:ignore SYSTEMBACKDROP
+        const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
 
         // 문서화되지 않은 합성 속성 상수.
         const int WCA_ACCENT_POLICY = 19;           // spellchecker:ignore WCA
@@ -126,8 +134,10 @@ namespace _SAIUN.Scripts.Core
         const int DWMWCP_ROUNDSMALL = 3;   // spellchecker:ignore ROUNDSMALL
 
         // 창 크기는 SceneMetrics가 단일 출처다. 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
+        // OS 창은 유리 카드 아래로 다리 영역만큼 더 길다.
         const int WindowWidth  = SceneMetrics.WindowWidth;
-        const int WindowHeight = SceneMetrics.WindowHeight;
+        const int CardHeight   = SceneMetrics.WindowHeight;
+        const int WindowHeight = SceneMetrics.FrameHeight;
         const string UNITY_WND_CLASS = "UnityWndClass";
         static readonly IntPtr HWND_TOPMOST   = new IntPtr(-1);
         static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2); // spellchecker:ignore NOTOPMOST
@@ -173,11 +183,11 @@ namespace _SAIUN.Scripts.Core
         [Tooltip("DWM이 그리는 1픽셀 테두리 색. 유리 가장자리를 또렷하게 만든다.")]
         [SerializeField] private Color borderColor = SaiunPalette.Eggshell;
 
-        [Tooltip("테두리를 그릴지 여부. 끄면 DWM 기본 테두리를 쓴다.")]
-        [SerializeField] private bool customBorder = true;
+        [Tooltip("DWM 테두리를 그릴지 여부. 끄면 테두리를 없앤다. 창이 카드보다 길면 테두리가 다리 영역까지 둘러서 꺼 둔다.")]
+        [SerializeField] private bool customBorder;
 
-        [Tooltip("DWM 프레임을 클라이언트 영역까지 확장한다. 합성 블러를 쓸 때는 꺼야 배경이 제대로 비친다.")]
-        [SerializeField] private bool extendFrame;
+        [Tooltip("DWM 프레임을 클라이언트 영역까지 확장해 픽셀 단위 투명을 켠다. 다리 영역이 투명하려면 켜야 한다.")]
+        [SerializeField] private bool extendFrame = true;
 
         [Tooltip("화면 녹화와 스크린샷에서 이 창을 제외한다. DesktopBlur가 자기 자신을 다시 찍는 것을 막는다.")]
         [SerializeField] private bool excludeFromCapture = true;
@@ -194,6 +204,9 @@ namespace _SAIUN.Scripts.Core
         /// <summary>창을 끌고 있는 중인지. 에디터에서는 드래그 경로가 없어 항상 false다.</summary>
         public bool IsDragging => _dragging;
 
+        /// <summary>지금 클릭이 이 창을 지나 뒤 창으로 가는지(커서가 다리 영역에 있을 때).</summary>
+        public bool IsClickThrough => _clickThrough;
+
         /// <summary>투명 창 설정이 끝났을 때 1회 발행.</summary>
         public event Action OnReady;
 
@@ -205,6 +218,7 @@ namespace _SAIUN.Scripts.Core
         IntPtr _hwnd;
         bool _wasDown;
         bool _dragging;
+        bool _clickThrough;
         Vector2Int _dragCursorStart;
         Vector2Int _dragWindowStart;
 
@@ -244,6 +258,9 @@ namespace _SAIUN.Scripts.Core
             }
 
             SetWindowLong(_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            // 클릭 통과(WS_EX_TRANSPARENT)는 레이어드 창에서만 먹는다. 불투명도 255로 두면 그리는 방식은 그대로다.
+            SetWindowLong(_hwnd, GWL_EXSTYLE, GetWindowLong(_hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+            SetLayeredWindowAttributes(_hwnd, 0, OpaqueAlpha, LWA_ALPHA);
             SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, WindowWidth, WindowHeight, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
 
             ReadOverrides();
@@ -274,7 +291,7 @@ namespace _SAIUN.Scripts.Core
             // GetAsyncKeyState는 최상위 비트가 눌림 상태다.
             bool isDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
-            if (isDown && !_wasDown && IsCursorInsideWindow() && !IsPointerOverUI())
+            if (isDown && !_wasDown && IsCursorInsideCard() && !IsPointerOverUI())
             {
                 BeginDrag();
             }
@@ -288,6 +305,26 @@ namespace _SAIUN.Scripts.Core
             }
 
             _wasDown = isDown;
+            UpdateClickThrough();
+#endif
+        }
+
+        // 커서가 카드 아래 다리 영역에 있으면 클릭을 뒤 창으로 흘려보낸다. 다리 영역은 바탕화면 위에 떠 있는 장식이다.
+        // 투명해진 동안에도 GetCursorPos는 전역 좌표라 계속 읽히므로, 카드로 돌아오면 다시 끈다.
+        void UpdateClickThrough()
+        {
+#if !UNITY_EDITOR
+            if (SceneMetrics.LegRoomHeight <= 0 || _dragging) return;
+            if (!GetCursorPos(out POINT p) || !GetWindowRect(_hwnd, out RECT r)) return;
+
+            bool inWindow = p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.bottom;
+            bool throughNow = inWindow && p.y >= r.top + CardHeight;
+            if (throughNow == _clickThrough) return;
+
+            _clickThrough = throughNow;
+            uint style = GetWindowLong(_hwnd, GWL_EXSTYLE);
+            style = throughNow ? style | WS_EX_TRANSPARENT : style & ~WS_EX_TRANSPARENT;
+            SetWindowLong(_hwnd, GWL_EXSTYLE, style);
 #endif
         }
 
@@ -547,8 +584,8 @@ namespace _SAIUN.Scripts.Core
         void ApplyBorder()
         {
 #if !UNITY_EDITOR
-            if (!customBorder) return;
-            int colorRef = ToColorRef(borderColor);
+            // 끄면 기본 테두리가 아니라 테두리 없음으로 둔다. 창이 카드보다 길어 기본 테두리는 빈 다리 영역까지 두른다.
+            int colorRef = customBorder ? ToColorRef(borderColor) : DWMWA_COLOR_NONE;
             DwmSetWindowAttribute(_hwnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
 #endif
         }
@@ -620,11 +657,12 @@ namespace _SAIUN.Scripts.Core
 #endif
         }
 
-        bool IsCursorInsideWindow()
+        // 드래그는 유리 카드 안에서만 시작한다. 다리 영역은 클릭이 지나가는 곳이다.
+        bool IsCursorInsideCard()
         {
 #if !UNITY_EDITOR
             if (!GetCursorPos(out POINT p) || !GetWindowRect(_hwnd, out RECT r)) return false;
-            return p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.bottom;
+            return p.x >= r.left && p.x < r.right && p.y >= r.top && p.y < r.top + CardHeight;
 #else
             return false;
 #endif

@@ -6,6 +6,7 @@ using _SAIUN.Scripts.Data;
 using UniGLTF;
 using UniVRM10;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace _SAIUN.Scripts.Character
 {
@@ -38,13 +39,12 @@ namespace _SAIUN.Scripts.Character
         [Tooltip("불러온 모델을 붙일 자리. 위치·방향은 이 트랜스폼이 정한다.")]
         [SerializeField] private Transform characterRoot;
 
-        [Header("임시 배치 (P3-02 베젤 배치 전, 실측 대기)")]
+        [Header("표시 (실측 대기)")]
         [Tooltip("모델 배율. VRM은 미터 단위라 창 100px = 1m에서는 작게 보인다.")]
-        [SerializeField, Min(0.01f)] private float modelScale = 2f;
+        [SerializeField, Min(0.01f)] private float modelScale = 2.4f;
 
-        [Header("휴식 자세 (P3-04 포즈 전 임시)")]
-        [Tooltip("T 포즈로 서 있지 않도록 팔을 내리는 정도. 휴머노이드 근육값(-1 아래 ~ 1 위).")]
-        [SerializeField, Range(-1f, 1f)] private float armsDown = -0.55f;
+        [Tooltip("캐릭터가 씬에 그림자를 드리울지. 창 베젤에 앉아 있어 화단 바닥과 떨어져 있으므로 기본은 끈다.")]
+        [SerializeField] private bool castShadows;
 
         /// <summary>지금 캐릭터 모델의 루트. 없으면 null.</summary>
         public GameObject CurrentModel { get; private set; }
@@ -202,7 +202,11 @@ namespace _SAIUN.Scripts.Character
 
             var animator = model.GetComponent<Animator>();
             PoseSupported = animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
-            if (PoseSupported) RelaxArms(animator);
+
+            foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.shadowCastingMode = castShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
+            }
 
             if (model.TryGetComponent(out RuntimeGltfInstance gltf))
             {
@@ -210,21 +214,6 @@ namespace _SAIUN.Scripts.Character
                 // 창 크기가 작아 경계 상자가 어긋나면 모델이 깜빡 사라진다.
                 gltf.EnableUpdateWhenOffscreen();
             }
-        }
-
-        // T 포즈 대신 팔을 내린 휴식 자세. 휴머노이드 근육값이라 모델마다 뼈 축이 달라도 같게 먹는다.
-        private void RelaxArms(Animator animator)
-        {
-            var handler = new HumanPoseHandler(animator.avatar, animator.transform);
-            var pose = new HumanPose();
-            handler.GetHumanPose(ref pose);
-            for (int i = 0; i < HumanTrait.MuscleCount; i++)
-            {
-                string muscle = HumanTrait.MuscleName[i];
-                if (muscle == "Left Arm Down-Up" || muscle == "Right Arm Down-Up") pose.muscles[i] = armsDown;
-            }
-            handler.SetHumanPose(ref pose);
-            handler.Dispose();
         }
 
         private void DestroyModel()

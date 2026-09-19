@@ -74,6 +74,14 @@ namespace _SAIUN.Editor
 
         // 유리 배경은 모든 투명 오브젝트보다 먼저 그려야 그림자·파티클을 덮지 않는다.
         private const int BackdropSortingOrder = -1000;
+        // 하단 바는 유리 배경 다음, 씬의 투명 오브젝트보다 먼저.
+        private const int BarSortingOrder = -500;
+
+        // 캐릭터가 걸터앉는 하단 바 왼쪽을 비우고 태스크 입력칸을 이 픽셀부터 시작한다(실측 대기).
+        private const float TaskInputLeft = 160f;
+
+        private const string EraseShaderName = "SAIUN/UI/EraseAlpha";
+        private const string EraseMaterialPath = MaterialFolder + "/UI_EraseAlpha.mat";
 
         // 톤매핑을 끄면 템플릿의 광원 세기 2에서는 밝은 면이 1을 넘어 하얗게 날아간다.
         private const float SunIntensity = 1f;
@@ -81,11 +89,8 @@ namespace _SAIUN.Editor
         // 가산 파티클 재질의 HDR 배율
         private const float GlowIntensity = 2.5f;
 
-        // ---- 캐릭터 임시 배치 (P3-02 베젤 배치 전, 실측 대기) ----
-        // 발을 둘 창 픽셀. 사양서 2-3 "캐릭터 좌측"에 따라 Scene Layer 왼쪽 아래, 하단 바 바로 위에 세운다.
-        private static readonly Vector2 CharacterFeetPixel = new Vector2(104f, 604f);
-        // VRM은 +Z를 본다. 225도면 카메라를 정면으로 보고, 조금 덜 돌려 화단(오른쪽)을 향하게 한다.
-        private const float CharacterYawDegrees = 205f;
+        // ---- 캐릭터 (실측 대기) ----
+        private const float CharacterScale = 2.4f;
 
         // 런타임에 Shader.Find로 찾는 VRM 셰이더. 씬 머티리얼이 쓰지 않아 빌드에 넣어 줘야 한다.
         private static readonly string[] RuntimeVrmShaders =
@@ -425,15 +430,14 @@ namespace _SAIUN.Editor
             if (legacyModule != null) Object.DestroyImmediate(legacyModule);
             EnsureComponent<InputSystemUIInputModule>(esGo);
 
-            // 캔버스: 창 크기가 고정이므로 기준 해상도를 창 크기로 둔다.
+            // 캔버스: 창 픽셀이 고정이라 배율 없이 픽셀 그대로 쓴다.
+            // 창은 유리 카드 아래로 다리 영역만큼 길어서, 모든 UI는 창 위쪽 480×680 카드 안에 둔다.
             GameObject canvasGo = GameObject.Find("UICanvas")
                                   ?? new GameObject("UICanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             var canvas = canvasGo.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            var scaler = canvasGo.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
-            scaler.matchWidthOrHeight = 0.5f;
+            UsePixels(canvasGo.GetComponent<CanvasScaler>());
+            Transform uiCard = EnsureCard(canvasGo.transform);
 
             SetupWindowController(windowController);
 
@@ -457,23 +461,26 @@ namespace _SAIUN.Editor
                 Debug.LogWarning("SaiunSceneBuilder: Directional Light가 없어 SunOrbitController를 붙이지 않았습니다.");
             }
 
-            GameObject backdropCanvas = EnsureBackdropCanvas(camera);
-            EnsureDesktopGlass(backdropCanvas.transform, canvasGo.transform, windowController);
+            Transform backdropCard = EnsureCard(EnsureBackdropCanvas(camera).transform);
+            EnsureDesktopGlass(backdropCard, uiCard, windowController);
             Flowerbed bed = EnsureFlowerbed();
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
-            EnsureWeather(camera, backdropCanvas.transform, stateMachine, bed);
+            EnsureWeather(camera, backdropCard, stateMachine, bed);
             EnsureCharacter(gameManager);
-            EnsurePrefabInstance<TimerHudView>(canvasGo.transform, "TimerHud", TimerHudPrefabPath, gameManager);
-            EnsurePrefabInstance<BottomBarView>(canvasGo.transform, "BottomBar", BottomBarPrefabPath, gameManager);
+            EnsurePrefabInstance<TimerHudView>(uiCard, "TimerHud", TimerHudPrefabPath, gameManager);
 
-            // 세션 설정 패널과 시스템 설정 화면(P4-04). 하단 바보다 위, 알림·테두리보다 아래에 둔다.
-            Transform barTransform = canvasGo.transform.Find("BottomBar");
-            SettingsUiBuilder.Build(canvasGo.transform, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath),
-                gameManager, barTransform != null ? barTransform.GetComponent<BottomBarView>() : null, rebuild: false);
+            // 하단 바는 3D 씬 뒤(카메라 공간)에 둔다. 하단 베젤에 걸터앉은 캐릭터가 바 앞에 보여야 한다.
+            Transform barCard = EnsureCard(EnsureBarCanvas(camera).transform);
+            BottomBarView bar = EnsureBottomBar(barCard, uiCard, gameManager);
 
-            EnsureScreenAlert(canvasGo.transform, gameManager);
+            // 세션 설정 패널과 시스템 설정 화면(P4-04). 알림·테두리보다 아래에 둔다.
+            SettingsUiBuilder.Build(uiCard, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath),
+                gameManager, bar, rebuild: false);
+
+            EnsureScreenAlert(uiCard, gameManager);
             EnsureSound(gameManager);
-            EnsureGlassRim(canvasGo.transform);
+            EnsureGlassRim(uiCard);
+            EnsureCardCorners(uiCard);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -603,10 +610,12 @@ namespace _SAIUN.Editor
             so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.DesktopBlur;
             // Acrylic으로 바꿔 쓸 때를 대비해 조율해 둔 농도를 씬에도 남긴다.
             so.FindProperty("glassTintStrength").floatValue = 0.15f;
-            so.FindProperty("extendFrame").boolValue = false;
+            // 다리 영역을 투명하게 하려면 픽셀 단위 투명(DWM 프레임 확장)이 필요하다.
+            so.FindProperty("extendFrame").boolValue = true;
             so.FindProperty("excludeFromCapture").boolValue = true;
             so.FindProperty("roundedCorners").boolValue = true;
-            so.FindProperty("customBorder").boolValue = true;
+            // DWM 테두리는 창 전체(다리 영역 포함)를 두르므로 끄고, 카드 테두리는 GlassRim이 그린다.
+            so.FindProperty("customBorder").boolValue = false;
             so.ApplyModifiedPropertiesWithoutUndo();
             Debug.Log("SaiunSceneBuilder: 유리 배경을 DesktopBlur로 설정했습니다.");
         }
@@ -760,7 +769,8 @@ namespace _SAIUN.Editor
 
             Transform t = camera.transform;
             t.rotation = Quaternion.Euler(SceneMetrics.CameraPitchDegrees, SceneMetrics.CameraYawDegrees, 0f);
-            t.position = -t.forward * SceneMetrics.CameraDistance;   // 씬 원점을 바라보게 물린다
+            // 씬 원점을 바라보게 물리고, 창이 카드 아래로 늘어난 만큼 내려 원점이 카드 한가운데에 오게 한다.
+            t.position = -t.forward * SceneMetrics.CameraDistance - t.up * SceneMetrics.CameraDownShift;
 
             Debug.Log($"SaiunSceneBuilder: 카메라 Orthographic Size {SceneMetrics.CameraOrthographicSize} " +
                       $"(pixelsPerUnit {SceneMetrics.PixelsPerUnit})");
@@ -778,12 +788,111 @@ namespace _SAIUN.Editor
             canvas.worldCamera = camera;
             canvas.planeDistance = SceneMetrics.BackdropPlaneDistance;
             canvas.sortingOrder = BackdropSortingOrder;
-
-            var scaler = go.GetComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(WindowWidth, WindowHeight);
-            scaler.matchWidthOrHeight = 0.5f;
+            UsePixels(go.GetComponent<CanvasScaler>());
             return go;
+        }
+
+        // 하단 바 전용 캔버스. 유리 배경 바로 앞, 3D 씬보다 뒤에 펼친다.
+        private static GameObject EnsureBarCanvas(Camera camera)
+        {
+            GameObject go = GameObject.Find("BarCanvas")
+                            ?? new GameObject("BarCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            EnsureComponent<GraphicRaycaster>(go);
+
+            var canvas = go.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.worldCamera = camera;
+            canvas.planeDistance = SceneMetrics.BarPlaneDistance;
+            canvas.sortingOrder = BarSortingOrder;
+            UsePixels(go.GetComponent<CanvasScaler>());
+            return go;
+        }
+
+        // 창 픽셀과 UI 단위를 1:1로. 창 크기가 고정이라 해상도에 맞춰 늘릴 이유가 없다.
+        private static void UsePixels(CanvasScaler scaler)
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            scaler.scaleFactor = 1f;
+            scaler.referencePixelsPerUnit = SceneMetrics.PixelsPerUnit;
+        }
+
+        // 캔버스 아래 480×680 카드. 창 위쪽에 붙고, 다리 영역은 비워 둔다. 예전에 캔버스에 바로 있던 UI는 카드로 옮긴다.
+        private static Transform EnsureCard(Transform canvas)
+        {
+            var card = canvas.Find("Card") as RectTransform;
+            if (card == null)
+            {
+                card = (RectTransform)new GameObject("Card", typeof(RectTransform)).transform;
+                card.SetParent(canvas, false);
+            }
+            card.anchorMin = new Vector2(0f, 1f);
+            card.anchorMax = new Vector2(1f, 1f);
+            card.pivot = new Vector2(0.5f, 1f);
+            card.anchoredPosition = Vector2.zero;
+            card.sizeDelta = new Vector2(0f, SceneMetrics.WindowHeight);
+
+            var others = new System.Collections.Generic.List<Transform>();
+            foreach (Transform child in canvas)
+            {
+                if (child != card) others.Add(child);
+            }
+            foreach (Transform child in others) child.SetParent(card, false);
+            return card;
+        }
+
+        // 하단 바 인스턴스를 바 캔버스 카드로 옮기거나 만든다. 캐릭터가 앉는 왼쪽만큼 입력칸을 민다.
+        private static BottomBarView EnsureBottomBar(Transform barCard, Transform uiCard, GameManager gameManager)
+        {
+            Transform legacy = uiCard.Find("BottomBar");
+            if (legacy != null) legacy.SetParent(barCard, false);
+            EnsurePrefabInstance<BottomBarView>(barCard, "BottomBar", BottomBarPrefabPath, gameManager);
+
+            Transform bar = barCard.Find("BottomBar");
+            if (bar == null) return null;
+            if (bar.Find("TaskInput") is RectTransform input)
+            {
+                input.offsetMin = new Vector2(TaskInputLeft, input.offsetMin.y);
+            }
+            return bar.GetComponent<BottomBarView>();
+        }
+
+        // 카드 아래 두 모서리를 둥글게 지운다. 모든 UI 위에서 그려야 하므로 카드의 마지막 자식이다.
+        private static void EnsureCardCorners(Transform uiCard)
+        {
+            Shader eraser = Shader.Find(EraseShaderName);
+            if (eraser == null)
+            {
+                Debug.LogError("SaiunSceneBuilder: 모서리 지우개 셰이더를 찾지 못했습니다.");
+                return;
+            }
+            Material material = EnsureMaterial(EraseMaterialPath, eraser, _ => { });
+
+            Transform existing = uiCard.Find("CardCorners");
+            GameObject corners = existing != null
+                ? existing.gameObject
+                : new GameObject("CardCorners", typeof(RectTransform), typeof(CardCornerMask));
+            corners.transform.SetParent(uiCard, false);
+            corners.transform.SetAsLastSibling();
+            Stretch((RectTransform)corners.transform);
+
+            RawImage left = EnsureRawImageChild(corners.transform, "BottomLeft", material);
+            RawImage right = EnsureRawImageChild(corners.transform, "BottomRight", material);
+
+            var so = new SerializedObject(corners.GetComponent<CardCornerMask>());
+            so.FindProperty("bottomLeft").objectReferenceValue = left;
+            so.FindProperty("bottomRight").objectReferenceValue = right;
+            so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        private static RawImage EnsureRawImageChild(Transform parent, string name, Material material)
+        {
+            Transform existing = parent.Find(name);
+            GameObject go = existing != null ? existing.gameObject : new GameObject(name, typeof(RectTransform), typeof(RawImage));
+            go.transform.SetParent(parent, false);
+            var image = go.GetComponent<RawImage>();
+            image.material = material;
+            image.raycastTarget = false;
+            return image;
         }
 
         // ---- 화단 (P2-02) ----
@@ -897,20 +1006,27 @@ namespace _SAIUN.Editor
         // 캐릭터 자리와 VRM 로더. 위치는 처음 만들 때만 정하고 이후엔 인스펙터 값을 지킨다.
         private static void EnsureCharacter(GameManager gameManager)
         {
-            GameObject characterGo = GameObject.Find("Character");
-            bool created = characterGo == null;
-            if (created) characterGo = new GameObject("Character");
+            GameObject characterGo = GameObject.Find("Character") ?? new GameObject("Character");
             var loader = EnsureComponent<VrmLoader>(characterGo);
+            var anchor = EnsureComponent<BezelAnchor>(characterGo);
+            var pose = EnsureComponent<CharacterPose>(characterGo);
 
-            if (created)
-            {
-                Vector3 feet = SceneMetrics.WindowPixelsToGround(CharacterFeetPixel);
-                characterGo.transform.SetPositionAndRotation(feet, Quaternion.Euler(0f, CharacterYawDegrees, 0f));
-            }
+            // 자리는 BezelAnchor가 엉덩이 기준으로 맞춘다. 처음에는 하단 베젤 근처 화면 평면에 둔다.
+            characterGo.transform.position = SceneMetrics.WindowPixelsToScreenPlane(new Vector2(0f, SceneMetrics.WindowHeight));
 
             var loaderSo = new SerializedObject(loader);
             loaderSo.FindProperty("characterRoot").objectReferenceValue = characterGo.transform;
+            loaderSo.FindProperty("modelScale").floatValue = CharacterScale;
             loaderSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var anchorSo = new SerializedObject(anchor);
+            anchorSo.FindProperty("loader").objectReferenceValue = loader;
+            anchorSo.FindProperty("characterRoot").objectReferenceValue = characterGo.transform;
+            anchorSo.ApplyModifiedPropertiesWithoutUndo();
+
+            var poseSo = new SerializedObject(pose);
+            poseSo.FindProperty("loader").objectReferenceValue = loader;
+            poseSo.ApplyModifiedPropertiesWithoutUndo();
 
             var gmSo = new SerializedObject(gameManager);
             gmSo.FindProperty("character").objectReferenceValue = loader;
@@ -1018,9 +1134,10 @@ namespace _SAIUN.Editor
             GameObject rainGo = existing != null ? existing.gameObject : new GameObject("Rain");
             rainGo.transform.SetParent(camera.transform, false);
 
-            float halfHeight = SceneMetrics.CameraOrthographicSize;
+            // 카드 안에서만 내린다. 카메라가 다리 영역 절반만큼 내려가 있어 카드 한가운데는 카메라 위쪽에 있다.
+            float halfHeight = SceneMetrics.PixelsToWorld(SceneMetrics.WindowHeight) / 2f;
             float halfWidth = SceneMetrics.PixelsToWorld(SceneMetrics.WindowWidth) / 2f;
-            rainGo.transform.localPosition = new Vector3(0f, halfHeight + RainMargin / 2f, RainDepth);
+            rainGo.transform.localPosition = new Vector3(0f, SceneMetrics.CameraDownShift + halfHeight + RainMargin / 2f, RainDepth);
             rainGo.transform.localRotation = Quaternion.identity;
 
             var rain = EnsureComponent<ParticleSystem>(rainGo);
@@ -1030,7 +1147,8 @@ namespace _SAIUN.Editor
             main.loop = true;
             main.playOnAwake = true;
             main.duration = 1f;
-            main.startLifetime = (halfHeight * 2f + RainMargin * 2f) / RainFallSpeed;
+            // 카드 아래 모서리에서 사라지게 한다(다리 영역에 비가 새지 않게).
+            main.startLifetime = (halfHeight * 2f + RainMargin / 2f) / RainFallSpeed;
             main.startSpeed = 0f;
             main.startSize = RainDropSize;
             main.startColor = Color.white;

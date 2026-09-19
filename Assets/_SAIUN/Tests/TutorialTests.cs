@@ -93,7 +93,7 @@ namespace _SAIUN.Tests
             yield return null;
             var start = (RectTransform)Find<BottomBarView>().PrimaryButton.transform;
             Assert.Less(Vector3.Distance(Center(start), Center(highlight)), 1f, "2단계는 시작 버튼을 가리킨다");
-            Assert.Greater(highlight.rect.width, start.rect.width, "버튼보다 조금 크게 두른다");
+            Assert.Greater(highlight.rect.width, start.rect.width, "버튼보다 조금 크게 두른다(두 캔버스 모두 픽셀 1:1)");
         }
 
         [Test]
@@ -103,11 +103,16 @@ namespace _SAIUN.Tests
             Assert.IsTrue(overlay.GetComponent<Image>().raycastTarget);
         }
 
+        // 캔버스가 달라도 비교할 수 있게 화면 좌표로 잰다.
         private static Vector3 Center(RectTransform rt)
         {
             var corners = new Vector3[4];
             rt.GetWorldCorners(corners);
-            return (corners[0] + corners[2]) / 2f;
+            Canvas canvas = rt.GetComponentInParent<Canvas>().rootCanvas;
+            Camera camera = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+            Vector2 min = RectTransformUtility.WorldToScreenPoint(camera, corners[0]);
+            Vector2 max = RectTransformUtility.WorldToScreenPoint(camera, corners[2]);
+            return (min + max) / 2f;
         }
     }
 }

@@ -10,8 +10,18 @@ namespace _SAIUN.Scripts.Core
     public static class SceneMetrics
     {
         // ---- 창 (사양서 8장 확정값) ----
+        // 유리 카드의 폭·높이. 레이아웃·유리 캡처·UI 좌표는 모두 이 카드 기준이다(창 왼쪽 위 = 카드 왼쪽 위).
         public const int WindowWidth = 480;
         public const int WindowHeight = 680;
+
+        /// <summary>
+        /// 카드 아래로 늘린 OS 창의 높이. 하단 베젤에 걸터앉은 캐릭터의 다리가 창 밖(바탕화면 위)에 보이도록 비워 둔다
+        /// (사양서 v1.1 2-2·8-3, 2026-09-19 사용자 지시: 창을 아래로 키우고 창 밖 영역은 투명·클릭 통과).
+        /// </summary>
+        public const int LegRoomHeight = 180;
+
+        /// <summary>OS 창 전체 높이 = 카드 + 다리 영역.</summary>
+        public const int FrameHeight = WindowHeight + LegRoomHeight;
 
         // ---- 레이어 높이 (사양서 2-1 확정값) ----
         public const int SkyLayerHeight = 340;
@@ -35,10 +45,16 @@ namespace _SAIUN.Scripts.Core
 
         /// <summary>
         /// 카메라 Orthographic Size. 화면 높이 절반에 해당하는 월드 단위다.
-        /// PixelsPerUnit을 100으로 고정하기 위해 창 높이에서 계산한다.
-        /// 680 / (2 × 100) = 3.4
+        /// PixelsPerUnit을 100으로 고정하기 위해 OS 창 전체 높이에서 계산한다.
+        /// (680 + 180) / (2 × 100) = 4.3
         /// </summary>
-        public const float CameraOrthographicSize = WindowHeight / (2f * PixelsPerUnit);
+        public const float CameraOrthographicSize = FrameHeight / (2f * PixelsPerUnit);
+
+        /// <summary>
+        /// 카메라를 화면 아래쪽으로 옮기는 거리(월드). 창이 아래로 늘어도 씬 원점이
+        /// 카드 한가운데(240, 340)에 그대로 그려지게 해서, 카드 기준 픽셀 좌표를 바꾸지 않는다.
+        /// </summary>
+        public const float CameraDownShift = LegRoomHeight / (2f * PixelsPerUnit);
 
         // ---- 아이소메트릭 시점 (사양서 v1.1 7-4: 위 45도 / 측면 45도) ----
         public const float CameraPitchDegrees = 45f;
@@ -62,6 +78,12 @@ namespace _SAIUN.Scripts.Core
         /// </summary>
         public const float BackdropPlaneDistance = CameraFarClip - 1f;
 
+        /// <summary>
+        /// 하단 바 캔버스를 카메라에서 떨어뜨리는 거리. 유리 배경 바로 앞, 씬 오브젝트보다는 뒤라서
+        /// 하단 베젤에 걸터앉은 캐릭터가 하단 바 앞에 그려진다.
+        /// </summary>
+        public const float BarPlaneDistance = BackdropPlaneDistance - 1f;
+
         /// <summary>카메라 회전. 투영 계산에 쓴다.</summary>
         public static Quaternion CameraRotation => Quaternion.Euler(CameraPitchDegrees, CameraYawDegrees, 0f);
 
@@ -84,6 +106,17 @@ namespace _SAIUN.Scripts.Core
             return new Vector2(
                 WindowWidth / 2f + WorldToPixels(right),
                 WindowHeight / 2f - WorldToPixels(up));
+        }
+
+        /// <summary>
+        /// 창 픽셀 위치에 보이는 점 중 씬 원점을 지나 화면과 나란한 평면 위의 점.
+        /// 화면을 마주 보는 캐릭터처럼 깊이가 상관없는 것을 픽셀에 맞춰 둘 때 쓴다.
+        /// </summary>
+        public static Vector3 WindowPixelsToScreenPlane(Vector2 pixels)
+        {
+            Quaternion rotation = CameraRotation;
+            return rotation * Vector3.right * PixelsToWorld(pixels.x - WindowWidth / 2f)
+                   + rotation * Vector3.up * PixelsToWorld(WindowHeight / 2f - pixels.y);
         }
 
         /// <summary>

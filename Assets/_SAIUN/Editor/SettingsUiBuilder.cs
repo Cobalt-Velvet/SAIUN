@@ -76,7 +76,9 @@ namespace _SAIUN.Editor
         public static void RebuildInMainScene()
         {
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
-            GameObject canvas = GameObject.Find("UICanvas");
+            GameObject canvasRoot = GameObject.Find("UICanvas");
+            // UI는 캔버스 아래 카드(480×680) 안에 있다.
+            Transform canvas = canvasRoot != null ? canvasRoot.transform.Find("Card") ?? canvasRoot.transform : null;
             var gameManager = Object.FindFirstObjectByType<GameManager>();
             var bar = Object.FindFirstObjectByType<BottomBarView>();
             if (canvas == null || gameManager == null)
@@ -85,11 +87,12 @@ namespace _SAIUN.Editor
                 return;
             }
 
-            Build(canvas.transform, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath), gameManager, bar, rebuild: true);
+            Build(canvas, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath), gameManager, bar, rebuild: true);
 
-            // 알림·유리 테두리는 설정 화면·튜토리얼보다 위에 있어야 한다.
-            canvas.transform.Find("ScreenAlert")?.SetAsLastSibling();
-            canvas.transform.Find("GlassRim")?.SetAsLastSibling();
+            // 알림·유리 테두리·모서리 지우개는 설정 화면·튜토리얼보다 위에 있어야 한다.
+            canvas.Find("ScreenAlert")?.SetAsLastSibling();
+            canvas.Find("GlassRim")?.SetAsLastSibling();
+            canvas.Find("CardCorners")?.SetAsLastSibling();
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
