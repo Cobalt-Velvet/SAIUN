@@ -26,36 +26,13 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void Orthographic_Size는_창_전체에서_pixelsPerUnit_100이_되도록_계산된다()
+        public void Orthographic_Size는_pixelsPerUnit_100이_되도록_계산된다()
         {
-            Assert.AreEqual(4.3f, SceneMetrics.CameraOrthographicSize, 0.0001f);
+            Assert.AreEqual(3.4f, SceneMetrics.CameraOrthographicSize, 0.0001f);
 
-            // OS 창 높이 = 2 × Size × pixelsPerUnit 이어야 한다.
+            // 화면 높이 = 2 × Size × pixelsPerUnit 이어야 한다.
             float screenHeight = 2f * SceneMetrics.CameraOrthographicSize * SceneMetrics.PixelsPerUnit;
-            Assert.AreEqual(SceneMetrics.FrameHeight, screenHeight, 0.0001f);
-        }
-
-        [Test]
-        public void 창은_카드_아래로_다리_영역만큼_늘어난다()
-        {
-            Assert.AreEqual(SceneMetrics.WindowHeight + SceneMetrics.LegRoomHeight, SceneMetrics.FrameHeight);
-            Assert.Greater(SceneMetrics.LegRoomHeight, 0);
-
-            // 카메라를 다리 영역의 절반만큼 내리면 창 한가운데가 카드 한가운데보다 그만큼 아래가 된다.
-            float frameCenter = SceneMetrics.FrameHeight / 2f;
-            float cardCenter = SceneMetrics.WindowHeight / 2f;
-            Assert.AreEqual(frameCenter - cardCenter, SceneMetrics.WorldToPixels(SceneMetrics.CameraDownShift), 0.001f);
-        }
-
-        [Test]
-        public void 화면_평면_위의_점은_그_픽셀에_그려진다()
-        {
-            var pixel = new Vector2(64f, 680f);
-            Vector3 point = SceneMetrics.WindowPixelsToScreenPlane(pixel);
-            Vector2 back = SceneMetrics.WorldToWindowPixels(point);
-            Assert.AreEqual(pixel.x, back.x, 0.01f);
-            Assert.AreEqual(pixel.y, back.y, 0.01f);
-            Assert.AreEqual(0f, Vector3.Dot(point, SceneMetrics.CameraRotation * Vector3.forward), 0.0001f);
+            Assert.AreEqual(SceneMetrics.WindowHeight, screenHeight, 0.0001f);
         }
 
         [Test]

@@ -6,9 +6,7 @@
         "UnityEditor.TestRunner",
         "_SAIUN.Scripts",
         "Unity.TextMeshPro",
-        "UnityEngine.UI",
-        "VRM10",
-        "UniGLTF"
+        "UnityEngine.UI"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -168,7 +168,7 @@ namespace _SAIUN.Scripts.UI
         }
 
         // 가리키는 UI의 네 모서리를 화면 좌표를 거쳐 테두리의 부모 좌표로 옮겨 그 사각형에 맞춘다.
-        // 하단 바처럼 다른(카메라 공간) 캔버스에 있는 UI도 가리키므로 월드 좌표를 그대로 쓰지 않는다.
+        // 다른(카메라 공간) 캔버스에 있는 UI를 가리켜도 맞도록 월드 좌표를 그대로 쓰지 않는다.
         private void FitHighlight(RectTransform target)
         {
             if (target == null) return;

@@ -5,12 +5,7 @@
         "UnityEngine.UI",
         "Unity.TextMeshPro",
         "Unity.InputSystem",
-        "Gilzoide.SqliteNet",
-        "VRM10",
-        "UniGLTF",
-        "UniHumanoid",
-        "SpringBoneJobs",
-        "Unity.Mathematics"
+        "Gilzoide.SqliteNet"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

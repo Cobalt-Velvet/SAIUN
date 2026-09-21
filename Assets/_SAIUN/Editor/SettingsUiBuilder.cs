@@ -89,9 +89,9 @@ namespace _SAIUN.Editor
 
             Build(canvas, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath), gameManager, bar, rebuild: true);
 
-            // 알림·모서리 지우개는 설정 화면·튜토리얼보다 위에 있어야 한다. 유리 테두리는 하단 바 캔버스에 있다.
+            // 알림·유리 테두리는 설정 화면·튜토리얼보다 위에 있어야 한다.
             canvas.Find("ScreenAlert")?.SetAsLastSibling();
-            canvas.Find("CardCorners")?.SetAsLastSibling();
+            canvas.Find("GlassRim")?.SetAsLastSibling();
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -247,12 +247,7 @@ namespace _SAIUN.Editor
 
             RectTransform content = ScrollArea(screen);
 
-            // 사양서 12-2-1. 파일 선택은 Windows 대화상자로 연다.
-            Section(content, "캐릭터");
-            TMP_Text characterName = Size(Text(content, "CharacterName", string.Empty, BodyFontSize, SaiunPalette.HudText), height: 22f);
-            Button importVrm = WideButton(content, "ImportVrm", "VRM 파일 불러오기 (200MB 이하)", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
-            Button resetCharacter = WideButton(content, "ResetCharacter", "기본 캐릭터로 초기화", RowColor, SaiunPalette.Eggshell);
-
+            // 사양서 12-2-1의 캐릭터 항목은 2026-09-21 사용자 결정으로 캐릭터와 함께 없앴다.
             Section(content, "방해 앱");
             Sub(content, "블랙리스트");
             RectTransform blacklistRows = List(content, "BlacklistRows");
@@ -294,9 +289,6 @@ namespace _SAIUN.Editor
             so.FindProperty("screen").objectReferenceValue = screen.gameObject;
             so.FindProperty("openButton").objectReferenceValue = gearButton;
             so.FindProperty("closeButton").objectReferenceValue = close;
-            so.FindProperty("characterText").objectReferenceValue = characterName;
-            so.FindProperty("importVrmButton").objectReferenceValue = importVrm;
-            so.FindProperty("resetCharacterButton").objectReferenceValue = resetCharacter;
             so.FindProperty("dialog").objectReferenceValue = dialog;
             so.FindProperty("blacklistRows").objectReferenceValue = blacklistRows;
             so.FindProperty("whitelistRows").objectReferenceValue = whitelistRows;
@@ -443,13 +435,13 @@ namespace _SAIUN.Editor
             Button next = ColoredButton(buttons, "Next", "다음", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
             Size(next, width: TutorialButtonWidth, height: RowHeight);
 
-            // 사양서 14장 세 단계. 캐릭터 항목은 P3에서 설정 화면에 붙는다.
+            // 사양서 14장 세 단계. 첫 단계는 캐릭터 설정이었지만 캐릭터를 없애(2026-09-21) 방해 앱 등록으로 바꿨다.
             RectTransform gear = canvas.Find("Settings/Gear") as RectTransform;
             RectTransform start = bar != null && bar.PrimaryButton != null ? (RectTransform)bar.PrimaryButton.transform : null;
             var steps = new[]
             {
-                new TutorialStep("캐릭터 설정",
-                    "오른쪽 위 기어 아이콘에서 캐릭터를 바꿀 수 있어요.\n기본 캐릭터로 시작해도 괜찮아요.", gear),
+                new TutorialStep("방해 앱 등록",
+                    "오른쪽 위 기어 아이콘에서 집중을 방해하는 앱을 등록하세요.\n날씨·창·소리도 여기서 바꿀 수 있어요.", gear),
                 new TutorialStep("작물 심기",
                     "시작 버튼을 누르면 세션 설정이 열려요.\n작물 목록에서 심을 작물을 고르세요.", start),
                 new TutorialStep("포모도로 시작",

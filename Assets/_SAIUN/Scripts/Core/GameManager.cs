@@ -1,6 +1,4 @@
 using System;
-using System.Threading.Tasks;
-using _SAIUN.Scripts.Character;
 using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Distraction;
@@ -36,15 +34,11 @@ namespace _SAIUN.Scripts.Core
         [Tooltip("작물 목록. 없으면 설정한 작물을 확인 없이 심고 해금 판정도 하지 않는다.")]
         [SerializeField] private CropCatalog cropCatalog;
 
-        [Tooltip("캐릭터 VRM. 없으면 캐릭터 없이 동작한다.")]
-        [SerializeField] private VrmLoader character;
-
         public PomodoroStateMachine StateMachine => stateMachine;
         public PomodoroTimer Timer => timer;
         public SaiunDatabase Database => database;
         public ForegroundWatcher Watcher => watcher;
         public CropCatalog CropCatalog => cropCatalog;
-        public VrmLoader Character => character;
 
         /// <summary>다음 세션에 쓸 설정. 시작 시 PlayerPrefs에 저장된다. Awake 전에 읽혀도 동작한다.</summary>
         public SessionConfig CurrentConfig
@@ -249,26 +243,6 @@ namespace _SAIUN.Scripts.Core
         public void RequestSetWeatherFocusLinked(bool enabled)
         {
             SettingsStore.WeatherFocusLinked = enabled;
-        }
-
-        // ---- 캐릭터 (사양서 v1.1 12-2-1) ----
-
-        /// <summary>VRM 파일을 고르는 대화상자를 띄운다. 취소하면 null.</summary>
-        public string RequestPickVrmFile()
-        {
-            return windowController != null ? windowController.ShowOpenFileDialog("VRM 파일 선택", "VRM 파일", "vrm") : null;
-        }
-
-        /// <summary>고른 VRM을 불러온다. 성공해야 경로를 저장한다.</summary>
-        public Task<bool> RequestImportVrm(string path)
-        {
-            return character != null ? character.ImportAsync(path) : Task.FromResult(false);
-        }
-
-        /// <summary>번들 기본 캐릭터로 되돌린다.</summary>
-        public Task<bool> RequestResetCharacter()
-        {
-            return character != null ? character.ResetToBundledAsync() : Task.FromResult(false);
         }
 
         /// <summary>튜토리얼을 다시 보여 준다. 완료 표시를 지우고 요청을 알린다.</summary>

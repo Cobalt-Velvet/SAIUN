@@ -20,7 +20,6 @@ namespace _SAIUN.Scripts.Data
             public const string WindowPosX = "window.posX";
             public const string WindowPosY = "window.posY";
             public const string WindowAlwaysOnTop = "window.alwaysOnTop";
-            public const string CharacterVrmPath = "character.vrmPath";
             public const string SoundEnabled = "sound.enabled";
             public const string SoundVolume = "sound.volume";
             public const string DistractionGraceSeconds = "distraction.graceSeconds";
@@ -31,7 +30,6 @@ namespace _SAIUN.Scripts.Data
 
         // ---- 기본값 (사양서 7장·8장) ----
         public const bool DefaultAlwaysOnTop = true;
-        public const string DefaultVrmPath = "";          // 빈 문자열이면 번들 VRM 사용
         public const bool DefaultSoundEnabled = true;
         public const float DefaultSoundVolume = 0.7f;
         public const int DefaultGraceSeconds = 7;
@@ -102,18 +100,6 @@ namespace _SAIUN.Scripts.Data
             set => SetBool(Keys.WindowAlwaysOnTop, value);
         }
 
-        // ---- 캐릭터 ----
-
-        public static string VrmPath
-        {
-            get => PlayerPrefs.GetString(Keys.CharacterVrmPath, DefaultVrmPath);
-            set
-            {
-                PlayerPrefs.SetString(Keys.CharacterVrmPath, value ?? DefaultVrmPath);
-                PlayerPrefs.Save();
-            }
-        }
-
         // ---- 사운드 ----
 
         public static bool SoundEnabled
@@ -181,7 +167,6 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.WindowPosX);
             PlayerPrefs.DeleteKey(Keys.WindowPosY);
             PlayerPrefs.DeleteKey(Keys.WindowAlwaysOnTop);
-            PlayerPrefs.DeleteKey(Keys.CharacterVrmPath);
             PlayerPrefs.DeleteKey(Keys.SoundEnabled);
             PlayerPrefs.DeleteKey(Keys.SoundVolume);
             PlayerPrefs.DeleteKey(Keys.DistractionGraceSeconds);

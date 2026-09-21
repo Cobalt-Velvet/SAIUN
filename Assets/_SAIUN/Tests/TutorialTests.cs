@@ -29,7 +29,7 @@ namespace _SAIUN.Tests
             Assert.AreEqual(0, _tutorial.StepIndex);
             Assert.AreEqual(3, _tutorial.StepCount, "사양서 14장은 세 단계다");
             Assert.AreEqual("1 / 3", Get<TMP_Text>(_tutorial, "stepText").text);
-            Assert.AreEqual("캐릭터 설정", Get<TMP_Text>(_tutorial, "titleText").text);
+            Assert.AreEqual("방해 앱 등록", Get<TMP_Text>(_tutorial, "titleText").text);
         }
 
         [Test]

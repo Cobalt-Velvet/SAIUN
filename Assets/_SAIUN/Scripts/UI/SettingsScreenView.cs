@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
-using _SAIUN.Scripts.Character;
 using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
@@ -15,9 +13,8 @@ namespace _SAIUN.Scripts.UI
 {
     /// <summary>
     /// 기어 아이콘으로 여는 시스템 설정 화면 (사양서 v1.1 12-2, P4-04).
-    /// 캐릭터·방해 앱·날씨·창·사운드·데이터를 다룬다.
+    /// 방해 앱·날씨·창·사운드·데이터를 다룬다. 캐릭터 항목은 2026-09-21 사용자 결정으로 캐릭터와 함께 없앴다.
     /// 날씨 트리거 중 실제 날씨 연동은 API 키가 정해질 때까지 두지 않는다.
-    /// 캐릭터를 불러오지 못하면 설정이 닫혀 있어도 경고 다이얼로그를 띄운다(8-2).
     /// 실행 중인 시스템에 닿는 설정은 GameManager에 요청하고, 방해 앱 목록은 감시자의 저장소를 직접 고친다(바로 저장된다).
     /// </summary>
     public class SettingsScreenView : MonoBehaviour
@@ -35,10 +32,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private Button openButton;
         [SerializeField] private Button closeButton;
 
-        [Header("캐릭터")]
-        [SerializeField] private TMP_Text characterText;
-        [SerializeField] private Button importVrmButton;
-        [SerializeField] private Button resetCharacterButton;
+        [Tooltip("확인 대화상자(종료 등)")]
         [SerializeField] private MessageDialogView dialog;
 
         [Header("방해 앱")]
@@ -92,20 +86,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string resetConfirm2Label = "되돌릴 수 없어요. 지우기 (2/2)";
         [SerializeField] private string resetDoneLabel = "초기화했어요";
         [SerializeField] private string resetBusyLabel = "세션이 끝난 뒤에 할 수 있어요";
-        [SerializeField] private string characterFormat = "현재 캐릭터: {0}";
-        [SerializeField] private string bundledCharacterName = "기본 캐릭터";
-        [SerializeField] private string noCharacterName = "없음";
-        [SerializeField] private string loadingCharacterName = "불러오는 중…";
-        [SerializeField] private string resetCharacterTitle = "기본 캐릭터로 초기화";
-        [SerializeField] private string resetCharacterBody = "지금 캐릭터 대신 기본 캐릭터를 씁니다.";
-        [SerializeField] private string resetCharacterConfirm = "초기화";
         [SerializeField] private string cancelLabel = "취소";
-        [SerializeField] private string loadFailedTitle = "캐릭터를 불러오지 못했어요";
-        [SerializeField] private string notFoundMessage = "파일을 찾을 수 없어요.\n지금 캐릭터를 그대로 둡니다.";
-        [SerializeField] private string tooLargeMessage = "파일이 200MB를 넘어 불러올 수 없어요. ({0})";
-        [SerializeField] private string unreadableMessage = "VRM 파일을 읽지 못했어요. 손상됐거나 지원하지 않는 버전일 수 있어요.\n지금 캐릭터를 그대로 둡니다.";
-        [SerializeField] private string noHumanoidTitle = "포즈를 바꿀 수 없어요";
-        [SerializeField] private string noHumanoidMessage = "뼈대 정보가 부족해 기본 자세로 둡니다.";
         [SerializeField] private string quitTitle = "SAIUN을 끌까요?";
         [SerializeField] private string quitIdleBody = "다음에 켜면 지금 설정 그대로 시작해요.";
         [SerializeField] private string quitSessionBody = "진행 중인 세션은 정지한 것으로 기록돼요.";
@@ -149,11 +130,6 @@ namespace _SAIUN.Scripts.UI
             if (gameManager == null) return;
             gameManager.OnSessionRecorded += HandleRecordsChanged;
             gameManager.OnDataReset += HandleDataReset;
-            if (gameManager.Character != null)
-            {
-                gameManager.Character.OnLoadFailed += HandleCharacterFailed;
-                gameManager.Character.OnCharacterLoaded += HandleCharacterLoaded;
-            }
         }
 
         private void OnDisable()
@@ -161,11 +137,6 @@ namespace _SAIUN.Scripts.UI
             if (gameManager == null) return;
             gameManager.OnSessionRecorded -= HandleRecordsChanged;
             gameManager.OnDataReset -= HandleDataReset;
-            if (gameManager.Character != null)
-            {
-                gameManager.Character.OnLoadFailed -= HandleCharacterFailed;
-                gameManager.Character.OnCharacterLoaded -= HandleCharacterLoaded;
-            }
         }
 
         private void Update()
@@ -188,7 +159,6 @@ namespace _SAIUN.Scripts.UI
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.SetIsOnWithoutNotify(SettingsStore.AlwaysOnTop);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
 
-            RefreshCharacter();
             RefreshLists();
             RefreshRunning();
             RefreshData();
@@ -235,29 +205,7 @@ namespace _SAIUN.Scripts.UI
             if (resetDataLabel != null) resetDataLabel.text = done ? resetDoneLabel : resetBusyLabel;
         }
 
-        // ---- 캐릭터 ----
-
-        /// <summary>VRM 파일을 골라 불러온다. 실패하면 로더가 알려 경고 다이얼로그가 뜬다.</summary>
-        public async void ImportVrm()
-        {
-            string path = gameManager.RequestPickVrmFile();
-            if (string.IsNullOrEmpty(path)) return;
-
-            if (characterText != null) characterText.text = string.Format(characterFormat, loadingCharacterName);
-            await gameManager.RequestImportVrm(path);
-            RefreshCharacter();
-        }
-
-        /// <summary>확인을 받은 뒤 기본 캐릭터로 되돌린다.</summary>
-        public void ConfirmResetCharacter()
-        {
-            if (dialog == null) return;
-            dialog.Show(resetCharacterTitle, resetCharacterBody, resetCharacterConfirm, async () =>
-            {
-                await gameManager.RequestResetCharacter();
-                RefreshCharacter();
-            }, cancelLabel);
-        }
+        // ---- 종료 ----
 
         /// <summary>종료를 확인받는다. 세션 중이면 정지로 기록된다고 알린다.</summary>
         public void ConfirmQuit()
@@ -299,8 +247,6 @@ namespace _SAIUN.Scripts.UI
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);
             if (resetPositionButton != null) resetPositionButton.onClick.AddListener(gameManager.RequestResetWindowPosition);
 
-            if (importVrmButton != null) importVrmButton.onClick.AddListener(ImportVrm);
-            if (resetCharacterButton != null) resetCharacterButton.onClick.AddListener(ConfirmResetCharacter);
 
             if (tutorialButton != null) tutorialButton.onClick.AddListener(() =>
             {
@@ -435,43 +381,6 @@ namespace _SAIUN.Scripts.UI
             _resetStepTime = _clock();
             if (resetDataLabel == null) return;
             resetDataLabel.text = step == 1 ? resetConfirm1Label : step == 2 ? resetConfirm2Label : resetLabel;
-        }
-
-        private void RefreshCharacter()
-        {
-            if (characterText == null) return;
-            VrmLoader loader = gameManager.Character;
-            string name = loader == null || loader.CurrentPath == null ? noCharacterName
-                : loader.IsBundled ? bundledCharacterName
-                : Path.GetFileName(loader.CurrentPath);
-            characterText.text = string.Format(characterFormat, name);
-        }
-
-        private void HandleCharacterLoaded(GameObject model)
-        {
-            if (IsOpen) RefreshCharacter();
-        }
-
-        // 사양서 8-2: 실패하면 경고 다이얼로그를 띄우고 지금 캐릭터를 유지한다.
-        private void HandleCharacterFailed(VrmLoadError error, string detail)
-        {
-            if (dialog == null) return;
-            switch (error)
-            {
-                case VrmLoadError.TooLarge:
-                    dialog.Show(loadFailedTitle, string.Format(tooLargeMessage, detail));
-                    break;
-                case VrmLoadError.FileNotFound:
-                    dialog.Show(loadFailedTitle, notFoundMessage);
-                    break;
-                case VrmLoadError.NoHumanoid:
-                    dialog.Show(noHumanoidTitle, noHumanoidMessage);
-                    break;
-                default:
-                    dialog.Show(loadFailedTitle, unreadableMessage);
-                    break;
-            }
-            if (IsOpen) RefreshCharacter();
         }
 
         private void HandleRecordsChanged(SessionRecord record)

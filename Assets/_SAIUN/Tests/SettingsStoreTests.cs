@@ -30,7 +30,6 @@ namespace _SAIUN.Tests
             Assert.AreEqual(SessionConfig.DefaultCropType, config.CropType);
 
             Assert.IsTrue(SettingsStore.AlwaysOnTop);
-            Assert.AreEqual(string.Empty, SettingsStore.VrmPath);
             Assert.IsTrue(SettingsStore.SoundEnabled);
             Assert.AreEqual(0.7f, SettingsStore.SoundVolume, 0.0001f);
             Assert.AreEqual(7, SettingsStore.GraceSeconds);
@@ -61,7 +60,6 @@ namespace _SAIUN.Tests
         public void 시스템_설정은_저장_후_복원되고_범위가_보정된다()
         {
             SettingsStore.AlwaysOnTop = false;
-            SettingsStore.VrmPath = @"C:\vrm\me.vrm";
             SettingsStore.SoundEnabled = false;
             SettingsStore.SoundVolume = 1.5f;
             SettingsStore.GraceSeconds = 100;
@@ -69,7 +67,6 @@ namespace _SAIUN.Tests
             SettingsStore.SaveWindowPosition(120, 40);
 
             Assert.IsFalse(SettingsStore.AlwaysOnTop);
-            Assert.AreEqual(@"C:\vrm\me.vrm", SettingsStore.VrmPath);
             Assert.IsFalse(SettingsStore.SoundEnabled);
             Assert.AreEqual(1f, SettingsStore.SoundVolume, 0.0001f);
             Assert.AreEqual(SettingsStore.MaxGraceSeconds, SettingsStore.GraceSeconds);
@@ -92,7 +89,6 @@ namespace _SAIUN.Tests
             Assert.AreEqual("window.posX", SettingsStore.Keys.WindowPosX);
             Assert.AreEqual("window.posY", SettingsStore.Keys.WindowPosY);
             Assert.AreEqual("window.alwaysOnTop", SettingsStore.Keys.WindowAlwaysOnTop);
-            Assert.AreEqual("character.vrmPath", SettingsStore.Keys.CharacterVrmPath);
             Assert.AreEqual("sound.enabled", SettingsStore.Keys.SoundEnabled);
             Assert.AreEqual("sound.volume", SettingsStore.Keys.SoundVolume);
             Assert.AreEqual("distraction.graceSeconds", SettingsStore.Keys.DistractionGraceSeconds);

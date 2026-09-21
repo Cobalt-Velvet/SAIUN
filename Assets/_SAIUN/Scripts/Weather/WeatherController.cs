@@ -10,7 +10,7 @@ namespace _SAIUN.Scripts.Weather
     /// 바람은 항상 불고 30~120초마다 방향과 세기(0~5)를 새로 정한다.
     /// 비는 날씨 트리거가 정한다. '랜덤'은 집중 세트가 시작될 때마다 비를 굴리고,
     /// '집중 상태 연동'은 방해 앱 유예에 들어가면 먹구름과 비로 바꾼다. 두 트리거는 함께 켤 수 있다.
-    /// 값은 목표로 부드럽게 옮겨 가며, 구름·비·작물·캐릭터가 이 값을 읽어 표현한다.
+    /// 값은 목표로 부드럽게 옮겨 가며, 구름·비·작물·풍향계가 이 값을 읽어 표현한다.
     /// </summary>
     public class WeatherController : MonoBehaviour
     {
@@ -68,7 +68,7 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>먹구름 정도 0~1.</summary>
         public float Storminess { get; private set; }
 
-        /// <summary>젖은 정도 0~1. 비를 맞는 동안 오르고 그치면 천천히 마른다. 흙·화분·캐릭터가 읽는다.</summary>
+        /// <summary>젖은 정도 0~1. 비를 맞는 동안 오르고 그치면 천천히 마른다. 흙·화분이 읽는다.</summary>
         public float Wetness { get; private set; }
 
         /// <summary>바람 세기를 0~1로 줄인 값. 표현 쪽에서 쓰기 편하게.</summary>
