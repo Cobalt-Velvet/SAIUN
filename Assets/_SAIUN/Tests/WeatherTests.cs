@@ -209,16 +209,7 @@ namespace _SAIUN.Tests
         [Test]
         public void 구름은_햇빛의_색과_방향을_받고_원본_재질은_건드리지_않는다()
         {
-            PomodoroTimer timer = _sm.gameObject.AddComponent<PomodoroTimer>();
-            var sunGo = Own(new GameObject("Sun"));
-            sunGo.SetActive(false);
-            var light = sunGo.AddComponent<Light>();
-            light.type = LightType.Directional;
-            var orbit = sunGo.AddComponent<SunOrbitController>();
-            Set(orbit, "sun", light);
-            Set(orbit, "timer", timer);
-            sunGo.SetActive(true);
-
+            SunOrbitController orbit = MakeSun();
             CloudLayer clouds = MakeClouds(density: 2, stormExtra: 0, sun: orbit);
             Color assetColor = _cloudMaterial.GetColor("_SunColor");
             RawImage first = clouds.transform.Find("Cloud_0").GetComponent<RawImage>();
@@ -266,6 +257,105 @@ namespace _SAIUN.Tests
             clouds.ApplyClearRects(new Rect[0], new Vector2(480f, 860f));
             Assert.AreEqual(CloudLayer.NoClearRect, runtime.GetVector("_ClearRect0"));
             Assert.AreEqual(Get<float>(clouds, "behindTextOpacity"), runtime.GetFloat("_ClearOpacity"), 0.0001f);
+            Assert.AreEqual(Get<float>(clouds, "behindTextShade"), runtime.GetFloat("_ClearShade"), 0.0001f);
+        }
+
+        // ---- 웅대적운·채운 ----
+
+        [Test]
+        public void 웅대적운은_해가_오를수록_자라고_다_자라면_채운_갓구름이_얹힌다()
+        {
+            SunOrbitController orbit = MakeSun();
+            CloudLayer clouds = MakeClouds(density: 1, stormExtra: 0, sun: orbit);
+            Set(clouds, "idleGrowthRange", new Vector2(0.3f, 0.3f));
+            Assert.AreEqual(1, clouds.TowerCount);
+
+            orbit.Apply(0f);
+            for (int i = 0; i < 300; i++) clouds.Tick(1f);
+            Assert.AreEqual(0.3f, clouds.TowerGrowth, 0.01f, "아침(세션 처음)에는 쉴 때만큼만 솟아 있다");
+            Assert.AreEqual(0f, clouds.CapVisibility, 0.0001f, "덜 자란 탑에는 갓구름이 없다");
+
+            orbit.Apply(1f);
+            for (int i = 0; i < 300; i++) clouds.Tick(1f);
+            Assert.Greater(clouds.TowerGrowth, 0.97f, "해가 다 오르면 탑이 끝까지 솟는다");
+            Assert.Greater(clouds.CapVisibility, 0.5f, "다 자란 탑에 갓구름이 얹힌다");
+
+            RawImage tower = clouds.transform.Find("Tower_0").GetComponent<RawImage>();
+            RawImage cap = clouds.transform.Find("Cap_0").GetComponent<RawImage>();
+            Assert.AreEqual(clouds.TowerGrowth, tower.color.r, 0.0001f, "자람은 꼭짓점 색 R로 셰이더에 간다");
+            Assert.AreEqual(Get<float>(clouds, "capIridescence"), cap.color.g, 0.0001f, "채운 세기는 G로 간다");
+            Assert.IsTrue(cap.enabled);
+            Assert.Greater(cap.rectTransform.anchoredPosition.y, tower.rectTransform.anchoredPosition.y + tower.rectTransform.rect.height * 0.5f,
+                "갓구름은 탑 꼭대기 위에 있다");
+        }
+
+        [Test]
+        public void 쉴_때도_탑은_몇_분_주기로_자랐다_가라앉는다()
+        {
+            CloudLayer clouds = MakeClouds(density: 0, stormExtra: 0);
+            Set(clouds, "idleCycleMinutes", 1f);
+            Set(clouds, "growthResponse", 0.5f);
+            float lowest = float.MaxValue;
+            float highest = float.MinValue;
+            for (int i = 0; i < 120; i++)
+            {
+                clouds.Tick(1f);
+                lowest = Mathf.Min(lowest, clouds.TowerGrowth);
+                highest = Mathf.Max(highest, clouds.TowerGrowth);
+            }
+            Vector2 range = Get<Vector2>(clouds, "idleGrowthRange");
+            Assert.AreEqual(range.x, lowest, 0.05f);
+            Assert.AreEqual(range.y, highest, 0.05f);
+            Assert.Greater(highest, Get<float>(clouds, "capGrowth"), "쉴 때도 가장 높이 솟으면 채운 갓구름을 볼 수 있다");
+        }
+
+        [Test]
+        public void 먹구름이_오면_탑은_끝까지_솟고_채운_갓구름은_사라진다()
+        {
+            CloudLayer clouds = MakeClouds(density: 0, stormExtra: 0);
+            Randoms(0.9f);
+            _sm.ChangeState(PomodoroState.Focus);
+            _sm.ChangeState(PomodoroState.Interrupted);
+            Settle();
+            for (int i = 0; i < 300; i++) clouds.Tick(1f);
+
+            Assert.Greater(clouds.TowerGrowth, 0.95f);
+            Assert.Less(clouds.CapVisibility, 0.01f);
+            Assert.IsFalse(clouds.transform.Find("Cap_0").GetComponent<RawImage>().enabled);
+        }
+
+        [Test]
+        public void 다_자란_탑_둘레의_적운은_하강_기류로_흩어진다()
+        {
+            CloudLayer clouds = MakeClouds(density: 1, stormExtra: 0);
+            Set(clouds, "idleGrowthRange", new Vector2(1f, 1f));
+            Set(clouds, "growthResponse", 0.01f);
+            clouds.Tick(1f);
+            var tower = (RectTransform)clouds.transform.Find("Tower_0");
+            var cloud = (RectTransform)clouds.transform.Find("Cloud_0");
+            float towerX = tower.anchoredPosition.x;
+
+            cloud.anchoredPosition = new Vector2(towerX, cloud.anchoredPosition.y);
+            float above = clouds.Clearing(cloud, 0f);
+            Assert.AreEqual(Get<float>(clouds, "towerClearing"), above, 0.01f, "탑 바로 위를 지나는 적운은 가장 옅다");
+
+            cloud.anchoredPosition = new Vector2(towerX + tower.rect.width + cloud.rect.width, cloud.anchoredPosition.y);
+            Assert.AreEqual(0f, clouds.Clearing(cloud, 0f), 0.0001f, "멀리 떨어진 적운은 그대로다");
+
+            cloud.anchoredPosition = new Vector2(towerX, cloud.anchoredPosition.y);
+            Assert.AreEqual(0f, clouds.Clearing(cloud, 1f), 0.0001f, "먹구름이면 흩어지지 않는다");
+        }
+
+        [Test]
+        public void 구름_조각은_uvRect에_모양_시드와_종류를_싣는다()
+        {
+            CloudLayer clouds = MakeClouds(density: 1, stormExtra: 0);
+            Assert.AreEqual(CloudLayer.KindCumulus, Mathf.FloorToInt(Piece(clouds, "Cloud_0").uvRect.y));
+            Assert.AreEqual(CloudLayer.KindCongestus, Mathf.FloorToInt(Piece(clouds, "Tower_0").uvRect.y));
+            Assert.AreEqual(CloudLayer.KindCap, Mathf.FloorToInt(Piece(clouds, "Cap_0").uvRect.y));
+            Rect cumulus = Piece(clouds, "Cloud_0").uvRect;
+            Assert.Less(cumulus.width, 1f, "오른쪽 끝이 다음 시드로 넘어가지 않는다");
+            Assert.Less(cumulus.height, 1f, "위 끝이 다음 종류로 넘어가지 않는다");
         }
 
         // ---- 풍향계 ----
@@ -480,6 +570,25 @@ namespace _SAIUN.Tests
             Set(clouds, "stormExtra", stormExtra);
             areaGo.SetActive(true);
             return clouds;
+        }
+
+        private SunOrbitController MakeSun()
+        {
+            PomodoroTimer timer = _sm.gameObject.AddComponent<PomodoroTimer>();
+            var sunGo = Own(new GameObject("Sun"));
+            sunGo.SetActive(false);
+            var light = sunGo.AddComponent<Light>();
+            light.type = LightType.Directional;
+            var orbit = sunGo.AddComponent<SunOrbitController>();
+            Set(orbit, "sun", light);
+            Set(orbit, "timer", timer);
+            sunGo.SetActive(true);
+            return orbit;
+        }
+
+        private static RawImage Piece(CloudLayer clouds, string name)
+        {
+            return clouds.transform.Find(name).GetComponent<RawImage>();
         }
 
         private WeatherVane MakeVane(out Transform arrow, out Transform cups)

@@ -29770,13 +29770,31 @@ MonoBehaviour:
   widthRange: {x: 130, y: 230}
   depthRange: {x: 20, y: 230}
   parallaxRange: {x: 0.6, y: 1.2}
+  cumulusIridescence: 0.12
+  towers: 1
+  towerWidthRange: {x: 215, y: 245}
+  towerBaseDepth: 325
+  towerParallax: 0.45
+  idleCycleMinutes: 6
+  idleGrowthRange: {x: 0.45, y: 0.92}
+  focusGrowthProgress: {x: 0.1, y: 0.7}
+  growthResponse: 20
+  towerIridescence: 0.5
+  towerOpacity: 0.95
+  towerClearing: 0.85
+  capGrowth: 0.8
+  capWidthRatio: 0.76
+  capLift: 4
+  capOpacity: 0.9
+  capIridescence: 1
   sunlight: 1.05
   clearOpacity: 0.7
   stormOpacity: 0.9
   keepClear:
   - {fileID: 1812618471}
   - {fileID: 1812618470}
-  behindTextOpacity: 0.35
+  behindTextOpacity: 0.85
+  behindTextShade: 0.62
 --- !u!1 &785292976
 GameObject:
   m_ObjectHideFlags: 0
