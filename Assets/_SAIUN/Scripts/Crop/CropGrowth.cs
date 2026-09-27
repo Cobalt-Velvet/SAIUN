@@ -383,17 +383,23 @@ namespace _SAIUN.Scripts.Crop
 
         private IEnumerator WitherRoutine()
         {
+            // 한 모델이 재질을 여럿(잎·줄기·열매) 가질 수 있어 재질 칸마다 원래 색을 기억해 따로 시든다.
             var renderers = new List<Renderer>();
+            var slots = new List<int>();
             var originals = new List<Color>();
             foreach (Plant plant in _plants)
             {
                 if (plant.Model == null) continue;
                 foreach (Renderer renderer in plant.Model.GetComponentsInChildren<Renderer>())
                 {
-                    Material material = renderer.sharedMaterial;
-                    if (material == null || !material.HasProperty(BaseColorId)) continue;
-                    renderers.Add(renderer);
-                    originals.Add(material.GetColor(BaseColorId));
+                    Material[] materials = renderer.sharedMaterials;
+                    for (int slot = 0; slot < materials.Length; slot++)
+                    {
+                        if (materials[slot] == null || !materials[slot].HasProperty(BaseColorId)) continue;
+                        renderers.Add(renderer);
+                        slots.Add(slot);
+                        originals.Add(materials[slot].GetColor(BaseColorId));
+                    }
                 }
             }
 
@@ -414,7 +420,7 @@ namespace _SAIUN.Scripts.Crop
                 {
                     if (renderers[i] == null) continue;
                     block.SetColor(BaseColorId, WitheredColor(originals[i], wilt));
-                    renderers[i].SetPropertyBlock(block);
+                    renderers[i].SetPropertyBlock(block, slots[i]);
                 }
 
                 yield return null;

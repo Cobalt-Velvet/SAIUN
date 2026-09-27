@@ -930,7 +930,7 @@ namespace _SAIUN.Editor
         {
             if (bed == null) return;
 
-            CropCatalog catalog = CropPlaceholderBuilder.Build(overwrite: false);
+            CropCatalog catalog = CropModelBuilder.Build(overwrite: false);
 
             // 수확 기록과 해금 판정, 시작 시 작물 확인에 쓴다.
             var gmSo = new SerializedObject(gameManager);
