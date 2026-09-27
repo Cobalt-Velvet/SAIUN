@@ -162,7 +162,8 @@ namespace _SAIUN.Editor
                 return mesh;
             }
             EditorUtility.CopySerialized(mesh, existing);
-            existing.name = $"Vane_{name}";
+            // 에셋의 주 오브젝트 이름은 파일 이름과 같아야 한다(CreateAsset이 그렇게 맞추므로 다시 구울 때도 같게).
+            existing.name = name;
             Object.DestroyImmediate(mesh);
             EditorUtility.SetDirty(existing);
             return existing;
