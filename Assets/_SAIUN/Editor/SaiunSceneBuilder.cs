@@ -67,7 +67,11 @@ namespace _SAIUN.Editor
         // 화단 흙 윗면 중심을 둘 창 픽셀. 사양서 2-3 "우측 고정 / 중앙 하단"에 따라
         // Scene Layer(340~612px)의 오른쪽 절반에 들어가고 하단 바와 16px 떨어지게 잡았다.
         private static readonly Vector2 FlowerbedWindowPixel = new Vector2(352f, 490f);
-        private const float PlaceholderSmoothness = 0.15f;
+        // 화분은 둥근 테두리가 빛을 받아 반짝이도록 도자기처럼 조금 매끈하게, 흙은 거의 무광.
+        private const float PlanterSmoothness = 0.42f;
+        private const float SoilSmoothness = 0.12f;
+        // 흙 알갱이(디테일 맵)의 칸 대비 반복 비율. 칸과 어긋나게 두어 칸마다 같은 무늬가 보이지 않는다.
+        private const float SoilDetailTiling = 0.37f;
         private const float ShadowStrength = 0.55f;
         private const float ShadowFadeWidth = 0.8f;
         // 해가 22도까지 낮아지면 작물 그림자가 키의 2.5배로 늘어난다. 그만큼 받이를 넓게 깐다.
@@ -856,16 +860,26 @@ namespace _SAIUN.Editor
                 return null;
             }
 
-            Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, m =>
-            {
-                m.SetColor("_BaseColor", SaiunPalette.Eggshell);
-                m.SetFloat("_Smoothness", PlaceholderSmoothness);
-            });
-            Material soilMaterial = EnsureMaterial(SoilMaterialPath, lit, m =>
-            {
-                m.SetColor("_BaseColor", SaiunPalette.DeepJungle);
-                m.SetFloat("_Smoothness", PlaceholderSmoothness);
-            });
+            Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, m => m.SetColor("_BaseColor", SaiunPalette.Eggshell));
+            planterMaterial.SetFloat("_Smoothness", PlanterSmoothness);
+
+            // 흙 색은 텍스처가 들고 있어 기본색은 흰색으로 둔다(젖음은 기본색을 어둡게 해서 표현한다).
+            // 기본 맵은 칸마다 한 장(고랑 그늘·둔덕 밝음), 디테일 맵은 칸과 어긋나게 반복되는 알갱이다.
+            Material soilMaterial = EnsureMaterial(SoilMaterialPath, lit, _ => { });
+            (Texture2D soilCell, Texture2D soilDetail, Texture2D soilNormal) = FlowerbedArtBuilder.EnsureSoilTextures();
+            soilMaterial.SetColor("_BaseColor", Color.white);
+            soilMaterial.SetTexture("_BaseMap", soilCell);
+            soilMaterial.SetTexture("_BumpMap", null);
+            soilMaterial.DisableKeyword("_NORMALMAP");
+            soilMaterial.SetTexture("_DetailAlbedoMap", soilDetail);
+            soilMaterial.SetTexture("_DetailNormalMap", soilNormal);
+            soilMaterial.SetTextureScale("_DetailAlbedoMap", Vector2.one * SoilDetailTiling);
+            soilMaterial.SetFloat("_DetailAlbedoMapScale", 1f);
+            soilMaterial.SetFloat("_DetailNormalMapScale", 1f);
+            soilMaterial.EnableKeyword("_DETAIL_MULX2");
+            soilMaterial.SetFloat("_Smoothness", SoilSmoothness);
+            EditorUtility.SetDirty(planterMaterial);
+            EditorUtility.SetDirty(soilMaterial);
             Material catcherMaterial = EnsureMaterial(ShadowCatcherMaterialPath, catcher, m =>
             {
                 m.SetColor("_ShadowColor", SaiunPalette.DeepJungle);
@@ -878,19 +892,13 @@ namespace _SAIUN.Editor
             if (created) bedGo = new GameObject("Flowerbed");
             var bed = EnsureComponent<Flowerbed>(bedGo);
 
-            Transform planter = EnsurePrimitiveChild(bedGo.transform, "Planter", PrimitiveType.Cube,
-                planterMaterial, ShadowCastingMode.On);
-
-            Transform soilRoot = bedGo.transform.Find("Soil");
-            if (soilRoot == null)
+            // 화분·흙 메시는 Flowerbed가 실행할 때 만든다. 여기서는 그릴 자리(MeshFilter·MeshRenderer)만 둔다.
+            Transform planter = EnsureMeshChild(bedGo.transform, "Planter", planterMaterial, ShadowCastingMode.On);
+            Transform soilRoot = EnsureMeshChild(bedGo.transform, "Soil", soilMaterial, ShadowCastingMode.On);
+            // 예전 흙 타일(칸마다 상자 하나)은 한 장짜리 흙 면으로 바뀌었다.
+            for (int i = soilRoot.childCount - 1; i >= 0; i--)
             {
-                soilRoot = new GameObject("Soil").transform;
-                soilRoot.SetParent(bedGo.transform, false);
-            }
-            for (int i = 0; i < bed.CellCount; i++)
-            {
-                EnsurePrimitiveChild(soilRoot, $"Soil_{i / bed.Columns}_{i % bed.Columns}", PrimitiveType.Cube,
-                    soilMaterial, ShadowCastingMode.On);
+                if (soilRoot.GetChild(i).name.StartsWith("Soil_")) Object.DestroyImmediate(soilRoot.GetChild(i).gameObject);
             }
 
             Transform ground = EnsurePrimitiveChild(bedGo.transform, "ShadowGround", PrimitiveType.Quad,
@@ -1289,9 +1297,7 @@ namespace _SAIUN.Editor
             });
 
             Transform root = EnsureChild(bed.transform, "WeatherVane");
-            Vector2 grid = bed.GridSize;
-            float corner = bed.RimWidth / 2f;
-            root.localPosition = new Vector3(grid.x / 2f + corner, bed.RimHeight, grid.y / 2f + corner);
+            root.localPosition = bed.RimCorner;
             root.localRotation = Quaternion.identity;
             root.localScale = Vector3.one;
 
@@ -1553,6 +1559,23 @@ namespace _SAIUN.Editor
             }
 
             var renderer = go.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = shadows;
+            renderer.receiveShadows = true;
+            return go.transform;
+        }
+
+        // 코드로 만든 메시를 그릴 자식. 기본 도형 메시나 콜라이더 없이 MeshFilter·MeshRenderer만 둔다.
+        private static Transform EnsureMeshChild(Transform parent, string name, Material material, ShadowCastingMode shadows)
+        {
+            Transform existing = parent.Find(name);
+            GameObject go = existing != null ? existing.gameObject : new GameObject(name);
+            go.transform.SetParent(parent, false);
+            EnsureComponent<MeshFilter>(go);
+            var collider = go.GetComponent<Collider>();
+            if (collider != null) Object.DestroyImmediate(collider);
+
+            var renderer = EnsureComponent<MeshRenderer>(go);
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = shadows;
             renderer.receiveShadows = true;

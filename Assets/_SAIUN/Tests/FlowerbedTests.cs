@@ -5,7 +5,10 @@ using UnityEngine;
 
 namespace _SAIUN.Tests
 {
-    /// <summary>P2-02: 화단은 6×2 그리드이고, 칸 좌표가 화단 원점 기준으로 균일하게 놓인다.</summary>
+    /// <summary>
+    /// P2-02: 화단은 6×2 그리드이고, 칸 좌표가 화단 원점 기준으로 균일하게 놓인다.
+    /// 외형은 둥근 테두리 화분과 둔덕·고랑이 있는 흙 면 메시다.
+    /// </summary>
     public class FlowerbedTests
     {
         private GameObject _go;
@@ -72,13 +75,10 @@ namespace _SAIUN.Tests
         [Test]
         public void 외형은_그리드_크기에_맞춰진다()
         {
-            var planter = new GameObject("Planter").transform;
-            var soil = new GameObject("Soil").transform;
+            Transform planter = MeshChild("Planter");
+            Transform soil = MeshChild("Soil");
             var ground = new GameObject("Ground").transform;
-            planter.SetParent(_go.transform, false);
-            soil.SetParent(_go.transform, false);
             ground.SetParent(_go.transform, false);
-            for (int i = 0; i < _bed.CellCount; i++) new GameObject($"Tile{i}").transform.SetParent(soil, false);
             SetField("planter", planter);
             SetField("soilRoot", soil);
             SetField("shadowGround", ground);
@@ -86,19 +86,51 @@ namespace _SAIUN.Tests
             _bed.FitVisuals();
 
             Vector2 grid = _bed.GridSize;
-            Assert.Greater(planter.localScale.x, grid.x, "화분은 흙 칸보다 넓다");
-            Assert.Greater(planter.localScale.z, grid.y);
-            Assert.Greater(ground.localScale.x, planter.localScale.x, "그림자 받이는 화분보다 넓다");
+            Bounds pot = planter.GetComponent<MeshFilter>().sharedMesh.bounds;
+            Assert.AreEqual(grid.x + _bed.RimWidth * 2f, pot.size.x, 0.001f, "화분 바깥 폭 = 흙 + 양쪽 테두리");
+            Assert.AreEqual(grid.y + _bed.RimWidth * 2f, pot.size.z, 0.001f);
+            Assert.AreEqual(_bed.RimHeight, pot.max.y, 0.0001f, "테두리 윗면 높이");
+            Assert.AreEqual(0f, pot.min.y, 0.0001f, "화분은 바닥에 닿는다");
+            Assert.Greater(ground.localScale.x, pot.size.x, "그림자 받이는 화분보다 넓다");
 
-            // 마지막 타일(1행 5열)은 그 칸의 중심에 있어야 한다.
-            Vector3 lastTile = soil.GetChild(_bed.CellCount - 1).position;
-            Vector3 lastCell = _bed.CellPosition(5, 1);
-            Assert.AreEqual(lastCell.x, lastTile.x, 0.0001f);
-            Assert.AreEqual(lastCell.z, lastTile.z, 0.0001f);
+            Bounds earth = soil.GetComponent<MeshFilter>().sharedMesh.bounds;
+            Assert.AreEqual(grid.x, earth.size.x, 0.0001f, "흙은 화분 안쪽을 꼭 채운다");
+            Assert.AreEqual(grid.y, earth.size.z, 0.0001f);
+            Assert.Less(earth.max.y, _bed.RimHeight, "흙은 테두리보다 낮다");
+            Assert.AreEqual(Vector3.one, planter.localScale, "메시가 크기를 들고 있어 배율은 1이다");
+        }
 
-            // 타일 윗면은 흙 윗면과 같은 높이다.
-            float tileTop = lastTile.y + soil.GetChild(0).localScale.y / 2f;
-            Assert.AreEqual(_bed.SurfaceHeight, tileTop, 0.0001f);
+        [Test]
+        public void 작물은_둔덕_꼭대기에_서고_칸_사이에는_고랑이_있다()
+        {
+            SoilShape shape = _bed.SoilShape;
+            for (int row = 0; row < _bed.Rows; row++)
+            {
+                for (int column = 0; column < _bed.Columns; column++)
+                {
+                    Vector3 cell = _bed.CellPosition(column, row);
+                    Assert.AreEqual(_bed.SurfaceHeight, FlowerbedMeshes.SoilHeight(cell.x, cell.z, shape), 0.0001f,
+                        $"({column},{row}) 칸 가운데 둔덕 꼭대기가 흙 윗면 높이다");
+                }
+            }
+
+            Vector3 first = _bed.CellPosition(0, 0);
+            Vector3 second = _bed.CellPosition(1, 0);
+            float groove = FlowerbedMeshes.SoilHeight((first.x + second.x) / 2f, first.z, shape);
+            Assert.Less(groove, _bed.SurfaceHeight - shape.MoundHeight, "칸 사이 고랑은 둔덕 바닥보다 깊다");
+            Assert.Greater(groove, shape.Floor - 0.0001f, "흙은 화분 안쪽 벽 아래로 꺼지지 않는다");
+        }
+
+        [Test]
+        public void 풍향계_자리는_뒤_모서리_테두리_윗면이다()
+        {
+            Vector3 corner = _bed.RimCorner;
+            Vector2 grid = _bed.GridSize;
+            Assert.AreEqual(_bed.RimHeight, corner.y, 0.0001f);
+            Assert.Greater(corner.x, grid.x / 2f, "흙 바깥, 테두리 위");
+            Assert.Greater(corner.z, grid.y / 2f);
+            Assert.Less(corner.x, grid.x / 2f + _bed.RimWidth);
+            Assert.Less(corner.z, grid.y / 2f + _bed.RimWidth);
         }
 
         [Test]
@@ -124,6 +156,13 @@ namespace _SAIUN.Tests
                 Assert.That(pixel.x, Is.InRange(SceneMetrics.WindowWidth / 2f, SceneMetrics.WindowWidth), "오른쪽 절반");
                 Assert.That(pixel.y, Is.InRange(SceneMetrics.SceneLayerTop, SceneMetrics.SceneLayerBottom), "Scene Layer");
             }
+        }
+
+        private Transform MeshChild(string name)
+        {
+            var child = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer)).transform;
+            child.SetParent(_go.transform, false);
+            return child;
         }
 
         private void SetField(string name, Object value)
