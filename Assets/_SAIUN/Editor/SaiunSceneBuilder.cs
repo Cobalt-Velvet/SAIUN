@@ -120,21 +120,10 @@ namespace _SAIUN.Editor
         private const float WindBandHeight = 0.7f;        // 카드 높이 중 바람이 지나는 띠의 비율
         private const float WindBandLift = 0.4f;          // 띠를 카드 가운데보다 올리는 거리(유닛). 시계 쪽에서 흐른다.
 
-        // ---- 풍향계 임시값 (유닛, 화단 기준) ----
-        private const float VanePoleHeight = 1.15f;
-        private const float VanePoleThickness = 0.04f;
-        private const float VaneShaftLength = 0.62f;
-        private const float VaneBarThickness = 0.024f;
-        private const float VaneHeadSize = 0.11f;
-        private const float VaneTailHeight = 0.17f;
-        private const float VaneTailLength = 0.22f;
-        private const float VaneCompassLength = 0.34f;
-        private const float VaneCompassHeight = 0.72f;    // 기둥 높이에 대한 동서남북 막대 위치
-        private const float CupsLift = 0.18f;             // 화살표 위로 풍속계가 올라간 높이
-        private const float CupArmLength = 0.2f;
-        private const float CupSize = 0.08f;
-        private const int CupCount = 3;
+        // ---- 풍향계 재질 (모양은 VaneModelBuilder) ----
         private const float VaneSmoothness = 0.55f;
+        private const float VaneAccentSmoothness = 0.6f;
+        private const float VaneMetallic = 0.35f;
 
         [MenuItem("SAIUN/Build All (TMP·Font·Prefabs·Scene)")]
         public static void BuildAll()
@@ -1281,75 +1270,51 @@ namespace _SAIUN.Editor
         }
 
         // 풍향계와 풍속계: 화분 뒤 모서리(+X,+Z) 테두리 위에 선다. 기둥 그림자가 해를 따라 늘었다 줄었다 한다.
+        // 모양은 VaneModelBuilder가 빚은 메시 세 벌(서 있는 몸체, 도는 화살표, 도는 컵)이다.
         private static void EnsureWeatherVane(Flowerbed bed, WeatherController weather)
         {
             Shader lit = Shader.Find(LitShaderName);
             if (lit == null) return;
-            Material metal = EnsureMaterial(VaneMaterialPath, lit, m =>
+            Material metal = EnsureMaterial(VaneMaterialPath, lit, m => m.SetColor("_BaseColor", SaiunPalette.DeepJungle));
+            metal.SetFloat("_Smoothness", VaneSmoothness);
+            metal.SetFloat("_Metallic", VaneMetallic);
+            Material accent = EnsureMaterial(VaneAccentMaterialPath, lit, m => m.SetColor("_BaseColor", SaiunPalette.TropicalTeal));
+            accent.SetFloat("_Smoothness", VaneAccentSmoothness);
+            EditorUtility.SetDirty(metal);
+            EditorUtility.SetDirty(accent);
+            var materials = new System.Collections.Generic.Dictionary<string, Material>
             {
-                m.SetColor("_BaseColor", SaiunPalette.DeepJungle);
-                m.SetFloat("_Smoothness", VaneSmoothness);
-            });
-            Material accent = EnsureMaterial(VaneAccentMaterialPath, lit, m =>
-            {
-                m.SetColor("_BaseColor", SaiunPalette.TropicalTeal);
-                m.SetFloat("_Smoothness", VaneSmoothness);
-            });
+                { VaneModelBuilder.Metal, metal },
+                { VaneModelBuilder.Accent, accent },
+            };
+            VaneMeshes meshes = VaneModelBuilder.Build();
 
             Transform root = EnsureChild(bed.transform, "WeatherVane");
             root.localPosition = bed.RimCorner;
             root.localRotation = Quaternion.identity;
             root.localScale = Vector3.one;
 
-            // Cylinder 기본 높이는 2다.
-            Place(EnsurePrimitiveChild(root, "Pole", PrimitiveType.Cylinder, metal, ShadowCastingMode.On),
-                new Vector3(0f, VanePoleHeight / 2f, 0f), Quaternion.identity,
-                new Vector3(VanePoleThickness, VanePoleHeight / 2f, VanePoleThickness));
-
-            // 동서남북 막대: 방향을 읽는 기준. 월드 축에 고정이다.
-            float compassY = VanePoleHeight * VaneCompassHeight;
-            Place(EnsurePrimitiveChild(root, "CompassX", PrimitiveType.Cube, metal, ShadowCastingMode.On),
-                new Vector3(0f, compassY, 0f), Quaternion.identity,
-                new Vector3(VaneCompassLength, VaneBarThickness / 2f, VaneBarThickness / 2f));
-            Place(EnsurePrimitiveChild(root, "CompassZ", PrimitiveType.Cube, metal, ShadowCastingMode.On),
-                new Vector3(0f, compassY, 0f), Quaternion.identity,
-                new Vector3(VaneBarThickness / 2f, VaneBarThickness / 2f, VaneCompassLength));
-
-            // 화살표: 앞(+Z)이 화살촉, 뒤가 바람을 받는 꼬리 날개다.
-            Transform vane = EnsureChild(root, "Vane");
-            vane.localPosition = new Vector3(0f, VanePoleHeight, 0f);
-            vane.localScale = Vector3.one;
-            Place(EnsurePrimitiveChild(vane, "Shaft", PrimitiveType.Cube, metal, ShadowCastingMode.On),
-                Vector3.zero, Quaternion.identity,
-                new Vector3(VaneBarThickness, VaneBarThickness, VaneShaftLength));
-            Place(EnsurePrimitiveChild(vane, "Head", PrimitiveType.Cube, accent, ShadowCastingMode.On),
-                new Vector3(0f, 0f, VaneShaftLength / 2f), Quaternion.Euler(0f, 45f, 0f),
-                new Vector3(VaneHeadSize, VaneBarThickness, VaneHeadSize));
-            Place(EnsurePrimitiveChild(vane, "Tail", PrimitiveType.Cube, accent, ShadowCastingMode.On),
-                new Vector3(0f, VaneTailHeight / 4f, -VaneShaftLength / 2f + VaneTailLength / 2f), Quaternion.identity,
-                new Vector3(VaneBarThickness / 2f, VaneTailHeight, VaneTailLength));
-
-            // 풍속계: 화살표 위에서 컵 세 개가 돈다.
-            Place(EnsurePrimitiveChild(root, "CupStem", PrimitiveType.Cylinder, metal, ShadowCastingMode.On),
-                new Vector3(0f, VanePoleHeight + CupsLift / 2f, 0f), Quaternion.identity,
-                new Vector3(VaneBarThickness, CupsLift / 2f, VaneBarThickness));
-            Transform cups = EnsureChild(root, "Cups");
-            cups.localPosition = new Vector3(0f, VanePoleHeight + CupsLift, 0f);
-            cups.localScale = Vector3.one;
-            for (int i = 0; i < CupCount; i++)
+            // 예전에 기본 도형으로 조립하던 부품은 지운다.
+            foreach (string old in new[] { "Pole", "CompassX", "CompassZ", "CupStem" })
             {
-                Transform arm = EnsureChild(cups, $"Arm_{i}");
-                arm.localPosition = Vector3.zero;
-                arm.localRotation = Quaternion.Euler(0f, 360f / CupCount * i, 0f);
-                arm.localScale = Vector3.one;
-                Place(EnsurePrimitiveChild(arm, "Rod", PrimitiveType.Cube, metal, ShadowCastingMode.On),
-                    new Vector3(0f, 0f, CupArmLength / 2f), Quaternion.identity,
-                    new Vector3(VaneBarThickness / 2f, VaneBarThickness / 2f, CupArmLength));
-                // 접선 방향으로 납작한 컵. 바람을 받는 오목한 면이 한쪽을 향한다.
-                Place(EnsurePrimitiveChild(arm, "Cup", PrimitiveType.Sphere, accent, ShadowCastingMode.On),
-                    new Vector3(0f, 0f, CupArmLength), Quaternion.identity,
-                    new Vector3(CupSize / 2f, CupSize, CupSize));
+                Transform part = root.Find(old);
+                if (part != null) Object.DestroyImmediate(part.gameObject);
             }
+
+            Transform vane = EnsureChild(root, "Vane");
+            vane.localPosition = new Vector3(0f, VaneModelBuilder.PoleHeight, 0f);
+            vane.localScale = Vector3.one;
+            Transform cups = EnsureChild(root, "Cups");
+            cups.localPosition = new Vector3(0f, VaneModelBuilder.PoleHeight + VaneModelBuilder.CupsLift, 0f);
+            cups.localScale = Vector3.one;
+            foreach (Transform moving in new[] { vane, cups })
+            {
+                for (int i = moving.childCount - 1; i >= 0; i--) Object.DestroyImmediate(moving.GetChild(i).gameObject);
+            }
+
+            SetModel(root.gameObject, meshes.Body, meshes.BodyParts, materials);
+            SetModel(vane.gameObject, meshes.Arrow, meshes.ArrowParts, materials);
+            SetModel(cups.gameObject, meshes.Cups, meshes.CupsParts, materials);
 
             var component = EnsureComponent<WeatherVane>(root.gameObject);
             var so = new SerializedObject(component);
@@ -1357,6 +1322,19 @@ namespace _SAIUN.Editor
             so.FindProperty("vane").objectReferenceValue = vane;
             so.FindProperty("cups").objectReferenceValue = cups;
             so.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 메시 한 장을 재질별 서브메시 그대로 그린다.
+        private static void SetModel(GameObject go, Mesh mesh, string[] parts,
+            System.Collections.Generic.Dictionary<string, Material> materials)
+        {
+            EnsureComponent<MeshFilter>(go).sharedMesh = mesh;
+            var renderer = EnsureComponent<MeshRenderer>(go);
+            var shared = new Material[parts.Length];
+            for (int i = 0; i < parts.Length; i++) shared[i] = materials[parts[i]];
+            renderer.sharedMaterials = shared;
+            renderer.shadowCastingMode = ShadowCastingMode.On;
+            renderer.receiveShadows = true;
         }
 
         // 비에 젖는 흙·화분. 작물은 런타임에 생겨서 넣지 않는다.
@@ -1384,13 +1362,6 @@ namespace _SAIUN.Editor
             child = new GameObject(name).transform;
             child.SetParent(parent, false);
             return child;
-        }
-
-        private static void Place(Transform target, Vector3 position, Quaternion rotation, Vector3 scale)
-        {
-            target.localPosition = position;
-            target.localRotation = rotation;
-            target.localScale = scale;
         }
 
         // 빛 알갱이용 가산 재질. URP 머티리얼 인스펙터가 블렌드 모드를 고를 때 넣는 값을 직접 넣는다.

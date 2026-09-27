@@ -5,12 +5,14 @@ using UnityEngine;
 namespace _SAIUN.Editor
 {
     /// <summary>
-    /// 작물 모델 하나를 코드로 빚는 도구 (2026-09-27). 부품을 붙여 가다가 재질별 서브메시 한 장으로 굽는다.
-    /// 부품: 휘고 가운데가 접힌 풀잎·넓은 잎, 휘는 줄기(관), 골과 꼭지 홈이 있는 타원체, 꽃잎·꽃받침 별.
+    /// 모델 하나를 코드로 빚는 도구 (2026-09-27). 부품을 붙여 가다가 재질별 서브메시 한 장으로 굽는다.
+    /// 작물(CropModelBuilder)과 풍향계(VaneModelBuilder)가 쓴다.
+    /// 부품: 휘고 가운데가 접힌 풀잎·넓은 잎, 휘는 관(줄기·막대), 골과 꼭지 홈이 있는 타원체, 꽃잎·꽃받침 별,
+    ///       두께 있는 판(화살촉·꼬리 날개), 속이 빈 반구(풍속계 컵).
     /// 잎처럼 얇은 부품은 앞뒷면을 따로 만들어 어느 쪽에서 봐도 빛을 받는다(재질은 뒷면을 버리는 기본 그대로).
     /// UV의 v는 잎·줄기의 밑동 0에서 끝 1로 가서, 세로 그러데이션 텍스처로 밑동을 어둡게 할 수 있다.
     /// </summary>
-    internal sealed class PlantMesh
+    internal sealed class SculptMesh
     {
         // 풀잎 폭이 끝으로 줄어드는 정도. 1보다 크면 끝 가까이에서 급히 뾰족해진다.
         private const float BladeTaper = 1.4f;
@@ -30,6 +32,15 @@ namespace _SAIUN.Editor
         private readonly List<Vector2> _uvs = new List<Vector2>();
         private readonly List<string> _materials = new List<string>();
         private readonly Dictionary<string, List<int>> _triangles = new Dictionary<string, List<int>>();
+
+        /// <summary>부품의 자리: 로컬 +Y가 growth(정확히), +Z가 face 쪽(growth에 수직으로 맞춤)이 되게 놓는다.</summary>
+        public static Matrix4x4 Frame(Vector3 position, Vector3 growth, Vector3 face)
+        {
+            Vector3 y = growth.normalized;
+            Vector3 z = face - y * Vector3.Dot(face, y);
+            if (z.sqrMagnitude < 1e-8f) z = Vector3.Cross(y, Vector3.right);
+            return Matrix4x4.TRS(position, Quaternion.LookRotation(z.normalized, y), Vector3.one);
+        }
 
         // ---- 얇은 부품 ----
 
@@ -220,6 +231,125 @@ namespace _SAIUN.Editor
             AddSolid(material, at, positions, uvs, triangles);
         }
 
+        /// <summary>
+        /// 두께 있는 판: 로컬 XY의 볼록 다각형 윤곽을 Z로 thickness만큼 두껍게 한다. 앞뒤 면과 옆면이 있다.
+        /// </summary>
+        public void Plate(string material, Matrix4x4 at, IList<Vector2> outline, float thickness)
+        {
+            int count = outline.Count;
+            if (count < 3) return;
+            float half = thickness / 2f;
+            var positions = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var triangles = new List<int>();
+
+            // 앞뒤 면: 볼록이라 첫 꼭짓점에서 부채꼴로 나눈다.
+            for (int side = -1; side <= 1; side += 2)
+            {
+                int start = positions.Count;
+                foreach (Vector2 point in outline)
+                {
+                    positions.Add(new Vector3(point.x, point.y, half * side));
+                    normals.Add(new Vector3(0f, 0f, side));
+                    uvs.Add(point);
+                }
+                for (int i = 1; i < count - 1; i++)
+                {
+                    triangles.Add(start);
+                    triangles.Add(start + i);
+                    triangles.Add(start + i + 1);
+                }
+            }
+
+            // 옆면: 모서리마다 바깥을 보는 사각형. 모서리가 또렷하게 꼭짓점을 따로 둔다.
+            Vector2 center = Vector2.zero;
+            foreach (Vector2 point in outline) center += point;
+            center /= count;
+            for (int i = 0; i < count; i++)
+            {
+                Vector2 a = outline[i];
+                Vector2 b = outline[(i + 1) % count];
+                Vector2 edge = (b - a).normalized;
+                var outward = new Vector3(edge.y, -edge.x, 0f);
+                if (Vector2.Dot(new Vector2(outward.x, outward.y), (a + b) / 2f - center) < 0f) outward = -outward;
+                int start = positions.Count;
+                positions.Add(new Vector3(a.x, a.y, -half));
+                positions.Add(new Vector3(b.x, b.y, -half));
+                positions.Add(new Vector3(b.x, b.y, half));
+                positions.Add(new Vector3(a.x, a.y, half));
+                for (int k = 0; k < 4; k++)
+                {
+                    normals.Add(outward);
+                    uvs.Add(Vector2.zero);
+                }
+                Quad(triangles, start, start + 1, start + 2, start + 3);
+            }
+
+            AppendOriented(material, at, positions, normals, uvs, triangles);
+        }
+
+        /// <summary>속이 빈 반구(그릇): 입구가 로컬 +Y를 본다. 바깥·안쪽 면과 입구 테두리가 있다.</summary>
+        public void Bowl(string material, Matrix4x4 at, float radius, float wall, int rings = 5, int segments = 12)
+        {
+            var positions = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var triangles = new List<int>();
+            float inner = Mathf.Max(0f, radius - wall);
+
+            // 바깥면(법선 바깥)과 안쪽면(법선 안쪽)
+            for (int surface = 0; surface < 2; surface++)
+            {
+                float r = surface == 0 ? radius : inner;
+                float facing = surface == 0 ? 1f : -1f;
+                int start = positions.Count;
+                for (int ring = 0; ring <= rings; ring++)
+                {
+                    float latitude = Mathf.Lerp(-Mathf.PI / 2f, 0f, ring / (float)rings);
+                    for (int s = 0; s <= segments; s++)
+                    {
+                        float longitude = s * Mathf.PI * 2f / segments;
+                        var direction = new Vector3(Mathf.Cos(latitude) * Mathf.Cos(longitude), Mathf.Sin(latitude),
+                            Mathf.Cos(latitude) * Mathf.Sin(longitude));
+                        positions.Add(direction * r);
+                        normals.Add(direction * facing);
+                        uvs.Add(new Vector2(s / (float)segments, ring / (float)rings));
+                    }
+                }
+                int stride = segments + 1;
+                for (int ring = 0; ring < rings; ring++)
+                {
+                    for (int s = 0; s < segments; s++)
+                    {
+                        int a = start + ring * stride + s;
+                        Quad(triangles, a, a + 1, a + stride + 1, a + stride);
+                    }
+                }
+            }
+
+            // 입구 테두리: 바깥과 안쪽 가장자리를 잇는 위를 보는 고리
+            int rimStart = positions.Count;
+            for (int s = 0; s <= segments; s++)
+            {
+                float longitude = s * Mathf.PI * 2f / segments;
+                var around = new Vector3(Mathf.Cos(longitude), 0f, Mathf.Sin(longitude));
+                positions.Add(around * radius);
+                positions.Add(around * inner);
+                normals.Add(Vector3.up);
+                normals.Add(Vector3.up);
+                uvs.Add(new Vector2(s / (float)segments, 1f));
+                uvs.Add(new Vector2(s / (float)segments, 1f));
+            }
+            for (int s = 0; s < segments; s++)
+            {
+                int a = rimStart + s * 2;
+                Quad(triangles, a, a + 2, a + 3, a + 1);
+            }
+
+            AppendOriented(material, at, positions, normals, uvs, triangles);
+        }
+
         // ---- 굽기 ----
 
         /// <summary>모은 부품을 재질별 서브메시로 굽는다. materials는 서브메시 순서다. scale만큼 전체를 키운다.</summary>
@@ -276,6 +406,20 @@ namespace _SAIUN.Editor
             var flipped = new List<Vector3>(normals.Count);
             foreach (Vector3 n in normals) flipped.Add(-n);
             Append(material, at, positions, flipped, uvs, back);
+        }
+
+        // 삼각형마다 감긴 방향을 그 꼭짓점 법선 쪽에 맞춘다. 면마다 법선을 직접 준 부품(판·그릇)에 쓴다.
+        private void AppendOriented(string material, Matrix4x4 at, List<Vector3> positions, List<Vector3> normals,
+            List<Vector2> uvs, List<int> triangles)
+        {
+            for (int i = 0; i < triangles.Count; i += 3)
+            {
+                Vector3 a = positions[triangles[i]], b = positions[triangles[i + 1]], c = positions[triangles[i + 2]];
+                Vector3 face = Vector3.Cross(b - a, c - a);
+                Vector3 normal = normals[triangles[i]] + normals[triangles[i + 1]] + normals[triangles[i + 2]];
+                if (Vector3.Dot(face, normal) < 0f) (triangles[i + 1], triangles[i + 2]) = (triangles[i + 2], triangles[i + 1]);
+            }
+            Append(material, at, positions, normals, uvs, triangles);
         }
 
         private void Append(string material, Matrix4x4 at, List<Vector3> positions, List<Vector3> normals,

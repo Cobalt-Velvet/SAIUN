@@ -10,7 +10,7 @@ namespace _SAIUN.Editor
 {
     /// <summary>
     /// 작물 단계별 모델과 작물 정의·목록 에셋을 만든다 (P2-03, 2026-09-27 다시 빚음).
-    /// 기본 도형을 쌓던 자리표시자 대신 PlantMesh로 잎·줄기·열매를 빚는다.
+    /// 기본 도형을 쌓던 자리표시자 대신 SculptMesh로 잎·줄기·열매를 빚는다.
     ///  - 벼: 휘어 퍼지는 풀잎 포기, 여물수록 고개를 숙이는 이삭(알곡이 번갈아 달린 가지).
     ///  - 밀: 풀잎 포기 위로 곧은 줄기와 알곡 두 줄의 이삭.
     ///  - 토마토: 지지대 옆 줄기에 나선으로 붙는 겹잎, 꼭지 홈과 골이 있는 열매와 꽃받침.
@@ -110,7 +110,7 @@ namespace _SAIUN.Editor
 
         // ---- 작물 ----
 
-        private delegate void StageShape(CropStage stage, PlantMesh plant, Rng rng);
+        private delegate void StageShape(CropStage stage, SculptMesh plant, Rng rng);
 
         private static CropDefinition BuildCrop(string id, string displayName, Dictionary<string, Material> materials,
             bool overwrite, StageShape describe,
@@ -130,7 +130,7 @@ namespace _SAIUN.Editor
 
                 if (overwrite || AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) == null)
                 {
-                    var plant = new PlantMesh();
+                    var plant = new SculptMesh();
                     describe(stage, plant, new Rng(StableSeed(name)));
                     Mesh mesh = SaveMesh(plant.Bake(name, ModelScale, out string[] parts), $"{meshFolder}/{name}.asset");
 
@@ -180,7 +180,7 @@ namespace _SAIUN.Editor
 
         // ---- 벼 ----
 
-        private static void RiceStage(CropStage stage, PlantMesh plant, Rng rng)
+        private static void RiceStage(CropStage stage, SculptMesh plant, Rng rng)
         {
             switch (stage)
             {
@@ -213,7 +213,7 @@ namespace _SAIUN.Editor
         }
 
         // 줄기가 살짝 기울며 오르다 끝에서 이삭 가지가 droop도만큼 굽어 내려온다. 알곡이 가지 양쪽에 번갈아 달린다.
-        private static void Panicle(PlantMesh plant, Rng rng, string stalkMaterial, string grainMaterial, float yaw,
+        private static void Panicle(SculptMesh plant, Rng rng, string stalkMaterial, string grainMaterial, float yaw,
             float height, float droop, int kernels)
         {
             Vector3 outward = Direction(yaw);
@@ -253,7 +253,7 @@ namespace _SAIUN.Editor
 
         // ---- 밀 ----
 
-        private static void WheatStage(CropStage stage, PlantMesh plant, Rng rng)
+        private static void WheatStage(CropStage stage, SculptMesh plant, Rng rng)
         {
             switch (stage)
             {
@@ -278,7 +278,7 @@ namespace _SAIUN.Editor
         }
 
         // 곧게 선 줄기 끝에 알곡 두 줄이 엇갈려 붙은 이삭
-        private static void Stalks(PlantMesh plant, Rng rng, string stalkMaterial, string earMaterial, int count)
+        private static void Stalks(SculptMesh plant, Rng rng, string stalkMaterial, string earMaterial, int count)
         {
             for (int i = 0; i < count; i++)
             {
@@ -314,7 +314,7 @@ namespace _SAIUN.Editor
 
         // ---- 토마토 ----
 
-        private static void TomatoStage(CropStage stage, PlantMesh plant, Rng rng)
+        private static void TomatoStage(CropStage stage, SculptMesh plant, Rng rng)
         {
             switch (stage)
             {
@@ -350,7 +350,7 @@ namespace _SAIUN.Editor
         }
 
         // 지지대 옆에서 살짝 굽이치며 선 줄기에 겹잎이 나선으로 붙는다.
-        private static void TomatoBush(PlantMesh plant, Rng rng, float height, int leaves)
+        private static void TomatoBush(SculptMesh plant, Rng rng, float height, int leaves)
         {
             var stake = new List<Vector3> { new Vector3(0.04f, 0f, 0.03f), new Vector3(0.04f, height + 0.04f, 0.03f) };
             plant.Tube(Grain, Matrix4x4.identity, stake, 0.0048f, 0.0042f, 6);
@@ -370,7 +370,7 @@ namespace _SAIUN.Editor
         }
 
         // 줄기에서 바깥·아래로 휘는 꽃대 끝에 열매 세 알. 익은 열매에는 별 모양 꽃받침이 앉는다.
-        private static void Truss(PlantMesh plant, Rng rng, float height, float yaw, string material, float radius, bool calyx)
+        private static void Truss(SculptMesh plant, Rng rng, float height, float yaw, string material, float radius, bool calyx)
         {
             Vector3 outward = Direction(yaw + rng.Range(-15f, 15f));
             Vector3 start = new Vector3(0f, height, 0f);
@@ -396,7 +396,7 @@ namespace _SAIUN.Editor
 
         // ---- 감자 ----
 
-        private static void PotatoStage(CropStage stage, PlantMesh plant, Rng rng)
+        private static void PotatoStage(CropStage stage, SculptMesh plant, Rng rng)
         {
             switch (stage)
             {
@@ -426,7 +426,7 @@ namespace _SAIUN.Editor
             }
         }
 
-        private static void PotatoLeaves(PlantMesh plant, Rng rng, int count, System.Func<int, string> material,
+        private static void PotatoLeaves(SculptMesh plant, Rng rng, int count, System.Func<int, string> material,
             (float Min, float Max) length, float up, int pairs, (float Min, float Max) leaflet)
         {
             for (int i = 0; i < count; i++)
@@ -440,7 +440,7 @@ namespace _SAIUN.Editor
         }
 
         // 잎 무더기 위로 오른 꽃대 끝의 별 모양 꽃 두세 송이
-        private static void FlowerStalk(PlantMesh plant, Rng rng, float yaw)
+        private static void FlowerStalk(SculptMesh plant, Rng rng, float yaw)
         {
             Vector3 outward = Direction(yaw);
             float height = rng.Range(0.11f, 0.13f);
@@ -461,7 +461,7 @@ namespace _SAIUN.Editor
         // ---- 공통 부품 ----
 
         // 흙 위에 누운 씨앗들
-        private static void Seeds(PlantMesh plant, Rng rng, int count, Vector3 radii, float spread)
+        private static void Seeds(SculptMesh plant, Rng rng, int count, Vector3 radii, float spread)
         {
             for (int i = 0; i < count; i++)
             {
@@ -472,7 +472,7 @@ namespace _SAIUN.Editor
         }
 
         // 뿌리 둘레에서 바깥으로 기울어 휘는 풀잎 포기
-        private static void Tuft(PlantMesh plant, Rng rng, System.Func<int, string> material, int count,
+        private static void Tuft(SculptMesh plant, Rng rng, System.Func<int, string> material, int count,
             (float Min, float Max) length, float width, (float Min, float Max) tilt, (float Min, float Max) bend)
         {
             for (int i = 0; i < count; i++)
@@ -487,7 +487,7 @@ namespace _SAIUN.Editor
         }
 
         // 잎자루를 따라 작은 잎이 마주나고 끝에 잎 하나가 달린 겹잎. 잎자루 끝은 조금 처진다.
-        private static void CompoundLeaf(PlantMesh plant, Rng rng, string stalkMaterial, string leafMaterial, Vector3 attach,
+        private static void CompoundLeaf(SculptMesh plant, Rng rng, string stalkMaterial, string leafMaterial, Vector3 attach,
             Vector3 direction, float length, int pairs, (float Min, float Max) leafletLength, float leafletWidth)
         {
             var stalk = new List<Vector3>();
@@ -550,14 +550,7 @@ namespace _SAIUN.Editor
             return new Vector3(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw));
         }
 
-        /// <summary>부품의 자리: 로컬 +Y가 growth(정확히), +Z가 face 쪽(growth에 수직으로 맞춤)이 되게 놓는다.</summary>
-        private static Matrix4x4 Frame(Vector3 position, Vector3 growth, Vector3 face)
-        {
-            Vector3 y = growth.normalized;
-            Vector3 z = face - y * Vector3.Dot(face, y);
-            if (z.sqrMagnitude < 1e-8f) z = Vector3.Cross(y, Vector3.right);
-            return Matrix4x4.TRS(position, Quaternion.LookRotation(z.normalized, y), Vector3.one);
-        }
+        private static Matrix4x4 Frame(Vector3 position, Vector3 growth, Vector3 face) => SculptMesh.Frame(position, growth, face);
 
         // 문자열 해시는 실행마다 달라질 수 있어 FNV-1a로 직접 센다.
         private static int StableSeed(string text)
