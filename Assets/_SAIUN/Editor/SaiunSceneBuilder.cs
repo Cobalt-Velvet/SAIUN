@@ -485,7 +485,7 @@ namespace _SAIUN.Editor
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsureWeather(camera, backdropCard, stateMachine, bed);
             EnsurePrefabInstance<TimerHudView>(uiCard, "TimerHud", TimerHudPrefabPath, gameManager);
-            KeepCloudsOffHud(backdropCard, uiCard.Find("TimerHud"));
+            ShadeHudText(uiCard.Find("TimerHud"));
             EnsurePrefabInstance<BottomBarView>(uiCard, "BottomBar", BottomBarPrefabPath, gameManager);
 
             // 세션 설정 패널과 시스템 설정 화면(P4-04). 하단 바보다 위, 알림·테두리보다 아래에 둔다.
@@ -956,7 +956,7 @@ namespace _SAIUN.Editor
             weatherSo.FindProperty("stateMachine").objectReferenceValue = stateMachine;
             weatherSo.ApplyModifiedPropertiesWithoutUndo();
 
-            EnsureClouds(backdropCanvas, weather);
+            EnsureSky(backdropCanvas, weather);
             if (camera != null)
             {
                 RainEffect rain = EnsureRain(camera, weather);
@@ -978,64 +978,52 @@ namespace _SAIUN.Editor
             EnsureSurfaceWetness(bed, weather);
         }
 
-        // 뭉게구름: 유리 배경 바로 위, 3D 씬 뒤. Sky Layer에만 띄운다.
-        private static void EnsureClouds(Transform backdropCanvas, WeatherController weather)
+        // 하늘: 유리 배경 바로 위, 3D 씬 뒤. 카드 전체를 덮고 지평선 아래로는 투명해져 유리가 보인다.
+        private static void EnsureSky(Transform backdropCanvas, WeatherController weather)
         {
-            Transform existing = backdropCanvas.Find("Clouds");
-            GameObject clouds = existing != null
+            // 예전 2D 뭉게구름 층은 하늘이 대신한다.
+            Transform legacy = backdropCanvas.Find("Clouds");
+            if (legacy != null) Object.DestroyImmediate(legacy.gameObject);
+
+            Transform existing = backdropCanvas.Find("Sky");
+            GameObject sky = existing != null
                 ? existing.gameObject
-                : new GameObject("Clouds", typeof(RectTransform), typeof(CloudLayer));
-            clouds.transform.SetParent(backdropCanvas, false);
-            clouds.transform.SetSiblingIndex(1);   // DesktopGlass 바로 다음
+                : new GameObject("Sky", typeof(RectTransform), typeof(RawImage), typeof(SkyView));
+            sky.transform.SetParent(backdropCanvas, false);
+            sky.transform.SetSiblingIndex(1);   // DesktopGlass 바로 다음
 
-            var rt = (RectTransform)clouds.transform;
-            rt.anchorMin = new Vector2(0f, 1f);
-            rt.anchorMax = new Vector2(1f, 1f);
-            rt.pivot = new Vector2(0.5f, 1f);
+            var rt = (RectTransform)sky.transform;
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = Vector2.zero;
-            rt.sizeDelta = new Vector2(0f, SceneMetrics.SkyLayerHeight);
+            rt.sizeDelta = Vector2.zero;
 
-            // 예전 스프라이트 구름 틀(Image)은 셰이더 구름 틀(RawImage)로 바꾼다. 한 오브젝트에 Graphic은 하나뿐이다.
-            Transform templateChild = clouds.transform.Find("CloudTemplate");
-            if (templateChild != null && templateChild.GetComponent<RawImage>() == null)
-            {
-                Object.DestroyImmediate(templateChild.gameObject);
-                templateChild = null;
-            }
-            GameObject template = templateChild != null
-                ? templateChild.gameObject
-                : new GameObject("CloudTemplate", typeof(RectTransform), typeof(RawImage));
-            template.transform.SetParent(clouds.transform, false);
-            var image = template.GetComponent<RawImage>();
-            image.material = WeatherArtBuilder.EnsureCloudMaterial();
+            var image = sky.GetComponent<RawImage>();
             image.raycastTarget = false;
-            template.SetActive(false);
+            image.color = Color.white;
 
-            var so = new SerializedObject(clouds.GetComponent<CloudLayer>());
+            var so = new SerializedObject(sky.GetComponent<SkyView>());
             so.FindProperty("weather").objectReferenceValue = weather;
             so.FindProperty("sun").objectReferenceValue = Object.FindFirstObjectByType<SunOrbitController>();
-            so.FindProperty("area").objectReferenceValue = rt;
-            so.FindProperty("cloudTemplate").objectReferenceValue = image;
+            so.FindProperty("skyMaterial").objectReferenceValue = SkyArtBuilder.EnsureSkyMaterial();
+            so.FindProperty("noise").objectReferenceValue = SkyArtBuilder.EnsureNoise();
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // 구름이 시계 글자 뒤로 지나가면 옅어지게 한다. 시계는 구름보다 나중에 만들어져 따로 잇는다.
-        private static void KeepCloudsOffHud(Transform backdropCanvas, Transform hud)
+        // 시계 글자에 은은한 그림자를 깐다. 흰 구름 위를 지나도 밝은 글자가 읽힌다.
+        private static void ShadeHudText(Transform hud)
         {
-            Transform clouds = backdropCanvas.Find("Clouds");
-            if (clouds == null || hud == null) return;
-            var texts = new System.Collections.Generic.List<TMP_Text>();
-            foreach (string name in new[] { "PrimaryText", "SecondaryText" })
+            if (hud == null) return;
+            Material shadow = SkyArtBuilder.EnsureTextShadowMaterial(AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath));
+            if (shadow == null) return;
+            foreach (string name in new[] { "PhaseLabel", "PrimaryText", "SecondaryText" })
             {
                 Transform child = hud.Find(name);
-                if (child != null && child.TryGetComponent(out TMP_Text text)) texts.Add(text);
+                if (child == null || !child.TryGetComponent(out TMP_Text text)) continue;
+                text.fontSharedMaterial = shadow;
+                EditorUtility.SetDirty(text);
             }
-
-            var so = new SerializedObject(clouds.GetComponent<CloudLayer>());
-            SerializedProperty list = so.FindProperty("keepClear");
-            list.arraySize = texts.Count;
-            for (int i = 0; i < texts.Count; i++) list.GetArrayElementAtIndex(i).objectReferenceValue = texts[i];
-            so.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // 비: 카메라 자식으로 화면 위쪽 가장자리 밖에서 생겨 아래로 떨어진다.

@@ -6,7 +6,7 @@ using UnityEngine.Rendering;
 namespace _SAIUN.Editor
 {
     /// <summary>
-    /// 자연 현상(P2-05)의 그림을 코드로 만든다. 구름 셰이더 재질, 빗줄기·바람결 재질, 날리는 잎 텍스처와 재질.
+    /// 자연 현상(P2-05)의 그림을 코드로 만든다. 빗줄기·바람결 재질, 날리는 잎 텍스처와 재질. 하늘은 SkyArtBuilder가 만든다.
     /// 외부 그림을 쓰지 않아 라이선스 걱정이 없다. 파일이 이미 있으면 건드리지 않는다.
     /// </summary>
     public static class WeatherArtBuilder
@@ -15,9 +15,7 @@ namespace _SAIUN.Editor
         private const string RainMaterialPath = "Assets/_SAIUN/Art/Materials/Particle_Rain.mat";
         private const string LeafMaterialPath = "Assets/_SAIUN/Art/Materials/Particle_Leaf.mat";
         private const string WindMaterialPath = "Assets/_SAIUN/Art/Materials/Particle_Wind.mat";
-        private const string CloudMaterialPath = "Assets/_SAIUN/Art/Materials/UI_Cumulus.mat";
         private const string LeafTexturePath = TextureFolder + "/leaf.png";
-        private const string CloudShaderName = "SAIUN/UI/Cumulus";
         private const int LeafSize = 32;
         private const string ParticleShaderName = "Universal Render Pipeline/Particles/Unlit";
 
@@ -48,23 +46,6 @@ namespace _SAIUN.Editor
         public static Material EnsureLeafMaterial()
         {
             return EnsureAlphaParticleMaterial(LeafMaterialPath, Color.white, EnsureLeafTexture());
-        }
-
-        /// <summary>뭉게구름 셰이더 재질.</summary>
-        public static Material EnsureCloudMaterial()
-        {
-            var material = AssetDatabase.LoadAssetAtPath<Material>(CloudMaterialPath);
-            if (material != null) return material;
-
-            Shader shader = Shader.Find(CloudShaderName);
-            if (shader == null)
-            {
-                Debug.LogError("WeatherArtBuilder: 구름 셰이더를 찾지 못했습니다.");
-                return null;
-            }
-            material = new Material(shader) { name = Path.GetFileNameWithoutExtension(CloudMaterialPath) };
-            AssetDatabase.CreateAsset(material, CloudMaterialPath);
-            return material;
         }
 
         // URP 머티리얼 인스펙터가 알파 블렌드를 고를 때 넣는 값을 직접 넣는다.

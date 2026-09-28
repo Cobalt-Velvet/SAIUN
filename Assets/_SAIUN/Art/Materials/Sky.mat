@@ -7,8 +7,8 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: UI_Cumulus
-  m_Shader: {fileID: 4800000, guid: 6d56216030d35e641bf96937d45d860c, type: 3}
+  m_Name: Sky
+  m_Shader: {fileID: 4800000, guid: 4b8c0c96b2f4aeb47a2a22cef34f5c35, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -23,21 +23,21 @@ Material:
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
-    - _MainTex:
-        m_Texture: {fileID: 0}
+    - _Noise:
+        m_Texture: {fileID: 11700000, guid: 2054173fd1602e145a615e1e31b1455a, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _Absorption: 1.1
-    - _Evolve: 0.035
-    - _Silver: 0.6
-    - _Softness: 0.22
+    - _Cap: 1
+    - _Exposure: 1
+    - _Growth: 1
+    - _Phase: -1
+    - _Progress: 0.5
+    - _Seed: 3
+    - _SkyTime: 0
     - _Storm: 0
     m_Colors:
-    - _ShadowColor: {r: 0.54999995, g: 0.6, b: 0.65999997, a: 1}
-    - _StormColor: {r: 0.19999996, g: 0.23999995, b: 0.22999996, a: 1}
-    - _SunColor: {r: 1, g: 0.96, b: 0.9, a: 1}
-    - _SunDir: {r: 0.4, g: 0.9, b: 0, a: 0}
+    - _SkySize: {r: 480, g: 680, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
