@@ -46,6 +46,7 @@ namespace _SAIUN.Scripts.Weather
         public float Storm;      // 뇌우(집중 상태 연동 먹구름) 0~1
         public float Rain;       // 비 강도 0~1
         public float Wind;       // 바람 세기 0~1
+        public bool Resting;     // 쉬는 중(시계·휴식)
     }
 
     /// <summary>장면 하나가 나올 가능성(아침·한낮·저녁 무게, 바람 1당 더하는 무게)과 주된 구름 양의 범위.</summary>
@@ -96,6 +97,7 @@ namespace _SAIUN.Scripts.Weather
     ///  - 웅대적운: 드물게, 특별하게(사용자 선택). 맑은 날 한낮~오후, 대류가 이는 장면(뭉게구름 떼·맑음·새털·양떼구름)에서만
     ///    가끔 굴려 솟는다. 몇 분에 걸쳐 자라 오르고, 다 자라 머무는 동안 채운 갓구름이 얹히고, 스러진다.
     ///    한 번 솟으면 한동안 다시 솟지 않아 세션 한 번에 한두 번 볼 수 있다. 뇌우면 적란운으로 끝까지 솟는다.
+    ///    쉬는 동안(시계·휴식)에도 구름멍을 할 수 있게 때와 상관없이 가끔 솟는다(사용자 요청). 다만 해가 깊이 졌으면 솟지 않는다.
     /// 여기서는 목표 양만 정하고, 하늘(SkyView)이 그 목표로 천천히 옮겨 간다.
     /// </summary>
     [Serializable]
@@ -239,6 +241,12 @@ namespace _SAIUN.Scripts.Weather
 
         [Tooltip("맑음·새털구름·양떼구름 장면에서 굴릴 때마다 솟을 확률")]
         [SerializeField, Range(0f, 1f)] private float towerChanceOther = 0.08f;
+
+        [Tooltip("쉬는 동안(시계·휴식) 대류 장면에서 굴릴 때마다 솟을 확률. 때는 따지지 않는다.")]
+        [SerializeField, Range(0f, 1f)] private float towerChanceResting = 0.14f;
+
+        [Tooltip("쉬는 동안 이보다 해가 깊이 졌으면 솟지 않는다(박명 0~1)")]
+        [SerializeField, Range(0f, 1f)] private float towerRestTwilight = 0.5f;
 
         [Tooltip("한 번 솟은 뒤 다시 솟을 수 있기까지(분). 솟기 시작한 때부터 잰다.")]
         [SerializeField, Min(0f)] private float towerCooldownMinutes = 35f;
@@ -444,16 +452,18 @@ namespace _SAIUN.Scripts.Weather
             _towerRollLeft -= deltaTime;
             if (_towerRollLeft > 0f) return;
             _towerRollLeft = towerRollSeconds;
-            if (TowerAllowed(inputs) && _random() < TowerChance(Scene)) StartTower();
+            if (!TowerAllowed(inputs)) return;
+            float chance = inputs.Resting && TowerChance(Scene) > 0f ? towerChanceResting : TowerChance(Scene);
+            if (_random() < chance) StartTower();
         }
 
-        // 맑은 날 한낮~오후에만 솟는다. 비가 오거나 뇌우거나 해가 졌으면, 또는 얼마 전에 솟았으면 솟지 않는다.
+        // 집중 중에는 맑은 날 한낮~오후에만, 쉬는 동안에는 때와 상관없이(해가 깊이 지지 않았으면) 솟는다.
+        // 비가 오거나 뇌우거나, 얼마 전에 솟았으면 솟지 않는다.
         private bool TowerAllowed(SkyInputs inputs)
         {
-            return _towerCooldown <= 0f
-                   && inputs.Storm < StormGone
-                   && inputs.Rain < VirgaFrontStart
-                   && inputs.Twilight < TwilightEpisodeStart
+            if (_towerCooldown > 0f || inputs.Storm >= StormGone || inputs.Rain >= VirgaFrontStart) return false;
+            if (inputs.Resting) return inputs.Twilight < towerRestTwilight;
+            return inputs.Twilight < TwilightEpisodeStart
                    && inputs.Progress >= towerWindow.x && inputs.Progress <= towerWindow.y;
         }
 

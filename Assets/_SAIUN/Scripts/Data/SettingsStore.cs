@@ -26,6 +26,7 @@ namespace _SAIUN.Scripts.Data
             public const string TutorialCompleted = "tutorial.completed";
             public const string WeatherRandom = "weather.random";
             public const string WeatherFocusLinked = "weather.focusLinked";
+            public const string BackgroundGlass = "display.backgroundGlass";
         }
 
         // ---- 기본값 (사양서 7장·8장) ----
@@ -38,6 +39,7 @@ namespace _SAIUN.Scripts.Data
         public const bool DefaultTutorialCompleted = false;
         public const bool DefaultWeatherRandom = true;
         public const bool DefaultWeatherFocusLinked = true;
+        public const bool DefaultBackgroundGlass = true;
 
         private const int True = 1;
         private const int False = 0;
@@ -154,6 +156,15 @@ namespace _SAIUN.Scripts.Data
             set => SetBool(Keys.WeatherFocusLinked, value);
         }
 
+        // ---- 화면 ----
+
+        /// <summary>배경 유리: 켜면 지평선 아래로 바탕화면이 흐리게 비치고, 끄면 하늘과 땅이 카드를 다 채운다.</summary>
+        public static bool BackgroundGlass
+        {
+            get => GetBool(Keys.BackgroundGlass, DefaultBackgroundGlass);
+            set => SetBool(Keys.BackgroundGlass, value);
+        }
+
         // ---- 초기화 ----
 
         /// <summary>이 앱이 쓰는 키만 지운다. PlayerPrefs.DeleteAll은 쓰지 않는다.</summary>
@@ -173,6 +184,7 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.TutorialCompleted);
             PlayerPrefs.DeleteKey(Keys.WeatherRandom);
             PlayerPrefs.DeleteKey(Keys.WeatherFocusLinked);
+            PlayerPrefs.DeleteKey(Keys.BackgroundGlass);
             PlayerPrefs.Save();
         }
 

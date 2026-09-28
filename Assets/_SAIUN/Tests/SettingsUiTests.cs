@@ -4,6 +4,7 @@ using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Distraction;
 using _SAIUN.Scripts.UI;
+using _SAIUN.Scripts.Weather;
 using NUnit.Framework;
 using TMPro;
 using UnityEngine;
@@ -175,6 +176,25 @@ namespace _SAIUN.Tests
 
             Field(_settings, "volumeField").Slider.value = 30;
             Assert.AreEqual(0.3f, SettingsStore.SoundVolume, 0.0001f);
+        }
+
+        [Test]
+        public void 배경_유리를_끄면_저장되고_하늘이_땅까지_채우며_유리가_꺼진다()
+        {
+            OpenSettings();
+            var sky = Find<SkyView>();
+            GameObject glass = GameObject.Find("DesktopGlass");
+            Assert.IsTrue(Get<Toggle>(_settings, "backgroundGlassToggle").isOn, "처음엔 켜져 있다");
+            Assert.IsTrue(sky.Glass);
+
+            Get<Toggle>(_settings, "backgroundGlassToggle").isOn = false;
+            Assert.IsFalse(SettingsStore.BackgroundGlass);
+            Assert.IsFalse(sky.Glass);
+            Assert.IsFalse(glass.activeSelf, "바탕화면을 읽지 않는다");
+
+            Get<Toggle>(_settings, "backgroundGlassToggle").isOn = true;
+            Assert.IsTrue(SettingsStore.BackgroundGlass);
+            Assert.IsTrue(glass.activeSelf);
         }
 
         [Test]

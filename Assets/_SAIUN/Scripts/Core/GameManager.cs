@@ -68,6 +68,9 @@ namespace _SAIUN.Scripts.Core
         /// <summary>앱을 끄기 직전. 세션 기록은 이미 끝난 뒤다. 테스트에서 종료를 가로챌 때도 쓴다.</summary>
         public event Action OnQuitRequested;
 
+        /// <summary>배경 유리를 켜거나 껐다. 하늘이 지평선 아래를 어떻게 채울지 바꾼다.</summary>
+        public event Action<bool> OnBackgroundGlassChanged;
+
         private SessionConfig _currentConfig;
         private string _sessionStartTime;
         private bool _hasFocus = true;
@@ -221,6 +224,13 @@ namespace _SAIUN.Scripts.Core
         {
             SettingsStore.GraceSeconds = seconds;
             if (watcher != null) watcher.GraceSeconds = SettingsStore.GraceSeconds;
+        }
+
+        /// <summary>배경 유리를 켜거나 끈다. 켜면 지평선 아래로 바탕화면이 비치고, 끄면 하늘과 땅이 카드를 채운다.</summary>
+        public void RequestSetBackgroundGlass(bool enabled)
+        {
+            SettingsStore.BackgroundGlass = enabled;
+            OnBackgroundGlassChanged?.Invoke(enabled);
         }
 
         public void RequestSetSoundEnabled(bool enabled)

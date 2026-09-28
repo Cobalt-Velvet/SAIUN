@@ -249,6 +249,52 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 하늘의_해는_정원_해의_방위를_따르고_노을엔_지평선에_박명엔_그_아래에_있다()
+        {
+            SunOrbitController orbit = MakeSun();
+            SkyView sky = MakeSky(orbit);
+
+            orbit.Apply(0f);
+            sky.Tick(0.1f);
+            Vector3 morning = sky.SunDirection;
+            Assert.Less(morning.z, 0f, "아침 해는 등 뒤(정원 그림자가 앞으로 진다)");
+            Assert.Less(morning.x, 0f, "왼쪽");
+            Assert.AreEqual(Get<float>(sky, "sunriseElevation"), Mathf.Asin(morning.y) * Mathf.Rad2Deg, 0.01f, "아침 해는 낮게 떠 있다");
+
+            orbit.Apply(0.5f);
+            sky.Tick(0.1f);
+            Assert.AreEqual(Get<float>(sky, "noonSunElevation"), Mathf.Asin(sky.SunDirection.y) * Mathf.Rad2Deg, 0.01f, "한낮엔 높다");
+
+            orbit.Apply(1f);
+            sky.Tick(0.1f);
+            Vector3 dusk = sky.SunDirection;
+            Assert.Greater(dusk.z, 0f, "해 질 녘 해는 앞 오른쪽(노을을 바라본다)");
+            Assert.Greater(dusk.x, 0f);
+            Assert.AreEqual(Get<float>(sky, "sunsetElevation"), Mathf.Asin(dusk.y) * Mathf.Rad2Deg, 0.01f, "해 질 녘엔 지평선에 걸린다");
+            Vector4 shader = Material(sky).GetVector("_SunDir");
+            Assert.AreEqual(dusk.y, shader.y, 0.0001f, "셰이더로 간다");
+
+            orbit.StepTwilight(1f, 100000f);
+            sky.Tick(0.1f);
+            Assert.Less(sky.SunDirection.y, -0.1f, "박명이면 지평선 아래다");
+        }
+
+        [Test]
+        public void 배경_유리를_끄면_하늘이_땅까지_그리고_유리를_끈다()
+        {
+            SkyView sky = MakeSky(null);
+            var glass = Own(new GameObject("DesktopGlass"));
+            Set(sky, "desktopGlass", glass);
+            sky.ApplyGlass(false);
+            Assert.IsFalse(glass.activeSelf);
+            Assert.AreEqual(1f, Material(sky).GetFloat("_Ground"), 0.0001f);
+
+            sky.ApplyGlass(true);
+            Assert.IsTrue(glass.activeSelf);
+            Assert.AreEqual(0f, Material(sky).GetFloat("_Ground"), 0.0001f);
+        }
+
+        [Test]
         public void 쉬는_동안_해가_지면_하늘도_박명이_된다()
         {
             SunOrbitController orbit = MakeSun();

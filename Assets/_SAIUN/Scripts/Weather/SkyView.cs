@@ -1,4 +1,5 @@
 using _SAIUN.Scripts.Core;
+using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Lighting;
 using UnityEngine;
 using UnityEngine.UI;
@@ -15,7 +16,10 @@ namespace _SAIUN.Scripts.Weather
     ///    탑이 다 자라면 꼭대기의 갓구름에도 채운이 선다(가끔 보는 장면). SAIUN을 만든 이유가 웅대적운과 채운이다.
     ///  - 나머지 구름(권운·권적운·권층운·고적운·고층운·층적운·층운·난층운·적운 떼, 모루·유방운·아치구름·꼬리구름,
     ///    구멍구름·물결구름·야광운)은 예보(CloudForecast)가 때·날씨·바람과 무작위로 정한 양을 향해 천천히 옮겨 간다.
-    ///  - 쉬는 동안 해가 지면(해의 Twilight) 박명 하늘이 되고, 높은 구름만 붉게 남는다.
+    ///  - 하늘빛은 셰이더가 대기 산란으로 셈한다. 해 방향은 정원 그림자를 만드는 해(SunOrbitController)의 방위를 카메라에서 본
+    ///    그대로 쓰고, 고도는 아침엔 금빛 아침 해, 저녁엔 지평선에 닿는 해로 넓힌다. 해가 움직이면 하늘빛도 따라 바뀐다.
+    ///  - 쉬는 동안 해가 지면(해의 Twilight) 노을·박명 하늘이 되고, 높은 구름만 붉게 남는다.
+    ///  - 배경 유리(설정)를 끄면 지평선 아래까지 땅을 그려 카드를 다 채우고, 바탕화면 유리를 끈다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -23,6 +27,8 @@ namespace _SAIUN.Scripts.Weather
     public class SkyView : MonoBehaviour
     {
         private static readonly int ProgressId = Shader.PropertyToID("_Progress");
+        private static readonly int SunDirId = Shader.PropertyToID("_SunDir");
+        private static readonly int GroundId = Shader.PropertyToID("_Ground");
         private static readonly int GrowthId = Shader.PropertyToID("_Growth");
         private static readonly int StormId = Shader.PropertyToID("_Storm");
         private static readonly int CapId = Shader.PropertyToID("_Cap");
@@ -46,6 +52,9 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>한 바퀴(화소 전체)를 나눠 그리는 횟수. 셰이더의 4×2 격자와 같다.</summary>
         public const int Interleave = 8;
 
+        // 한낮의 진행률(아침·저녁 해 고도를 가르는 곳)
+        private const float Noon = 0.5f;
+
         // 셰이더에 "전부 그려라"를 알리는 칸 번호
         private const float AllPhases = -1f;
 
@@ -55,6 +64,15 @@ namespace _SAIUN.Scripts.Weather
 
         [SerializeField] private WeatherController weather;
 
+        [Tooltip("쉬는 중인지 읽을 상태머신")]
+        [SerializeField] private PomodoroStateMachine stateMachine;
+
+        [Tooltip("배경 유리 설정을 받을 게임 관리자")]
+        [SerializeField] private GameManager gameManager;
+
+        [Tooltip("배경 유리(바탕화면을 읽어 흐리게 까는 것). 설정에서 끄면 꺼 둔다.")]
+        [SerializeField] private GameObject desktopGlass;
+
         [Tooltip("하루의 흐름을 읽을 해. 없으면 한낮으로 본다.")]
         [SerializeField] private SunOrbitController sun;
 
@@ -63,6 +81,19 @@ namespace _SAIUN.Scripts.Weather
 
         [Tooltip("구름 결 노이즈(3D). SAIUN/Rebuild Sky Noise가 만든다.")]
         [SerializeField] private Texture3D noise;
+
+        [Header("해")]
+        [Tooltip("하루가 시작할 때(진행률 0) 하늘의 해 고도(도). 앱을 켜면 보이는 시계 화면이라 금빛이 도는 맑은 아침 해로 둔다.")]
+        [SerializeField] private float sunriseElevation = 6f;
+
+        [Tooltip("하루가 끝날 때(진행률 1) 하늘의 해 고도(도). 정원 빛은 그림자가 읽히게 높게 두지만, 하늘은 지평선에 닿아야 노을이 진다.")]
+        [SerializeField] private float sunsetElevation = 0.8f;
+
+        [Tooltip("한낮 하늘의 해 고도(도)")]
+        [SerializeField] private float noonSunElevation = 62f;
+
+        [Tooltip("박명이 가장 깊을 때 해가 지평선 아래로 내려가는 각(도)")]
+        [SerializeField, Min(0f)] private float twilightDepth = 8.3f;
 
         [Header("그리기")]
         [Tooltip("창 크기 대비 하늘 텍스처 해상도")]
@@ -98,6 +129,12 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>웅대적운 탑이 보이는 정도(0~1). 층구름·비구름이 덮으면 흐려진다.</summary>
         public float TowerPresence { get; private set; }
 
+        /// <summary>배경 유리가 켜져 있는지.</summary>
+        public bool Glass { get; private set; } = true;
+
+        /// <summary>하늘 좌표의 해 방향(+z 앞, +x 오른쪽, +y 위).</summary>
+        public Vector3 SunDirection { get; private set; } = Vector3.up;
+
         /// <summary>구름 예보.</summary>
         public CloudForecast Forecast => forecast;
 
@@ -128,6 +165,10 @@ namespace _SAIUN.Scripts.Weather
         {
             _image = GetComponent<RawImage>();
             if (weather == null) weather = FindFirstObjectByType<WeatherController>();
+            if (stateMachine == null) stateMachine = FindFirstObjectByType<PomodoroStateMachine>();
+            if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
+            if (gameManager != null) gameManager.OnBackgroundGlassChanged += ApplyGlass;
+            ApplyGlass(SettingsStore.BackgroundGlass);
             if (sun == null) sun = FindFirstObjectByType<SunOrbitController>();
             if (skyMaterial == null)
             {
@@ -174,6 +215,16 @@ namespace _SAIUN.Scripts.Weather
                 Destroy(target);
             }
             if (_material != null) Destroy(_material);
+            if (gameManager != null) gameManager.OnBackgroundGlassChanged -= ApplyGlass;
+        }
+
+        /// <summary>배경 유리를 켜거나 끈다. 끄면 지평선 아래를 땅으로 채운다.</summary>
+        internal void ApplyGlass(bool on)
+        {
+            Glass = on;
+            if (desktopGlass != null) desktopGlass.SetActive(on);
+            if (_material != null) _material.SetFloat(GroundId, on ? 0f : 1f);
+            if (_material != null && _display != null) RenderAll();
         }
 
         // 셰이더가 톤매핑까지 마친 값을 쓰고, sRGB 텍스처가 화면용으로 바꿔 둔다. 지난 그림을 남겨야 하므로 지우지 않는다.
@@ -255,6 +306,9 @@ namespace _SAIUN.Scripts.Weather
         private void ApplyParameters()
         {
             _material.SetFloat(ProgressId, sun != null ? sun.Progress : 0.5f);
+            SunDirection = SkySunDirection();
+            _material.SetVector(SunDirId, SunDirection);
+            _material.SetFloat(GroundId, Glass ? 0f : 1f);
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);
@@ -300,7 +354,40 @@ namespace _SAIUN.Scripts.Weather
                 Storm = Storminess(),
                 Rain = weather != null ? weather.RainIntensity : 0f,
                 Wind = weather != null ? weather.WindAmount : 0f,
+                Resting = Resting(),
             };
+        }
+
+        // 시계(세션 밖)나 휴식이면 쉬는 중이다.
+        private bool Resting()
+        {
+            if (stateMachine == null) return true;
+            PomodoroState state = stateMachine.CurrentState;
+            return state == PomodoroState.Idle || state == PomodoroState.ShortBreak || state == PomodoroState.LongBreak;
+        }
+
+        /// <summary>
+        /// 하늘 좌표의 해 방향. 방위는 정원의 해를 카메라가 보는 가로 방향 기준으로 옮기고, 고도는 진행률에 따라
+        /// 아침 sunriseElevation → 한낮 noonSunElevation → 저녁 sunsetElevation, 박명이면 twilightDepth만큼 지평선 아래다.
+        /// </summary>
+        internal Vector3 SkySunDirection()
+        {
+            float progress = sun != null ? sun.Progress : 0.5f;
+            float low = progress < Noon ? sunriseElevation : sunsetElevation;
+            float elevation = Mathf.Lerp(low, noonSunElevation, Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI))
+                              - twilightDepth * Twilight();
+            float azimuth = 0f;
+            if (sun != null)
+            {
+                Quaternion camera = SceneMetrics.CameraRotation;
+                Vector3 forward = Vector3.ProjectOnPlane(camera * Vector3.forward, Vector3.up).normalized;
+                Vector3 right = Vector3.ProjectOnPlane(camera * Vector3.right, Vector3.up).normalized;
+                Vector3 toSun = -sun.LightDirection;
+                azimuth = Mathf.Atan2(Vector3.Dot(toSun, right), Vector3.Dot(toSun, forward)) * Mathf.Rad2Deg;
+            }
+            float el = elevation * Mathf.Deg2Rad;
+            float az = azimuth * Mathf.Deg2Rad;
+            return new Vector3(Mathf.Sin(az) * Mathf.Cos(el), Mathf.Sin(el), Mathf.Cos(az) * Mathf.Cos(el));
         }
 
         private float Twilight()

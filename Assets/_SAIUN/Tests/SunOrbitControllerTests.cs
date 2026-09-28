@@ -158,6 +158,18 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 짧은_휴식은_해가_막_진_노을까지만_긴_휴식은_박명까지_간다()
+        {
+            System.Reflection.MethodInfo goal = typeof(SunOrbitController)
+                .GetMethod("TwilightGoal", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            float shortBreak = (float)goal.Invoke(_orbit, new object[] { PomodoroState.ShortBreak });
+            Assert.Greater(shortBreak, 0f);
+            Assert.Less(shortBreak, 0.5f, "구름을 볼 수 있을 만큼만 진다");
+            Assert.AreEqual(1f, (float)goal.Invoke(_orbit, new object[] { PomodoroState.LongBreak }), 0.0001f);
+            Assert.AreEqual(0f, (float)goal.Invoke(_orbit, new object[] { PomodoroState.Idle }), 0.0001f);
+        }
+
+        [Test]
         public void 쉬는_동안_해가_지면_빛이_어둡고_푸르게_가라앉고_돌아오면_되살아난다()
         {
             _orbit.Apply(1f);

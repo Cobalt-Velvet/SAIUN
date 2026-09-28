@@ -265,6 +265,7 @@ namespace _SAIUN.Editor
 
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
+            Toggle backgroundGlass = ToggleRow(content, "BackgroundGlass", "배경 유리 (지평선 아래로 바탕화면이 비침)");
             Button resetPosition = WideButton(content, "ResetPosition", "창 위치 초기화", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
 
             Section(content, "사운드");
@@ -303,6 +304,7 @@ namespace _SAIUN.Editor
             so.FindProperty("weatherRandomToggle").objectReferenceValue = weatherRandom;
             so.FindProperty("weatherFocusToggle").objectReferenceValue = weatherFocus;
             so.FindProperty("alwaysOnTopToggle").objectReferenceValue = alwaysOnTop;
+            so.FindProperty("backgroundGlassToggle").objectReferenceValue = backgroundGlass;
             so.FindProperty("resetPositionButton").objectReferenceValue = resetPosition;
             so.FindProperty("soundToggle").objectReferenceValue = sound;
             so.FindProperty("volumeField").objectReferenceValue = volume;

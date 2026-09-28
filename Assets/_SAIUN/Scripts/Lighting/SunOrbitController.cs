@@ -11,8 +11,9 @@ namespace _SAIUN.Scripts.Lighting
     /// 이 고도 변화는 사양서 10장 구현 금지 목록에 있었지만 2026-09-19 사용자 지시로 켰다. 끄면 45° 고정이다.
     /// 빛 색도 진행률을 따라 아침·저녁에 따뜻해지며, 구름 등이 이 색과 방향을 읽는다.
     /// FOCUS 구간에서만 궤도를 갱신하고, 그 밖의 상태에서는 마지막 궤도를 유지한다.
-    /// 쉬는 동안(단기·장기 휴식)은 해가 져 박명이 된다(2026-09-28, 집중 한 번이 하루). 빛이 어둡고 푸르게 가라앉고,
-    /// 하늘은 Twilight를 읽어 해 진 하늘을 그린다. 세션이 끝나 시계로 돌아가면 다시 저녁으로, 집중이 시작되면 새 아침이다.
+    /// 쉬는 동안은 해가 진다(2026-09-28, 집중 한 번이 하루). 짧은 휴식은 해가 막 넘어가 구름이 분홍·주황으로 빛나는 노을까지,
+    /// 긴 휴식(세션을 다 마침)은 푸른 박명까지 간다. 빛이 어둡고 푸르게 가라앉고, 하늘은 Twilight를 읽어 해 진 하늘을 그린다.
+    /// 세션이 끝나 시계로 돌아가면 다시 저녁으로, 집중이 시작되면 새 아침이다.
     /// </summary>
     public class SunOrbitController : MonoBehaviour
     {
@@ -49,6 +50,9 @@ namespace _SAIUN.Scripts.Lighting
         [Header("박명 (쉬는 동안 해가 진다)")]
         [Tooltip("해가 다 지기까지 걸리는 시간(분)")]
         [SerializeField, Min(0.1f)] private float twilightMinutes = 2.5f;
+
+        [Tooltip("짧은 휴식 때 해가 지는 정도(0~1). 해가 막 넘어가 구름이 가장 곱게 물드는 때에 멈춘다.")]
+        [SerializeField, Range(0f, 1f)] private float shortBreakTwilight = 0.2f;
 
         [Tooltip("다 진 뒤의 빛 세기 배율")]
         [SerializeField, Range(0f, 1f)] private float twilightIntensity = 0.3f;
@@ -122,6 +126,7 @@ namespace _SAIUN.Scripts.Lighting
             switch (phase)
             {
                 case PomodoroState.ShortBreak:
+                    return shortBreakTwilight;
                 case PomodoroState.LongBreak:
                     return 1f;
                 case PomodoroState.Idle:

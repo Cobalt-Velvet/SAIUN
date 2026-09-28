@@ -251,6 +251,30 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 쉬는_동안에는_때와_상관없이_가끔_솟고_해가_깊이_졌으면_솟지_않는다()
+        {
+            CloudForecast forecast = Make(() => 0f);
+            float roll = Get(forecast, "towerRollSeconds");
+            var resting = Day(0f);
+            resting.Resting = true;
+            forecast.Tick(0.01f, resting);
+
+            resting.Twilight = 0.8f;
+            forecast.Tick(roll, resting);
+            Assert.IsFalse(forecast.TowerActive, "해가 깊이 졌으면 솟지 않는다");
+
+            resting.Twilight = 0f;
+            forecast.Tick(roll, resting);
+            Assert.IsTrue(forecast.TowerActive, "쉬는 동안엔 아침(시계 화면)이어도 솟는다");
+
+            var focusMorning = Day(0f);
+            CloudForecast other = Make(() => 0f);
+            other.Tick(0.01f, focusMorning);
+            other.Tick(roll, focusMorning);
+            Assert.IsFalse(other.TowerActive, "집중 중 아침에는 솟지 않는다");
+        }
+
+        [Test]
         public void 웅대적운은_안개나_햇무리구름_장면에서는_솟지_않고_드물다()
         {
             CloudForecast forecast = Make(Seeded(9));
