@@ -10,7 +10,9 @@ namespace _SAIUN.Scripts.Lighting
     /// 수직 고도는 아침·저녁에 낮고 한낮에 높아, 그림자가 길어졌다 짧아졌다 한다(4-1 "낮고 긴 그림자"·"짧은 그림자").
     /// 이 고도 변화는 사양서 10장 구현 금지 목록에 있었지만 2026-09-19 사용자 지시로 켰다. 끄면 45° 고정이다.
     /// 빛 색도 진행률을 따라 아침·저녁에 따뜻해지며, 구름 등이 이 색과 방향을 읽는다.
-    /// FOCUS 구간에서만 갱신하고, 그 밖의 상태에서는 마지막 궤도를 유지한다.
+    /// FOCUS 구간에서만 궤도를 갱신하고, 그 밖의 상태에서는 마지막 궤도를 유지한다.
+    /// 쉬는 동안(단기·장기 휴식)은 해가 져 박명이 된다(2026-09-28, 집중 한 번이 하루). 빛이 어둡고 푸르게 가라앉고,
+    /// 하늘은 Twilight를 읽어 해 진 하늘을 그린다. 세션이 끝나 시계로 돌아가면 다시 저녁으로, 집중이 시작되면 새 아침이다.
     /// </summary>
     public class SunOrbitController : MonoBehaviour
     {
@@ -44,6 +46,16 @@ namespace _SAIUN.Scripts.Lighting
         [Tooltip("해 뜰 때·질 때의 세기 배율. 한낮은 1이다.")]
         [SerializeField, Range(0f, 1f)] private float horizonIntensity = 0.8f;
 
+        [Header("박명 (쉬는 동안 해가 진다)")]
+        [Tooltip("해가 다 지기까지 걸리는 시간(분)")]
+        [SerializeField, Min(0.1f)] private float twilightMinutes = 2.5f;
+
+        [Tooltip("다 진 뒤의 빛 세기 배율")]
+        [SerializeField, Range(0f, 1f)] private float twilightIntensity = 0.3f;
+
+        [Tooltip("다 진 뒤의 빛 색(하늘빛만 남은 푸른 빛)")]
+        [SerializeField] private Color twilightColor = new Color(0.55f, 0.62f, 0.95f);
+
         [Header("실측용 미리보기")]
         [Tooltip("에디터에서 이 값을 움직이면 그 진행률의 광원이 즉시 적용된다. 실행 중에는 무시한다.")]
         [SerializeField, Range(0f, 1f)] private float previewProgress;
@@ -59,6 +71,9 @@ namespace _SAIUN.Scripts.Lighting
 
         /// <summary>현재 빛 색. 세기 배율은 곱하지 않은 색이다.</summary>
         public Color SunColor { get; private set; } = Color.white;
+
+        /// <summary>해가 진 정도(0 저녁 ~ 1 박명이 깊음). 쉬는 동안 오른다.</summary>
+        public float Twilight { get; private set; }
 
         /// <summary>빛이 나아가는 방향(월드).</summary>
         public Vector3 LightDirection => Quaternion.Euler(Elevation, HorizontalAngle, 0f) * Vector3.forward;
@@ -90,8 +105,39 @@ namespace _SAIUN.Scripts.Lighting
 
         private void Update()
         {
-            if (timer == null || timer.CurrentPhase != PomodoroState.Focus) return;
-            Apply(timer.Progress);
+            if (timer == null) return;
+            PomodoroState phase = timer.CurrentPhase;
+            if (phase == PomodoroState.Focus)
+            {
+                Twilight = 0f;
+                Apply(timer.Progress);
+                return;
+            }
+            StepTwilight(TwilightGoal(phase), Time.deltaTime);
+        }
+
+        // 쉬는 동안은 해가 지고, 시계로 돌아가면 저녁으로 돌아온다. 유예·실패는 집중 중의 일이라 그대로 둔다.
+        private float TwilightGoal(PomodoroState phase)
+        {
+            switch (phase)
+            {
+                case PomodoroState.ShortBreak:
+                case PomodoroState.LongBreak:
+                    return 1f;
+                case PomodoroState.Idle:
+                    return 0f;
+                default:
+                    return Twilight;
+            }
+        }
+
+        /// <summary>박명을 목표 쪽으로 한 걸음 옮기고 빛에 적용한다. 테스트는 직접 부른다.</summary>
+        internal void StepTwilight(float goal, float deltaTime)
+        {
+            float next = Mathf.MoveTowards(Twilight, goal, deltaTime / (twilightMinutes * 60f));
+            if (Mathf.Approximately(next, Twilight)) return;
+            Twilight = next;
+            Apply(Progress);
         }
 
         /// <summary>진행률(0~1)에 맞는 궤도·색을 광원에 적용한다.</summary>
@@ -104,8 +150,8 @@ namespace _SAIUN.Scripts.Lighting
 
             if (sun == null) return;
             sun.transform.rotation = Quaternion.Euler(Elevation, HorizontalAngle, 0f);
-            sun.color = SunColor;
-            sun.intensity = intensity * Mathf.Lerp(horizonIntensity, 1f, Daylight(Progress));
+            sun.color = Color.Lerp(SunColor, twilightColor, Twilight);
+            sun.intensity = intensity * Mathf.Lerp(horizonIntensity, 1f, Daylight(Progress)) * Mathf.Lerp(1f, twilightIntensity, Twilight);
         }
 
         /// <summary>사양서 4장 수식. 범위 밖 진행률은 0~1로 자른다.</summary>

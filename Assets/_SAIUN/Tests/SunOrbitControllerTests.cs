@@ -156,5 +156,27 @@ namespace _SAIUN.Tests
                 .GetMethod("Update", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 .Invoke(_orbit, null);
         }
+
+        [Test]
+        public void 쉬는_동안_해가_지면_빛이_어둡고_푸르게_가라앉고_돌아오면_되살아난다()
+        {
+            _orbit.Apply(1f);
+            float dusk = _light.intensity;
+            Color duskColor = _light.color;
+
+            _orbit.StepTwilight(1f, 60f);
+            Assert.Greater(_orbit.Twilight, 0f);
+            Assert.Less(_orbit.Twilight, 1f, "한 번에 지지 않는다");
+
+            _orbit.StepTwilight(1f, 10000f);
+            Assert.AreEqual(1f, _orbit.Twilight, 0.0001f);
+            Assert.Less(_light.intensity, dusk * 0.5f, "빛이 어두워진다");
+            Assert.Greater(_light.color.b - _light.color.r, duskColor.b - duskColor.r, "빛이 푸르러진다");
+            Assert.AreEqual(1f, _orbit.Progress, 0.0001f, "궤도는 그대로다");
+
+            _orbit.StepTwilight(0f, 10000f);
+            Assert.AreEqual(0f, _orbit.Twilight, 0.0001f);
+            Assert.AreEqual(dusk, _light.intensity, 0.0001f);
+        }
     }
 }
