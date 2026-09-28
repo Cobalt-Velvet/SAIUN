@@ -11,8 +11,10 @@ namespace _SAIUN.Scripts.Lighting
     /// 이 고도 변화는 사양서 10장 구현 금지 목록에 있었지만 2026-09-19 사용자 지시로 켰다. 끄면 45° 고정이다.
     /// 빛 색도 진행률을 따라 아침·저녁에 따뜻해지며, 구름 등이 이 색과 방향을 읽는다.
     /// FOCUS 구간에서만 궤도를 갱신하고, 그 밖의 상태에서는 마지막 궤도를 유지한다.
-    /// 쉬는 동안은 해가 진다(2026-09-28, 집중 한 번이 하루). 짧은 휴식은 해가 막 넘어가 구름이 분홍·주황으로 빛나는 노을까지,
-    /// 긴 휴식(세션을 다 마침)은 푸른 박명까지 간다. 빛이 어둡고 푸르게 가라앉고, 하늘은 Twilight를 읽어 해 진 하늘을 그린다.
+    /// 쉬는 동안은 해가 진다(2026-09-28, 집중 한 번이 하루). 휴식 시간을 따라 천천히 져서 노을이 시간의 흐름대로 변한다
+    /// (2026-09-29 사용자 "노을의 세기도 시간의 흐름에 따라"): 지평선의 금빛 → 해가 넘어가며 구름 밑이 붉게 타는 노을 →
+    /// 해가 지평선 아래 3~4°일 때 해 진 쪽이 분홍·보랏빛으로 다시 달아오르는 박명광. 짧은 휴식은 여기서 끝나고,
+    /// 긴 휴식(세션을 다 마침)은 더 내려가 별이 돋는 푸른 박명까지 간다. 빛이 어둡고 푸르게 가라앉고, 하늘은 Twilight를 읽는다.
     /// 세션이 끝나 시계로 돌아가면 다시 저녁으로, 집중이 시작되면 새 아침이다.
     /// </summary>
     public class SunOrbitController : MonoBehaviour
@@ -48,11 +50,14 @@ namespace _SAIUN.Scripts.Lighting
         [SerializeField, Range(0f, 1f)] private float horizonIntensity = 0.8f;
 
         [Header("박명 (쉬는 동안 해가 진다)")]
-        [Tooltip("해가 다 지기까지 걸리는 시간(분)")]
+        [Tooltip("해가 가장 빨리 질 때 다 지기까지 걸리는 시간(분). 휴식이 짧아도 이보다 빨리 지거나 돌아오지 않는다.")]
         [SerializeField, Min(0.1f)] private float twilightMinutes = 2.5f;
 
-        [Tooltip("짧은 휴식 때 해가 지는 정도(0~1). 해가 막 넘어가 구름이 가장 곱게 물드는 때에 멈춘다.")]
-        [SerializeField, Range(0f, 1f)] private float shortBreakTwilight = 0.2f;
+        [Tooltip("짧은 휴식이 끝날 때 해가 진 정도(0~1). 해 진 쪽이 분홍·보랏빛으로 달아오르는 박명광에 닿는다.")]
+        [SerializeField, Range(0f, 1f)] private float shortBreakTwilight = 0.45f;
+
+        [Tooltip("긴 휴식에서 푸른 박명(Twilight 1)에 닿는 진행률. 그 뒤로는 별이 돋은 박명에 머문다.")]
+        [SerializeField, Range(0.05f, 1f)] private float longBreakDusk = 0.6f;
 
         [Tooltip("다 진 뒤의 빛 세기 배율")]
         [SerializeField, Range(0f, 1f)] private float twilightIntensity = 0.3f;
@@ -117,18 +122,18 @@ namespace _SAIUN.Scripts.Lighting
                 Apply(timer.Progress);
                 return;
             }
-            StepTwilight(TwilightGoal(phase), Time.deltaTime);
+            StepTwilight(TwilightGoal(phase, timer.Progress), Time.deltaTime);
         }
 
-        // 쉬는 동안은 해가 지고, 시계로 돌아가면 저녁으로 돌아온다. 유예·실패는 집중 중의 일이라 그대로 둔다.
-        private float TwilightGoal(PomodoroState phase)
+        // 쉬는 동안은 휴식 진행률을 따라 해가 지고, 시계로 돌아가면 저녁으로 돌아온다. 유예·실패는 집중 중의 일이라 그대로 둔다.
+        private float TwilightGoal(PomodoroState phase, float phaseProgress)
         {
             switch (phase)
             {
                 case PomodoroState.ShortBreak:
-                    return shortBreakTwilight;
+                    return shortBreakTwilight * Mathf.Clamp01(phaseProgress);
                 case PomodoroState.LongBreak:
-                    return 1f;
+                    return Mathf.Clamp01(phaseProgress / longBreakDusk);
                 case PomodoroState.Idle:
                     return 0f;
                 default:

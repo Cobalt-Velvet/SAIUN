@@ -54,6 +54,12 @@ namespace _SAIUN.Editor
         private const float ShaftRadius = 0.011f;
         private const float PlateThickness = 0.014f;
         private const float FinThickness = 0.01f;
+        private const float HeadLength = 0.13f;
+        private const float HeadHalfWidth = 0.065f;
+        private const float FeatherLength = 0.26f;
+        private const float FeatherRoot = 0.17f;
+        private const float FeatherHeight = 0.105f;
+        private const float FeatherGap = 0.004f;
 
         // 풍속계
         private const int CupCount = 3;
@@ -112,20 +118,26 @@ namespace _SAIUN.Editor
             arrow.Tube(Metal, Matrix4x4.identity, new[] { Vector3.back * ShaftBack, Vector3.forward * ShaftFront },
                 ShaftRadius, ShaftRadius * 0.8f, 8);
 
-            // 화살촉: 수평으로 누운 연 모양 판. 판의 로컬 Y가 앞(+Z), 두께가 위(+Y)다.
+            // 화살촉: 수직으로 선 삼각 판. 비스듬히 내려다보는 카메라에서도 뾰족한 촉이 또렷하다.
+            // 판의 로컬 Y가 앞(+Z), 두께가 옆(+X)이다.
             var head = new[]
             {
-                new Vector2(0f, 0.16f), new Vector2(0.068f, 0.025f), new Vector2(0f, -0.01f), new Vector2(-0.068f, 0.025f),
+                new Vector2(0f, HeadLength), new Vector2(HeadHalfWidth, 0f), new Vector2(-HeadHalfWidth, 0f),
             };
-            arrow.Plate(Accent, SculptMesh.Frame(Vector3.forward * (ShaftFront - 0.01f), Vector3.forward, Vector3.up), head, PlateThickness);
+            arrow.Plate(Accent, SculptMesh.Frame(Vector3.forward * (ShaftFront - 0.01f), Vector3.forward, Vector3.right), head, PlateThickness);
 
-            // 꼬리 날개: 수직으로 선 부채꼴 판. 판의 로컬 Y가 뒤(-Z), 두께가 옆(+X)이다.
-            var fin = new[]
+            // 꼬리 깃: 뒤로 젖힌 깃 두 장(위·아래)이 뒤끝에 V자 홈을 남긴다. 화살 깃처럼 읽히고, 넓이가 화살촉보다 훨씬 커
+            // 바람에 밀려 바람 아래쪽으로 돈다(그래서 촉이 바람이 불어오는 쪽을 본다). 판의 로컬 Y가 뒤(-Z), X가 위아래다.
+            foreach (float side in new[] { 1f, -1f })
             {
-                new Vector2(-0.03f, 0f), new Vector2(0.03f, 0f), new Vector2(0.1f, 0.19f),
-                new Vector2(0.065f, 0.235f), new Vector2(-0.065f, 0.235f), new Vector2(-0.1f, 0.19f),
-            };
-            arrow.Plate(Accent, SculptMesh.Frame(Vector3.back * (ShaftBack - 0.235f), Vector3.back, Vector3.right), fin, FinThickness);
+                var feather = new[]
+                {
+                    new Vector2(FeatherGap * side, 0f), new Vector2(FeatherGap * side, FeatherRoot),
+                    new Vector2(FeatherHeight * side, FeatherLength), new Vector2(FeatherHeight * side, FeatherLength - FeatherRoot),
+                };
+                arrow.Plate(Accent, SculptMesh.Frame(Vector3.back * (ShaftBack - FeatherLength), Vector3.back, Vector3.right),
+                    feather, FinThickness);
+            }
             arrow.Ellipsoid(Metal, SculptMesh.Frame(Vector3.back * ShaftBack, Vector3.back, Vector3.up),
                 Vector3.one * ShaftRadius * 1.6f, rings: 5, segments: 8);
             return arrow;

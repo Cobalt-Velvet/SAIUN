@@ -280,18 +280,62 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 배경_유리를_끄면_하늘이_땅까지_그리고_유리를_끈다()
+        public void 창_전체를_유리로_하면_하늘빛_없이_구름만_그린다()
         {
             SkyView sky = MakeSky(null);
-            var glass = Own(new GameObject("DesktopGlass"));
-            Set(sky, "desktopGlass", glass);
-            sky.ApplyGlass(false);
-            Assert.IsFalse(glass.activeSelf);
-            Assert.AreEqual(1f, Material(sky).GetFloat("_Ground"), 0.0001f);
+            Assert.IsFalse(sky.WindowGlass, "처음엔 위는 하늘이다");
+            Assert.AreEqual(0f, Material(sky).GetFloat("_Glass"), 0.0001f);
 
             sky.ApplyGlass(true);
-            Assert.IsTrue(glass.activeSelf);
-            Assert.AreEqual(0f, Material(sky).GetFloat("_Ground"), 0.0001f);
+            Assert.AreEqual(1f, Material(sky).GetFloat("_Glass"), 0.0001f);
+            sky.Tick(0.1f);
+            Assert.AreEqual(1f, Material(sky).GetFloat("_Glass"), 0.0001f, "매 프레임 다시 넘겨도 유지된다");
+
+            sky.ApplyGlass(false);
+            Assert.AreEqual(0f, Material(sky).GetFloat("_Glass"), 0.0001f);
+        }
+
+        [Test]
+        public void 구름은_층마다_다른_바람을_타고_높을수록_빠르고_비껴_흐른다()
+        {
+            SetWind(Vector3.right, 3f);
+            SkyView sky = MakeSky(null);
+            for (int i = 0; i < 600; i++) sky.Tick(1f);
+
+            Vector2 low = sky.LowDrift;
+            Vector2 mid = sky.MidDrift;
+            Vector2 high = sky.HighDrift;
+            Assert.Greater(low.magnitude, 0.5f, "낮은 구름도 흐른다");
+            Assert.Greater(mid.magnitude, low.magnitude * 1.3f, "중층이 더 빠르다");
+            Assert.Greater(high.magnitude, mid.magnitude * 1.3f, "높은 구름이 가장 빠르다");
+
+            // 낮은 구름은 땅 바람(풍향계·빗줄기와 같은 바람)이 불어 가는 쪽으로 흐른다.
+            Quaternion camera = SceneMetrics.CameraRotation;
+            Vector3 right = Vector3.ProjectOnPlane(camera * Vector3.right, Vector3.up).normalized;
+            Vector3 forward = Vector3.ProjectOnPlane(camera * Vector3.forward, Vector3.up).normalized;
+            var wind = new Vector2(Vector3.Dot(Vector3.right, right), Vector3.Dot(Vector3.right, forward));
+            Assert.Less(Vector2.Angle(low, wind), 1f);
+            Assert.Greater(Vector2.Angle(high, wind), 20f, "높은 바람은 비껴 분다");
+
+            Vector4 drift = Material(sky).GetVector("_Drift");
+            Assert.AreEqual(low.x, drift.x, 0.0001f, "셰이더로 간다");
+            Assert.AreEqual(mid.y, drift.w, 0.0001f);
+            Assert.AreEqual(high.x, Material(sky).GetVector("_DriftHigh").x, 0.0001f);
+        }
+
+        [Test]
+        public void 바람이_셀수록_구름이_빨리_흐른다()
+        {
+            SetWind(Vector3.right, 0f);
+            SkyView calm = MakeSky(null);
+            for (int i = 0; i < 60; i++) calm.Tick(1f);
+
+            SetWind(Vector3.right, WeatherController.MaxWindStrength);
+            SkyView windy = MakeSky(null);
+            for (int i = 0; i < 60; i++) windy.Tick(1f);
+
+            Assert.Greater(windy.LowDrift.magnitude, calm.LowDrift.magnitude * 2f);
+            Assert.Greater(windy.HighDrift.magnitude, calm.HighDrift.magnitude);
         }
 
         [Test]
@@ -381,6 +425,18 @@ namespace _SAIUN.Tests
             vane.Tick(0.1f, 0f);
             Assert.Greater(vane.SpinSpeed, calm * 10f);
             Assert.Greater(Quaternion.Angle(before, cups.localRotation), 1f);
+        }
+
+        [Test]
+        public void 풍속계_컵은_볼록한_등을_앞세워_돈다()
+        {
+            WeatherVane vane = MakeVane(out _, out Transform cups);
+            SetWind(Vector3.right, 3f);
+            vane.Tick(0.05f, 0f);
+
+            // 앞(+Z)에 달린 컵은 입이 +X(접선)를 본다. 바람이 오목한 입을 밀므로 컵은 등(-X) 쪽으로 나아간다.
+            Vector3 cup = cups.localRotation * Vector3.forward;
+            Assert.Less(cup.x, 0f, "위에서 보아 시계 방향으로 돈다");
         }
 
         // ---- 바람결·잎 ----

@@ -158,15 +158,22 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 짧은_휴식은_해가_막_진_노을까지만_긴_휴식은_박명까지_간다()
+        public void 쉬는_동안_해는_휴식_시간을_따라_지고_짧은_휴식은_박명광까지_긴_휴식은_박명까지_간다()
         {
             System.Reflection.MethodInfo goal = typeof(SunOrbitController)
                 .GetMethod("TwilightGoal", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            float shortBreak = (float)goal.Invoke(_orbit, new object[] { PomodoroState.ShortBreak });
-            Assert.Greater(shortBreak, 0f);
-            Assert.Less(shortBreak, 0.5f, "구름을 볼 수 있을 만큼만 진다");
-            Assert.AreEqual(1f, (float)goal.Invoke(_orbit, new object[] { PomodoroState.LongBreak }), 0.0001f);
-            Assert.AreEqual(0f, (float)goal.Invoke(_orbit, new object[] { PomodoroState.Idle }), 0.0001f);
+            float Goal(PomodoroState phase, float progress) => (float)goal.Invoke(_orbit, new object[] { phase, progress });
+
+            Assert.AreEqual(0f, Goal(PomodoroState.ShortBreak, 0f), 0.0001f, "휴식이 막 시작하면 해는 아직 지평선에 걸려 있다");
+            float middle = Goal(PomodoroState.ShortBreak, 0.5f);
+            float end = Goal(PomodoroState.ShortBreak, 1f);
+            Assert.Greater(middle, 0f, "시간이 지나며 해가 진다");
+            Assert.Greater(end, middle, "노을이 끝까지 깊어진다");
+            Assert.Less(end, 0.5f, "짧은 휴식은 구름을 볼 수 있을 만큼만 진다");
+
+            Assert.Less(Goal(PomodoroState.LongBreak, 0.3f), 1f);
+            Assert.AreEqual(1f, Goal(PomodoroState.LongBreak, 0.9f), 0.0001f, "긴 휴식은 푸른 박명까지 간다");
+            Assert.AreEqual(0f, Goal(PomodoroState.Idle, 0.5f), 0.0001f);
         }
 
         [Test]

@@ -179,22 +179,23 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 배경_유리를_끄면_저장되고_하늘이_땅까지_채우며_유리가_꺼진다()
+        public void 창_전체_유리를_켜면_저장되고_하늘이_구름만_유리_위에_띄운다()
         {
             OpenSettings();
             var sky = Find<SkyView>();
             GameObject glass = GameObject.Find("DesktopGlass");
-            Assert.IsTrue(Get<Toggle>(_settings, "backgroundGlassToggle").isOn, "처음엔 켜져 있다");
-            Assert.IsTrue(sky.Glass);
+            Assert.IsFalse(Get<Toggle>(_settings, "windowGlassToggle").isOn, "처음엔 위는 하늘, 아래는 유리다");
+            Assert.IsFalse(sky.WindowGlass);
+            Assert.IsTrue(glass.activeSelf, "지평선 아래로 바탕화면이 비친다");
 
-            Get<Toggle>(_settings, "backgroundGlassToggle").isOn = false;
-            Assert.IsFalse(SettingsStore.BackgroundGlass);
-            Assert.IsFalse(sky.Glass);
-            Assert.IsFalse(glass.activeSelf, "바탕화면을 읽지 않는다");
+            Get<Toggle>(_settings, "windowGlassToggle").isOn = true;
+            Assert.IsTrue(SettingsStore.WindowGlass);
+            Assert.IsTrue(sky.WindowGlass);
+            Assert.IsTrue(glass.activeSelf, "창 전체로 바탕화면이 비친다");
 
-            Get<Toggle>(_settings, "backgroundGlassToggle").isOn = true;
-            Assert.IsTrue(SettingsStore.BackgroundGlass);
-            Assert.IsTrue(glass.activeSelf);
+            Get<Toggle>(_settings, "windowGlassToggle").isOn = false;
+            Assert.IsFalse(SettingsStore.WindowGlass);
+            Assert.IsFalse(sky.WindowGlass);
         }
 
         [Test]

@@ -19,7 +19,11 @@ namespace _SAIUN.Scripts.Weather
     ///  - 하늘빛은 셰이더가 대기 산란으로 셈한다. 해 방향은 정원 그림자를 만드는 해(SunOrbitController)의 방위를 카메라에서 본
     ///    그대로 쓰고, 고도는 아침엔 금빛 아침 해, 저녁엔 지평선에 닿는 해로 넓힌다. 해가 움직이면 하늘빛도 따라 바뀐다.
     ///  - 쉬는 동안 해가 지면(해의 Twilight) 노을·박명 하늘이 되고, 높은 구름만 붉게 남는다.
-    ///  - 배경 유리(설정)를 끄면 지평선 아래까지 땅을 그려 카드를 다 채우고, 바탕화면 유리를 끈다.
+    ///  - 구름은 층마다 다른 바람을 탄다(2026-09-29 사용자 "모든 구름의 속도가 같은 것도 다르게"). 낮은 구름은 땅 바람
+    ///    (풍향계·빗줄기·바람결과 같은 바람)을 타고, 높이 오를수록 바람이 빨라지고 시계 방향으로 비껴 돌며 방향도 한결같다.
+    ///    렌즈구름(채운)과 웅대적운 탑은 제자리에 선다(렌즈구름은 산 너머 선 물결이라 바람이 불어도 머문다).
+    ///  - 창 전체 유리(설정)를 켜면 하늘빛을 그리지 않고 구름만 바탕화면 유리 위에 띄운다(2026-09-29 사용자
+    ///    "투명도 토글은 창 전체"). 끄면 위는 하늘, 지평선 아래는 유리다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -28,7 +32,9 @@ namespace _SAIUN.Scripts.Weather
     {
         private static readonly int ProgressId = Shader.PropertyToID("_Progress");
         private static readonly int SunDirId = Shader.PropertyToID("_SunDir");
-        private static readonly int GroundId = Shader.PropertyToID("_Ground");
+        private static readonly int GlassId = Shader.PropertyToID("_Glass");
+        private static readonly int DriftId = Shader.PropertyToID("_Drift");
+        private static readonly int DriftHighId = Shader.PropertyToID("_DriftHigh");
         private static readonly int GrowthId = Shader.PropertyToID("_Growth");
         private static readonly int StormId = Shader.PropertyToID("_Storm");
         private static readonly int CapId = Shader.PropertyToID("_Cap");
@@ -58,6 +64,12 @@ namespace _SAIUN.Scripts.Weather
         // 셰이더에 "전부 그려라"를 알리는 칸 번호
         private const float AllPhases = -1f;
 
+        // 바람 빠르기(km/분)를 한 프레임 거리로 옮길 때
+        private const float SecondsPerMinute = 60f;
+
+        // 구멍구름이 이보다 옅으면 닫힌 것으로 보고, 다음에 뚫릴 때 제자리에서 다시 흐른다.
+        private const float HoleClosed = 0.001f;
+
         // 탑 모양 시드 후보. 0~15를 모두 그려 보고 탑으로 잘 읽히는 것만 골랐다
         // (목이 가늘어 버섯처럼 보이거나 큰 구멍이 뚫리는 모양은 뺐다).
         private static readonly float[] ShapeSeeds = { 1f, 3f, 5f, 6f, 11f, 12f, 13f, 15f };
@@ -67,11 +79,8 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("쉬는 중인지 읽을 상태머신")]
         [SerializeField] private PomodoroStateMachine stateMachine;
 
-        [Tooltip("배경 유리 설정을 받을 게임 관리자")]
+        [Tooltip("창 전체 유리 설정을 받을 게임 관리자")]
         [SerializeField] private GameManager gameManager;
-
-        [Tooltip("배경 유리(바탕화면을 읽어 흐리게 까는 것). 설정에서 끄면 꺼 둔다.")]
-        [SerializeField] private GameObject desktopGlass;
 
         [Tooltip("하루의 흐름을 읽을 해. 없으면 한낮으로 본다.")]
         [SerializeField] private SunOrbitController sun;
@@ -102,8 +111,30 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("1/8씩 새로 그리는 간격(초). 화소 하나는 이 값의 8배마다 새로 그려진다.")]
         [SerializeField, Min(0.02f)] private float refreshInterval = 0.1f;
 
-        [Tooltip("구름이 피어오르고 흐르는 빠르기(셰이더 시간/초)")]
+        [Tooltip("구름이 피어오르고 결이 바뀌는 빠르기(셰이더 시간/초). 흘러가는 빠르기는 아래 바람이 정한다.")]
         [SerializeField, Min(0f)] private float evolveSpeed = 0.15f;
+
+        [Header("바람 (구름층마다 다른 빠르기)")]
+        [Tooltip("낮은 구름(적운·층적운·층운·난층운)이 흐르는 빠르기(km/분): x 바람이 없을 때, y 가장 셀 때. 땅 바람을 탄다.")]
+        [SerializeField] private Vector2 lowWindSpeed = new Vector2(0.15f, 0.5f);
+
+        [Tooltip("중층 구름(고적운·고층운·물결구름)이 흐르는 빠르기(km/분): x 바람이 없을 때, y 가장 셀 때")]
+        [SerializeField] private Vector2 midWindSpeed = new Vector2(0.35f, 0.8f);
+
+        [Tooltip("높은 구름(권운·권적운·권층운)이 흐르는 빠르기(km/분). 제트기류를 타 가장 빠르다.")]
+        [SerializeField] private Vector2 highWindSpeed = new Vector2(0.9f, 1.5f);
+
+        [Tooltip("중층 바람이 땅 바람에서 시계 방향으로 비껴 도는 각(도). 높이 오를수록 바람이 돈다.")]
+        [SerializeField] private float midWindVeer = 25f;
+
+        [Tooltip("높은 층 바람이 땅 바람에서 비껴 도는 각(도)")]
+        [SerializeField] private float highWindVeer = 50f;
+
+        [Tooltip("중층 바람이 땅 바람의 방향 바뀜을 따라가는 데 걸리는 시간(초)")]
+        [SerializeField, Min(0.01f)] private float midWindLag = 180f;
+
+        [Tooltip("높은 층 바람이 따라가는 데 걸리는 시간(초). 높은 바람은 땅 바람보다 한결같다.")]
+        [SerializeField, Min(0.01f)] private float highWindLag = 480f;
 
         [Header("웅대적운")]
         [Tooltip("탑의 자람·보이는 정도가 예보를 따라가는 데 걸리는 시간(초). 예보가 이미 천천히 바꾸므로 짧게 둔다.")]
@@ -129,8 +160,17 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>웅대적운 탑이 보이는 정도(0~1). 층구름·비구름이 덮으면 흐려진다.</summary>
         public float TowerPresence { get; private set; }
 
-        /// <summary>배경 유리가 켜져 있는지.</summary>
-        public bool Glass { get; private set; } = true;
+        /// <summary>창 전체가 유리인지(하늘빛 없이 구름만 뜬다).</summary>
+        public bool WindowGlass { get; private set; }
+
+        /// <summary>낮은 구름층이 바람에 흘러간 거리(하늘 좌표 x·z, km).</summary>
+        public Vector2 LowDrift { get; private set; }
+
+        /// <summary>중층 구름이 흘러간 거리(km).</summary>
+        public Vector2 MidDrift { get; private set; }
+
+        /// <summary>높은 구름이 흘러간 거리(km).</summary>
+        public Vector2 HighDrift { get; private set; }
 
         /// <summary>하늘 좌표의 해 방향(+z 앞, +x 오른쪽, +y 위).</summary>
         public Vector3 SunDirection { get; private set; } = Vector3.up;
@@ -158,6 +198,9 @@ namespace _SAIUN.Scripts.Weather
         private RenderTexture _display;   // 둘을 섞어 카드에 보이는 장
         private int _towerEvents;
         private float _skyTime;
+        private float _midWindAngle;
+        private float _highWindAngle;
+        private Vector2 _holeDrift;
         private float _sinceRefresh;
         private readonly float[] _coverage = new float[CloudForecast.KindCount];
 
@@ -167,8 +210,8 @@ namespace _SAIUN.Scripts.Weather
             if (weather == null) weather = FindFirstObjectByType<WeatherController>();
             if (stateMachine == null) stateMachine = FindFirstObjectByType<PomodoroStateMachine>();
             if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
-            if (gameManager != null) gameManager.OnBackgroundGlassChanged += ApplyGlass;
-            ApplyGlass(SettingsStore.BackgroundGlass);
+            if (gameManager != null) gameManager.OnWindowGlassChanged += ApplyGlass;
+            ApplyGlass(SettingsStore.WindowGlass);
             if (sun == null) sun = FindFirstObjectByType<SunOrbitController>();
             if (skyMaterial == null)
             {
@@ -197,6 +240,9 @@ namespace _SAIUN.Scripts.Weather
             TowerPresence = forecast.TowerPresence;
             TowerGrowth = forecast.TowerGrowth;
             _towerEvents = forecast.TowerEvents;
+            float surface = WindAngle();
+            _midWindAngle = surface + midWindVeer;
+            _highWindAngle = surface + highWindVeer;
             UpdateCap(Storminess());
             ApplyParameters();
         }
@@ -215,15 +261,14 @@ namespace _SAIUN.Scripts.Weather
                 Destroy(target);
             }
             if (_material != null) Destroy(_material);
-            if (gameManager != null) gameManager.OnBackgroundGlassChanged -= ApplyGlass;
+            if (gameManager != null) gameManager.OnWindowGlassChanged -= ApplyGlass;
         }
 
-        /// <summary>배경 유리를 켜거나 끈다. 끄면 지평선 아래를 땅으로 채운다.</summary>
+        /// <summary>창 전체를 유리로 하거나 되돌린다. 유리면 하늘빛 없이 구름만 바탕화면 위에 뜬다.</summary>
         internal void ApplyGlass(bool on)
         {
-            Glass = on;
-            if (desktopGlass != null) desktopGlass.SetActive(on);
-            if (_material != null) _material.SetFloat(GroundId, on ? 0f : 1f);
+            WindowGlass = on;
+            if (_material != null) _material.SetFloat(GlassId, on ? 1f : 0f);
             if (_material != null && _display != null) RenderAll();
         }
 
@@ -251,6 +296,7 @@ namespace _SAIUN.Scripts.Weather
             if (_material == null) return;
             float storm = Storminess();
             _skyTime += deltaTime * evolveSpeed;
+            UpdateWind(deltaTime);
             UpdateClouds(deltaTime);
             UpdateCap(storm);
             ApplyParameters();
@@ -308,7 +354,9 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(ProgressId, sun != null ? sun.Progress : 0.5f);
             SunDirection = SkySunDirection();
             _material.SetVector(SunDirId, SunDirection);
-            _material.SetFloat(GroundId, Glass ? 0f : 1f);
+            _material.SetFloat(GlassId, WindowGlass ? 1f : 0f);
+            _material.SetVector(DriftId, new Vector4(LowDrift.x, LowDrift.y, MidDrift.x, MidDrift.y));
+            _material.SetVector(DriftHighId, new Vector4(HighDrift.x, HighDrift.y, _holeDrift.x, _holeDrift.y));
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);
@@ -323,6 +371,46 @@ namespace _SAIUN.Scripts.Weather
         private Vector4 Pack(CloudKind x, CloudKind y, CloudKind z, CloudKind w)
         {
             return new Vector4(Coverage(x), Coverage(y), Coverage(z), Coverage(w));
+        }
+
+        // 층마다 제 바람으로 구름을 흘려 보낸다. 낮은 층은 땅 바람 그대로, 위층은 비껴 돌고 방향을 천천히 따라간다.
+        // 구멍구름은 뚫린 뒤로 중층과 함께 흘러간다.
+        private void UpdateWind(float deltaTime)
+        {
+            float amount = weather != null ? weather.WindAmount : 0f;
+            float surface = WindAngle();
+            _midWindAngle = Mathf.LerpAngle(_midWindAngle, surface + midWindVeer, 1f - Mathf.Exp(-deltaTime / midWindLag));
+            _highWindAngle = Mathf.LerpAngle(_highWindAngle, surface + highWindVeer, 1f - Mathf.Exp(-deltaTime / highWindLag));
+
+            float minutes = deltaTime / SecondsPerMinute;
+            LowDrift += Heading(surface) * (Mathf.Lerp(lowWindSpeed.x, lowWindSpeed.y, amount) * minutes);
+            Vector2 mid = Heading(_midWindAngle) * (Mathf.Lerp(midWindSpeed.x, midWindSpeed.y, amount) * minutes);
+            MidDrift += mid;
+            HighDrift += Heading(_highWindAngle) * (Mathf.Lerp(highWindSpeed.x, highWindSpeed.y, amount) * minutes);
+            _holeDrift = Coverage(CloudKind.FallstreakHole) > HoleClosed ? _holeDrift + mid : Vector2.zero;
+        }
+
+        // 땅 바람이 불어 가는 방향을 하늘 좌표의 방위(도, +z에서 +x 쪽으로)로 옮긴다. 바람이 없으면 앞(+z)으로 본다.
+        private float WindAngle()
+        {
+            Vector2 sky = ToSky(weather != null ? weather.WindDirection : Vector3.forward);
+            return Mathf.Atan2(sky.x, sky.y) * Mathf.Rad2Deg;
+        }
+
+        // 방위(도)의 하늘 좌표 단위 벡터(x, z)
+        private static Vector2 Heading(float degrees)
+        {
+            float radians = degrees * Mathf.Deg2Rad;
+            return new Vector2(Mathf.Sin(radians), Mathf.Cos(radians));
+        }
+
+        // 월드 수평 방향을 하늘 좌표(x 오른쪽, z 앞)로 옮긴다. 하늘은 정원 카메라가 보는 가로 방향을 앞으로 삼는다.
+        private static Vector2 ToSky(Vector3 world)
+        {
+            Quaternion camera = SceneMetrics.CameraRotation;
+            Vector3 forward = Vector3.ProjectOnPlane(camera * Vector3.forward, Vector3.up).normalized;
+            Vector3 right = Vector3.ProjectOnPlane(camera * Vector3.right, Vector3.up).normalized;
+            return new Vector2(Vector3.Dot(world, right), Vector3.Dot(world, forward));
         }
 
         // 예보를 한 걸음 진행하고, 구름마다 제 빠르기로 목표를 따라간다.
@@ -379,11 +467,8 @@ namespace _SAIUN.Scripts.Weather
             float azimuth = 0f;
             if (sun != null)
             {
-                Quaternion camera = SceneMetrics.CameraRotation;
-                Vector3 forward = Vector3.ProjectOnPlane(camera * Vector3.forward, Vector3.up).normalized;
-                Vector3 right = Vector3.ProjectOnPlane(camera * Vector3.right, Vector3.up).normalized;
-                Vector3 toSun = -sun.LightDirection;
-                azimuth = Mathf.Atan2(Vector3.Dot(toSun, right), Vector3.Dot(toSun, forward)) * Mathf.Rad2Deg;
+                Vector2 toSun = ToSky(-sun.LightDirection);
+                azimuth = Mathf.Atan2(toSun.x, toSun.y) * Mathf.Rad2Deg;
             }
             float el = elevation * Mathf.Deg2Rad;
             float az = azimuth * Mathf.Deg2Rad;

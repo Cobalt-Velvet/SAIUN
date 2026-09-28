@@ -6,10 +6,12 @@
 //  - 웅대적운 탑은 부피로, 층을 이루는 구름(권운·권적운·권층운·고적운·고층운·층적운·층운·난층운)은 고도별 평면으로,
 //    뭉게구름 떼는 낮은 층을 걸어서, 멀리 옆으로 누운 구름(렌즈구름·아치구름·물결구름·야광운)은 보는 방향으로 그린다.
 //  - 만난 구름을 가까운 순서로 겹치고, 사이 공기가 빛을 더하고 덜어 멀수록 하늘에 잠긴다.
-//    지평선 아래는 배경 유리를 켜면 투명해져 유리로 이어지고, 끄면(_Ground) 먼 들판을 그린다.
+//  - 구름은 층마다 다른 바람에 흘러간다(_Drift 낮은 층·중층, _DriftHigh 높은 층): 높을수록 빠르고 방향이 조금씩 비껴 돈다.
+//  - 위는 하늘이고, 지평선 아래로는 하늘이 안개처럼 풀려 바탕화면 유리로 이어진다.
+//    창 전체를 유리로 하면(_Glass) 하늘빛 없이 구름만 유리 위에 뜬다.
 // 패스 0(하늘): 무거우므로 한 번에 화소의 1/8만 그린다(_Phase 0~7, 4×2 격자). _Phase가 음수면 전부 그린다.
 //   출력은 톤매핑까지 마친 값이고, sRGB 렌더 텍스처에 쓰면 화면에서 그대로 보인다. 알파는 곧은 알파다.
-// 패스 1(섞기): 다 그린 두 장(_PrevTex → _MainTex)을 _Blend만큼 섞는다. 반쯤 새로 그린 장을 보이면 빗살이 지므로
+// 패스 1(섞기): 다 그린 두 장(_PrevTex → _MainTex)을 _Blend만큼 섞고, 잔 얼룩을 살짝 거른다. 반쯤 새로 그린 장을 보이면 빗살이 지므로
 //   다 그린 장끼리만 천천히 넘겨 보인다.
 Shader "Hidden/SAIUN/Sky"
 {
@@ -26,7 +28,9 @@ Shader "Hidden/SAIUN/Sky"
         _Special ("Anvil, Mammatus, Arcus, Fallstreak Hole", Vector) = (0, 0, 0, 0)
         _Extra ("Kelvin-Helmholtz, Twilight, Tower, Unused", Vector) = (0, 0, 1, 0)
         _SunDir ("Sun Direction (sky space)", Vector) = (0, 0.7, -0.7, 0)
-        _Ground ("Draw Ground Below Horizon", Range(0, 1)) = 0
+        _Glass ("Whole Window Glass (clouds only)", Range(0, 1)) = 0
+        _Drift ("Wind Drift km (low xy, mid zw)", Vector) = (0, 0, 0, 0)
+        _DriftHigh ("Wind Drift km (high xy, hole zw)", Vector) = (0, 0, 0, 0)
         _SkyTime ("Evolve Time", Float) = 0
         _Seed ("Shape Seed", Float) = 3
         _Exposure ("Exposure", Float) = 1
@@ -62,7 +66,9 @@ Shader "Hidden/SAIUN/Sky"
             float4 _Special;
             float4 _Extra;
             float4 _SunDir;
-            float _Ground;
+            float _Glass;
+            float4 _Drift;
+            float4 _DriftHigh;
             float _SkyTime;
             float _Seed;
             float _Exposure;
@@ -116,8 +122,11 @@ Shader "Hidden/SAIUN/Sky"
 
             float2 Rotate(float2 p, float a) { float c = cos(a); float s = sin(a); return float2(c * p.x - s * p.y, s * p.x + c * p.y); }
 
-            // 바람에 흘러가는 거리(km). 높은 구름일수록 빠르다.
-            float2 Drift(float speed) { return float2(_SkyTime, _SkyTime * 0.3) * 0.02 * speed; }
+            // 층마다 바람에 흘러간 거리(km). 낮은 층은 땅 바람을, 중층은 조금 비껴 더 빠른 바람을, 높은 층은 가장 빠른 제트기류를 따른다.
+            // SkyView가 바람을 시간에 따라 쌓아 넘긴다(바람이 바뀌어도 구름이 튀지 않는다).
+            float2 LowDrift() { return _Drift.xy; }
+            float2 MidDrift() { return _Drift.zw; }
+            float2 HighDrift() { return _DriftHigh.xy; }
 
             float HG(float c, float g) { float g2 = g * g; return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * c, 1.5)); }
 
@@ -306,39 +315,17 @@ Shader "Hidden/SAIUN/Sky"
             }
 
             // ---- 땅(배경 유리를 껐을 때) ----
-            // 먼 산 능선 두 겹과 그 앞의 들판. 멀수록 공기에 잠겨 푸르고 옅다. 능선이 지평선을 가려 하늘과 땅의 경계가 부드럽다.
-            STATIC const float NEAR_RIDGE_DISTANCE = 11.0;
-            STATIC const float FAR_RIDGE_DISTANCE = 30.0;
-            STATIC const float3 FOREST_ALBEDO = float3(0.05, 0.075, 0.06);
-
-            // 거리 d에 선 능선 꼭대기의 올려본각(라디안). 방위(라디안)에 따라 부드럽게 오르내린다. 땅이 둥글어 멀수록 내려앉는다.
-            float RidgeAngle(float az, float d, float salt, float height) {
-                float n = N(float3(az * 1.3, salt, 0.21)).r * 0.65 + N(float3(az * 4.1, salt, 0.43)).r * 0.35;
-                float h = height * (0.35 + 0.9 * n);
-                return (h - EYE.y - d * d / (2.0 * PLANET_RADIUS)) / d;
-            }
-
-            // 이 방향으로 땅이나 능선에 닿는 거리와 빛. 닿지 않으면 -1.
-            float Terrain(float3 rd, float groundT, bool hitGround, float3 s, float3 ambTop, out float3 color) {
-                color = v3(0.0);
-                float az = atan2(rd.x, rd.z);
-                float slope = rd.y / max(length(rd.xz), 1e-4);
-                float d = -1.0;
-                float3 albedo = FOREST_ALBEDO;
-                if (slope < RidgeAngle(az, NEAR_RIDGE_DISTANCE, 0.3, 0.5)) {
-                    d = NEAR_RIDGE_DISTANCE;
-                } else if (slope < RidgeAngle(az, FAR_RIDGE_DISTANCE, 0.7, 1.5)) {
-                    d = FAR_RIDGE_DISTANCE;
-                } else if (hitGround) {
-                    d = groundT;
-                    float3 gp = EYE + rd * groundT;
-                    float patchy = N(float3(gp.xz * 0.02, 0.37)).r * 0.6 + N(float3(gp.xz * 0.08, 0.53)).r * 0.4;
-                    albedo = GROUND_ALBEDO * lerp(0.7, 1.35, patchy);
-                }
-                if (d < 0.0) return -1.0;
-                // 능선도 들판도 해와 하늘빛을 받는다(능선은 옆에서 받아 조금 덜 밝다).
-                color = albedo * (gSunAt[0] * max(s.y, 0.0) * GROUND_SUN * SunTransmit() + ambTop * 1.1);
-                return d;
+            // 박명광(퍼플 라이트): 해가 지평선 아래 2~6°로 내려가면, 높은 하늘의 먼지가 붉어진 햇빛을 받아
+            // 해 진 쪽 하늘이 분홍·보랏빛으로 한 번 더 달아오른다. 노을이 끝났다 싶을 때 다시 번지는 빛이다.
+            float3 PurpleLight(float3 rd, float3 sd) {
+                float el = SunElevationDeg();
+                float k = smoothstep(-1.0, -3.0, el) * smoothstep(-7.0, -4.0, el);
+                if (k <= 0.0 || rd.y < 0.0) return v3(0.0);
+                float2 a = normalize(rd.xz + float2(1e-4, 0.0));
+                float2 b = normalize(sd.xz + float2(1e-4, 0.0));
+                float toward = pow(max(dot(a, b), 0.0), 1.5);
+                float band = smoothstep(0.02, 0.12, rd.y) * (1.0 - smoothstep(0.25, 0.6, rd.y));
+                return float3(0.95, 0.38, 0.62) * 0.06 * k * toward * band;
             }
 
             // 별: 박명이 깊어지면 하나둘 돋는다.
@@ -347,7 +334,8 @@ Shader "Hidden/SAIUN/Sky"
                 if (tw < 0.5 || rd.y < 0.02) return v3(0.0);
                 float2 cell = floor(float2(atan2(rd.x, rd.z), asin(clamp(rd.y, -1.0, 1.0))) * 300.0);
                 float star = smoothstep(0.9978, 1.0, Hash2(cell)) * smoothstep(0.5, 1.0, tw) * smoothstep(0.05, 0.35, rd.y);
-                return star * float3(0.8, 0.88, 1.0) * 0.4 * (1.0 - Overcast());
+                // 보이는 장을 만들며 살짝 거르므로(섞기 패스) 그만큼 밝게 찍는다.
+                return star * float3(0.8, 0.88, 1.0) * 0.6 * (1.0 - Overcast());
             }
 
             // 채운의 빛깔: 분홍 → 박하 → 연보라 → 옅은 금빛. 실제 채운은 무지개 일곱 빛보다 분홍·초록이 주로 번진다.
@@ -485,7 +473,7 @@ Shader "Hidden/SAIUN/Sky"
             // 송이 꼭대기의 높이(밑면에서 km). 0이면 구름이 없다. 송이는 서로 떨어져 있고 오후일수록 높이 자란다.
             float CumulusHeight(float2 xz) {
                 float cov = _Low.z;
-                float2 w = xz + Drift(1.0);
+                float2 w = xz - LowDrift();
                 float cell = Dome(N(float3(w * 0.1, 0.17)).g);
                 float field = N(float3(w * 0.02, 0.29)).r;
                 float grow = lerp(0.8, 1.5, smoothstep(0.15, 0.75, _Progress));
@@ -501,7 +489,8 @@ Shader "Hidden/SAIUN/Sky"
                 float f = (h - y) * 1.2;
                 if (detail) {
                     // 겉에 잔 송이가 부풀어 콜리플라워 결이 난다.
-                    float3 w = p + float3(Drift(1.0).x, 0.0, Drift(1.0).y);
+                    // 바람에 흘러가며 송이가 천천히 끓어오른다.
+                    float3 w = p - float3(LowDrift().x, _SkyTime * 0.006, LowDrift().y);
                     f += (Dome(N(w * 0.25).b) - 0.55) * 0.6;
                     f += (Dome(N(w * 0.6).a) - 0.6) * 0.22;
                 }
@@ -529,7 +518,7 @@ Shader "Hidden/SAIUN/Sky"
                 iceFall = 0.0;
                 float hole = _Special.w;
                 if (hole <= 0.001) return 1.0;
-                float2 c = DirectionOnPlane(-9.0, 24.0, altitude);
+                float2 c = DirectionOnPlane(-9.0, 24.0, altitude) + _DriftHigh.zw;
                 float2 d = xz - c;
                 float fray = N(float3(xz * 0.3, 0.93)).r;
                 float r = length(d * float2(1.0, 1.25)) + (fray - 0.5) * radius * 0.35;
@@ -544,7 +533,7 @@ Shader "Hidden/SAIUN/Sky"
             float CirrusDensity(float2 xz) {
                 float cov = _High.x;
                 if (cov <= 0.001) return 0.0;
-                float2 w = Rotate(xz, 0.35) + Drift(3.0);
+                float2 w = Rotate(xz - HighDrift(), 0.35);
                 // 큰 굽이: 실이 곧지 않고 물결처럼 휜다.
                 float bend = N(float3(w * 0.008, 0.11)).r;
                 w.y += (bend - 0.5) * 22.0;
@@ -552,7 +541,7 @@ Shader "Hidden/SAIUN/Sky"
                 float s2 = N(float3(w.x * 0.011, w.y * 0.28, 0.37)).r;
                 float s3 = N(float3(w.x * 0.03, w.y * 0.9, 0.51)).r;
                 float fib = Remap(s1 * 0.5 + s2 * 0.33 + s3 * 0.17, 0.44, 0.68);
-                float where = N(float3(xz * 0.006 + Drift(1.0) * 0.006, 0.61)).r;
+                float where = N(float3((xz - HighDrift()) * 0.006, 0.61)).r;
                 float mask = Remap(where, 0.7 - 0.45 * cov, 0.9 - 0.3 * cov);
                 return pow(fib, 1.5) * mask;
             }
@@ -562,21 +551,27 @@ Shader "Hidden/SAIUN/Sky"
                 iceFall = 0.0;
                 float cov = _High.y;
                 if (cov <= 0.001) return 0.0;
-                float2 w = Rotate(xz, -0.25) + Drift(2.5);
+                float2 w = Rotate(xz - HighDrift() * 0.9, -0.25);
                 float grain = Dome(N(float3(w * 0.32, 0.33)).a);
                 float grain2 = Dome(N(float3(w * 0.7, 0.13)).a);
                 float ripple = 0.5 + 0.5 * sin(w.x * 7.0 + N(float3(w * 0.05, 0.71)).r * 9.0);
-                float where = N(float3(xz * 0.03 + Drift(1.0) * 0.01, 0.43)).r * 0.7 + N(float3(xz * 0.1, 0.53)).r * 0.3;
+                float2 m = xz - HighDrift() * 0.9;
+                float where = N(float3(m * 0.03, 0.43)).r * 0.7 + N(float3(m * 0.1, 0.53)).r * 0.3;
                 float mask = Remap(where, 0.62 - 0.4 * cov, 0.82 - 0.3 * cov);
                 float d = mask * Remap(grain * 0.7 + grain2 * 0.3 + (ripple - 0.5) * 0.12, 0.55, 0.9);
                 return d * FallstreakHole(xz, CIRROCUMULUS_ALTITUDE, 3.4, iceFall);
             }
 
+            // 창 전체가 유리일 때 너울 구름(권층운·고층운)을 얼마나 남길지. 결 없이 고르게 덮는 너울은 유리 위에서
+            // 뿌연 막으로만 보이므로 옅게 남겨 날씨만 알린다.
+            STATIC const float GLASS_VEIL = 0.4;
+            float Veil(float a) { return _Glass > 0.5 ? a * GLASS_VEIL : a; }
+
             // 권층운(햇무리구름): 하늘을 우윳빛으로 엷게 덮는 흰 너울. 결이 아주 옅게 비친다.
             float CirrostratusDensity(float2 xz) {
                 float cov = _High.z;
                 if (cov <= 0.001) return 0.0;
-                float2 w = Rotate(xz, 0.2) + Drift(2.0);
+                float2 w = Rotate(xz - HighDrift() * 0.8, 0.2);
                 float fib = N(float3(w.x * 0.02, w.y * 0.1, 0.13)).r;
                 float sheet = N(float3(xz * 0.01, 0.27)).r;
                 return cov * (0.55 + 0.3 * fib + 0.3 * (sheet - 0.5));
@@ -590,10 +585,10 @@ Shader "Hidden/SAIUN/Sky"
             float AltocumulusDensity(float2 xz) {
                 float cov = _Mid.x;
                 if (cov <= 0.001) return 0.0;
-                float2 w = Rotate(xz, 0.5) + Drift(1.6);
+                float2 w = Rotate(xz - MidDrift(), 0.5);
                 float puff = Dome(N(float3(w * 0.15, 0.19)).b);
                 float row = 0.5 + 0.5 * sin(w.y * 2.4 + N(float3(w * 0.04, 0.83)).r * 5.0);
-                float where = N(float3(xz * 0.02 + Drift(1.0) * 0.01, 0.57)).r;
+                float where = N(float3((xz - MidDrift()) * 0.02, 0.57)).r;
                 float mask = Remap(where * TowerSideThin(xz.x), 0.66 - 0.45 * cov, 0.86 - 0.3 * cov);
                 float fine = N(float3(w * 0.8, 0.07)).r;
                 return mask * Remap(puff * lerp(0.6, 1.0, row) + (fine - 0.5) * 0.15, 0.38, 0.8);
@@ -603,7 +598,7 @@ Shader "Hidden/SAIUN/Sky"
             float AltostratusDensity(float2 xz) {
                 float cov = _Mid.y;
                 if (cov <= 0.001) return 0.0;
-                float2 w = xz + Drift(1.2);
+                float2 w = xz - MidDrift() * 0.9;
                 float n = N(float3(w * 0.025, 0.47)).r * 0.7 + N(float3(w * 0.1, 0.59)).r * 0.3;
                 return cov * Remap(n, 0.2 - 0.3 * cov, 0.55);
             }
@@ -612,7 +607,7 @@ Shader "Hidden/SAIUN/Sky"
             float StratocumulusDensity(float2 xz) {
                 float cov = _Low.x;
                 if (cov <= 0.001) return 0.0;
-                float2 w = Rotate(xz, -0.4) + Drift(1.0);
+                float2 w = Rotate(xz - LowDrift() * 0.85, -0.4);
                 float puff = Dome(N(float3(w * 0.1, 0.61)).g);
                 float lump = Dome(N(float3(w * 0.22, 0.41)).b);
                 float fine = Dome(N(float3(w * 0.5, 0.21)).a);
@@ -625,21 +620,21 @@ Shader "Hidden/SAIUN/Sky"
             float StratusDensity(float2 xz) {
                 float cov = _Low.y;
                 if (cov <= 0.001) return 0.0;
-                float2 w = xz + Drift(0.8);
+                float2 w = xz - LowDrift() * 0.6;
                 float n = N(float3(w * 0.05, 0.73)).r * 0.65 + N(float3(w * 0.22, 0.87)).r * 0.35;
                 return Remap(n, 0.62 - 0.5 * cov, 0.78 - 0.3 * cov);
             }
 
             // 유방운 송이 자리: 결을 휘어 워리 칸의 곧은 모서리(다각형)가 드러나지 않게 한다.
             float2 MammatusCoord(float2 xz) {
-                float2 w = xz + float2(_SkyTime * 0.03, _SkyTime * 0.01);
+                float2 w = xz - LowDrift() * 1.2;
                 float2 warp = float2(N(float3(w * 0.05, 0.12)).r, N(float3(w * 0.05, 0.62)).r) - 0.5;
                 return w * 0.1 + warp * 0.35;
             }
 
             // 난층운(비구름) 밑면의 두께와, 유방운 송이 높이.
             float NimbostratusDensity(float2 xz, out float thick, out float pouch) {
-                float2 w = xz + float2(_SkyTime * 0.03, _SkyTime * 0.01);
+                float2 w = xz - LowDrift() * 1.2;
                 float n = N(float3(w * 0.07, 0.31)).r * 0.55 + Dome(N(float3(w * 0.16, 0.53)).g) * 0.3 + N(float3(w * 0.5, 0.77)).r * 0.15;
                 float cov = _Low.w;
                 thick = smoothstep(0.42, 0.82, n);
@@ -715,7 +710,7 @@ Shader "Hidden/SAIUN/Sky"
                 float k = _Extra.x;
                 if (k <= 0.001 || dir.x > 2.0 || dir.x < -25.0 || dir.y < 17.0 || dir.y > 28.0) return 0.0;
                 const float period = 6.5;
-                float along = dir.x + 25.0 - _SkyTime * 0.02 + (N(float3(dir.x * 0.03, 0.2, 0.44)).r - 0.5) * 2.0;
+                float along = dir.x + 25.0 - degrees(MidDrift().x / 24.0) + (N(float3(dir.x * 0.03, 0.2, 0.44)).r - 0.5) * 2.0;
                 float cellIndex = floor(along / period);
                 float amp = lerp(0.65, 1.1, H1(cellIndex * 7.1)) * lerp(0.6, 1.0, k);
                 // 층이 길게 너울거려 바닥 띠가 곧은 줄이 되지 않는다.
@@ -751,7 +746,7 @@ Shader "Hidden/SAIUN/Sky"
             float NoctilucentDensity(float2 dir) {
                 float k = _High.w * smoothstep(0.35, 0.8, Twilight());
                 if (k <= 0.001 || dir.y < 1.0 || dir.y > 16.0) return 0.0;
-                float2 w = dir + float2(_SkyTime * 0.004, 0.0);
+                float2 w = dir - float2(degrees(HighDrift().x / 300.0), 0.0);
                 float warp = N(float3(w * float2(0.04, 0.12), 0.19)).r;
                 float warp2 = N(float3(w * float2(0.1, 0.3), 0.39)).r;
                 // 긴 물결(띠)과 잔물결이 비스듬히 엇갈린다. 결이 크게 휘어 반듯한 빗금이 되지 않는다.
@@ -959,7 +954,7 @@ Shader "Hidden/SAIUN/Sky"
                     d = CirrostratusDensity((ro + rd * t).xz);
                     if (d > 0.001) {
                         float3 c = sc * SunLit(CIRROSTRATUS_ALTITUDE) * (0.9 + 0.5 * forward) + ambMid * 1.2;
-                        AddCloud(t, c, d * 0.42);
+                        AddCloud(t, c, Veil(d * 0.42));
                     }
                     // 권적운(구멍구름의 얼음 꼬리 포함)
                     t = PlaneHit(ro, rd, CIRROCUMULUS_ALTITUDE);
@@ -979,7 +974,7 @@ Shader "Hidden/SAIUN/Sky"
                     d = AltostratusDensity((ro + rd * t).xz);
                     if (d > 0.001) {
                         float3 c = lerp(sc * SunLit(ALTOSTRATUS_ALTITUDE) * 0.45 + ambMid * 1.5, ambMid * 1.25 + sc * 0.15, smoothstep(0.3, 1.0, d));
-                        AddCloud(t, c, clamp(d, 0.0, 0.97));
+                        AddCloud(t, c, Veil(clamp(d, 0.0, 0.97)));
                     }
                     // 고적운(구멍구름·꼬리구름 포함)
                     t = PlaneHit(ro, rd, ALTOCUMULUS_ALTITUDE);
@@ -1137,9 +1132,28 @@ Shader "Hidden/SAIUN/Sky"
                     gPre[j + 1] = pp;
                     gTr[j + 1] = tt;
                 }
-                // 배경 유리를 껐으면 땅과 먼 산 능선이 구름과 하늘을 가린다.
-                float3 terrainColor = v3(0.0);
-                float terrainT = _Ground > 0.5 ? Terrain(rd, airEnd, hitGround, s, ambTop, terrainColor) : -1.0;
+                // 톤매핑(지수). 해가 낮거나 지면 눈이 어둠에 익듯 노출을 올린다.
+                float el = SunElevationDeg();
+                float exposure = _Exposure * lerp(1.0, 1.7, smoothstep(25.0, 0.0, el)) * lerp(1.0, 3.2, smoothstep(0.0, -9.0, el));
+
+                if (_Glass > 0.5) {
+                    // 창이 투명하면 하늘빛은 그리지 않고 구름만 곧은 알파로 내보낸다.
+                    // 구름마다 앞 공기(아지랑이)를 입힌 빛을 겹치고, 멀어 공기에 잠기는 구름은 하늘로 스미는 대신 유리로 풀어진다.
+                    float3 cg = v3(0.0);
+                    float tg = 1.0;
+                    [loop] for (int i = 0; i < MAX_LAYERS; i++) {
+                        if (i >= gCount) break;
+                        float3 airL;
+                        float3 airT;
+                        AirAt(gDist[i], airL, airT);
+                        float fade = smoothstep(0.05, 0.45, dot(airT, v3(1.0 / 3.0)));
+                        cg += tg * fade * ((1.0 - gTr[i]) * airL + airT * gPre[i]);
+                        tg *= 1.0 - (1.0 - gTr[i]) * fade;
+                    }
+                    float cover = (1.0 - tg) * smoothstep(-0.06, 0.0, rd.y);
+                    float3 cc = cg / max(1.0 - tg, 1e-4);
+                    return float4(1.0 - exp(-cc * exposure), cover);
+                }
 
                 // 가까운 구름부터: 구름 사이 공기가 더하는 빛(앞 구름에 가린 만큼), 공기를 지나 남은 구름 빛을 차례로 쌓는다.
                 float3 c = v3(0.0);
@@ -1147,7 +1161,6 @@ Shader "Hidden/SAIUN/Sky"
                 float3 prevL = v3(0.0);
                 [loop] for (int i = 0; i < MAX_LAYERS; i++) {
                     if (i >= gCount) break;
-                    if (terrainT > 0.0 && gDist[i] > terrainT) break;
                     float3 airL;
                     float3 airT;
                     AirAt(gDist[i], airL, airT);
@@ -1156,32 +1169,18 @@ Shader "Hidden/SAIUN/Sky"
                     T *= gTr[i];
                     prevL = airL;
                 }
-                if (terrainT > 0.0) {
-                    // 땅·능선까지의 공기 빛과, 공기를 지나 남은 땅 빛
-                    float3 airL;
-                    float3 airT;
-                    AirAt(terrainT, airL, airT);
-                    c += T * Overcasted(airL - prevL);
-                    c += T * airT * terrainColor;
-                } else {
-                    // 마지막 구름 너머의 하늘. 흐리면 잿빛이다.
-                    c += T * Overcasted(gAirL[SKY_STEPS] - prevL);
-                    if (!hitGround) {
-                        // 해: 화면 밖에 있을 때가 많지만 들어오면 눈부신 원반이다.
-                        float disk = smoothstep(0.99996, 0.99999, dot(rd, s));
-                        c += T * gAirT[SKY_STEPS] * disk * 40.0 * (1.0 - Overcast());
-                        c += T * Stars(rd);
-                    }
+                // 마지막 구름 너머의 하늘. 흐리면 잿빛이다.
+                c += T * Overcasted(gAirL[SKY_STEPS] - prevL + PurpleLight(rd, s));
+                if (!hitGround) {
+                    // 해: 화면 밖에 있을 때가 많지만 들어오면 눈부신 원반이다.
+                    float disk = smoothstep(0.99996, 0.99999, dot(rd, s));
+                    c += T * gAirT[SKY_STEPS] * disk * 40.0 * (1.0 - Overcast());
+                    c += T * Stars(rd);
                 }
 
-                // 톤매핑(지수). 해가 낮거나 지면 눈이 어둠에 익듯 노출을 올린다.
-                float el = SunElevationDeg();
-                float exposure = _Exposure * lerp(1.0, 1.7, smoothstep(25.0, 0.0, el)) * lerp(1.0, 3.2, smoothstep(0.0, -9.0, el));
-                c = 1.0 - exp(-c * exposure);
-                // 지평선 아래: 배경 유리를 켰으면 하늘이 안개처럼 풀려 유리로 이어지고, 껐으면 땅까지 그린다.
-                float skyAmount = _Ground > 0.5 ? 1.0 : smoothstep(-0.09, 0.01, rd.y);
-                float alpha = max(skyAmount, (1.0 - T) * smoothstep(-0.06, 0.0, rd.y));
-                return float4(c, alpha);
+                // 지평선 아래: 하늘이 안개처럼 풀려 유리로 이어진다. 지평선에 걸친 구름은 조금 더 남는다.
+                float alpha = max(smoothstep(-0.09, 0.01, rd.y), (1.0 - T) * smoothstep(-0.06, 0.0, rd.y));
+                return float4(1.0 - exp(-c * exposure), alpha);
             }
 
             float4 Fragment(v2f_img input) : SV_Target
@@ -1207,12 +1206,26 @@ Shader "Hidden/SAIUN/Sky"
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
+            float4 _MainTex_TexelSize;
             sampler2D _PrevTex;
             float _Blend;
 
+            // 반 화소씩 비낀 네 점을 모은다(겹선형 거르기와 합쳐 3×3 천막 거르기). 화소마다 흩뜨린 광선 시작점이 구름
+            // 가장자리에 남기는 잔 얼룩을 누그러뜨린다. 알파를 곱해 모아야 유리 위 구름 가장자리가 검게 번지지 않는다.
+            float4 Gather(sampler2D sky, float2 uv)
+            {
+                float2 o = _MainTex_TexelSize.xy * 0.5;
+                float4 a = tex2D(sky, uv + float2(-o.x, -o.y));
+                float4 b = tex2D(sky, uv + float2(o.x, -o.y));
+                float4 c = tex2D(sky, uv + float2(-o.x, o.y));
+                float4 d = tex2D(sky, uv + float2(o.x, o.y));
+                return (float4(a.rgb * a.a, a.a) + float4(b.rgb * b.a, b.a) + float4(c.rgb * c.a, c.a) + float4(d.rgb * d.a, d.a)) * 0.25;
+            }
+
             float4 Mix(v2f_img input) : SV_Target
             {
-                return lerp(tex2D(_PrevTex, input.uv), tex2D(_MainTex, input.uv), _Blend);
+                float4 p = lerp(Gather(_PrevTex, input.uv), Gather(_MainTex, input.uv), _Blend);
+                return float4(p.rgb / max(p.a, 1e-4), p.a);
             }
             ENDCG
         }

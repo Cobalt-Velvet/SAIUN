@@ -1010,8 +1010,6 @@ namespace _SAIUN.Editor
             so.FindProperty("noise").objectReferenceValue = SkyArtBuilder.EnsureNoise();
             so.FindProperty("stateMachine").objectReferenceValue = Object.FindFirstObjectByType<PomodoroStateMachine>();
             so.FindProperty("gameManager").objectReferenceValue = Object.FindFirstObjectByType<GameManager>();
-            Transform glass = backdropCanvas.Find("DesktopGlass");
-            so.FindProperty("desktopGlass").objectReferenceValue = glass != null ? glass.gameObject : null;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
