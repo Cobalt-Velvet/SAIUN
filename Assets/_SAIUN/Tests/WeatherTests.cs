@@ -181,46 +181,32 @@ namespace _SAIUN.Tests
         // ---- 하늘: 웅대적운·채운 ----
 
         [Test]
-        public void 웅대적운은_해가_오를수록_자라고_다_자라면_채운_갓구름이_얹힌다()
+        public void 웅대적운은_평소엔_없고_솟으면_자라서_채운_갓구름을_얹고_셰이더로_간다()
         {
             SunOrbitController orbit = MakeSun();
             SkyView sky = MakeSky(orbit);
-            Set(sky, "idleGrowthRange", new Vector2(0.3f, 0.3f));
+            orbit.Apply(0.5f);
+            sky.Tick(1f);
+            Assert.AreEqual(0f, sky.TowerPresence, 0.01f, "평소 하늘에는 탑이 없다");
+            Assert.AreEqual(0f, sky.CapVisibility, 0.0001f);
 
-            orbit.Apply(0f);
+            // 대류가 이는 장면(맑음)에서 솟게 한다. 층구름 장면이면 탑이 조금 가린다.
+            CalmScene(sky);
+            sky.Forecast.StartTower();
             for (int i = 0; i < 300; i++) sky.Tick(1f);
-            Assert.AreEqual(0.3f, sky.TowerGrowth, 0.01f, "아침(세션 처음)에는 쉴 때만큼만 솟아 있다");
-            Assert.AreEqual(0f, sky.CapVisibility, 0.0001f, "덜 자란 탑에는 갓구름이 없다");
-
-            orbit.Apply(1f);
-            for (int i = 0; i < 300; i++) sky.Tick(1f);
-            Assert.Greater(sky.TowerGrowth, 0.97f, "해가 다 오르면 탑이 끝까지 솟는다");
-            Assert.Greater(sky.CapVisibility, 0.9f, "다 자란 탑에 갓구름이 얹힌다");
+            Assert.Greater(sky.TowerPresence, 0.97f, "솟으면 뚜렷하다");
+            Assert.Greater(sky.TowerGrowth, 0.97f, "몇 분에 걸쳐 끝까지 자란다");
+            Assert.Greater(sky.CapVisibility, 0.9f, "다 자란 탑에 채운 갓구름이 얹힌다");
 
             Material runtime = Material(sky);
             Assert.AreEqual(sky.TowerGrowth, runtime.GetFloat("_Growth"), 0.0001f, "자람은 셰이더로 간다");
+            Assert.AreEqual(sky.TowerPresence, runtime.GetVector("_Extra").z, 0.0001f, "보이는 정도도 셰이더로 간다");
             Assert.AreEqual(sky.CapVisibility, runtime.GetFloat("_Cap"), 0.0001f, "갓구름 세기도 셰이더로 간다");
-            Assert.AreEqual(1f, runtime.GetFloat("_Progress"), 0.0001f, "해 진행률이 하루의 흐름이다");
-        }
+            Assert.AreEqual(0.5f, runtime.GetFloat("_Progress"), 0.0001f, "해 진행률이 하루의 흐름이다");
 
-        [Test]
-        public void 쉴_때도_탑은_몇_분_주기로_자랐다_가라앉는다()
-        {
-            SkyView sky = MakeSky(null);
-            Set(sky, "idleCycleMinutes", 1f);
-            Set(sky, "growthResponse", 0.5f);
-            float lowest = float.MaxValue;
-            float highest = float.MinValue;
-            for (int i = 0; i < 120; i++)
-            {
-                sky.Tick(1f);
-                lowest = Mathf.Min(lowest, sky.TowerGrowth);
-                highest = Mathf.Max(highest, sky.TowerGrowth);
-            }
-            Vector2 range = Get<Vector2>(sky, "idleGrowthRange");
-            Assert.AreEqual(range.x, lowest, 0.05f);
-            Assert.AreEqual(range.y, highest, 0.05f);
-            Assert.Greater(highest, Get<float>(sky, "capGrowth"), "쉴 때도 가장 높이 솟으면 채운 갓구름을 볼 수 있다");
+            for (int i = 0; i < 600; i++) sky.Tick(1f);
+            Assert.Less(sky.TowerPresence, 0.01f, "머물다 스러진다");
+            Assert.Less(sky.CapVisibility, 0.01f);
         }
 
         [Test]
@@ -304,12 +290,13 @@ namespace _SAIUN.Tests
         {
             SkyView sky = MakeSky(null);
             float assetGrowth = _skyMaterial.GetFloat("_Growth");
-            Set(sky, "idleGrowthRange", new Vector2(0.2f, 0.2f));
-            Set(sky, "growthResponse", 0.01f);
-            sky.Tick(1f);
+            CalmScene(sky);
+            sky.Forecast.StartTower();
+            for (int i = 0; i < 60; i++) sky.Tick(1f);
             Material runtime = Material(sky);
             Assert.AreNotSame(_skyMaterial, runtime);
-            Assert.AreEqual(0.2f, runtime.GetFloat("_Growth"), 0.01f);
+            Assert.AreEqual(sky.TowerGrowth, runtime.GetFloat("_Growth"), 0.0001f);
+            Assert.AreNotEqual(assetGrowth, sky.TowerGrowth);
             Assert.AreEqual(assetGrowth, _skyMaterial.GetFloat("_Growth"), "원본 재질은 그대로다");
         }
 
@@ -519,6 +506,13 @@ namespace _SAIUN.Tests
             Set(sky, "resolutionScale", 0.25f);
             skyGo.SetActive(true);
             return sky;
+        }
+
+        // 예보를 맑음 장면으로 돌린다(난수 0이면 무게가 있는 첫 장면인 맑음이나 그다음 뭉게구름 떼).
+        private static void CalmScene(SkyView sky)
+        {
+            sky.Forecast.SetRandom(() => 0f);
+            sky.Forecast.ChooseScene(new SkyInputs { Progress = 0.5f });
         }
 
         private static Material Material(SkyView sky)

@@ -93,6 +93,9 @@ namespace _SAIUN.Scripts.Weather
     ///    폭풍이 지나가면 가끔 유방운이 남는다.
     ///  - 드문 구름: 조개·양떼구름에 구멍구름, 바람 센 날 켈빈-헬름홀츠 물결구름, 해가 진 뒤 야광운.
     ///  - 채운 렌즈구름: 몇 분 주기로 피었다 사라지며 대부분의 시간 떠 있다. 층구름이 덮거나 폭풍이면 숨는다.
+    ///  - 웅대적운: 드물게, 특별하게(사용자 선택). 맑은 날 한낮~오후, 대류가 이는 장면(뭉게구름 떼·맑음·새털·양떼구름)에서만
+    ///    가끔 굴려 솟는다. 몇 분에 걸쳐 자라 오르고, 다 자라 머무는 동안 채운 갓구름이 얹히고, 스러진다.
+    ///    한 번 솟으면 한동안 다시 솟지 않아 세션 한 번에 한두 번 볼 수 있다. 뇌우면 적란운으로 끝까지 솟는다.
     /// 여기서는 목표 양만 정하고, 하늘(SkyView)이 그 목표로 천천히 옮겨 간다.
     /// </summary>
     [Serializable]
@@ -150,6 +153,10 @@ namespace _SAIUN.Scripts.Weather
         // 탑이 보이는 정도: 두루마리구름·안개 장면에서는 층에 가려 흐리다
         private const float TowerUnderStratocumulus = 0.7f;
         private const float TowerUnderFog = 0.45f;
+
+        // 탑이 처음 모습을 드러내는 데 걸리는 비율(자라 오르는 시간 대비), 스러질 때 가라앉는 높이 비율
+        private const float TowerAppearShare = 0.25f;
+        private const float TowerSettle = 0.35f;
 
         // 해가 지면 뭉게구름이 스러지는 박명 구간
         private const float DuskFadeStart = 0.3f;
@@ -220,6 +227,34 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("온난전선이 다 두꺼워지는 비 강도")]
         [SerializeField, Range(0.05f, 1f)] private float frontFullRain = 0.6f;
 
+        [Header("웅대적운 (드물게, 특별하게)")]
+        [Tooltip("대류가 이는 하루의 때(진행률). 이 사이에만 탑이 솟는다.")]
+        [SerializeField] private Vector2 towerWindow = new Vector2(0.3f, 0.85f);
+
+        [Tooltip("탑이 솟을지 굴리는 간격(초)")]
+        [SerializeField, Min(1f)] private float towerRollSeconds = 150f;
+
+        [Tooltip("뭉게구름 떼 장면에서 굴릴 때마다 솟을 확률")]
+        [SerializeField, Range(0f, 1f)] private float towerChanceCumulus = 0.16f;
+
+        [Tooltip("맑음·새털구름·양떼구름 장면에서 굴릴 때마다 솟을 확률")]
+        [SerializeField, Range(0f, 1f)] private float towerChanceOther = 0.08f;
+
+        [Tooltip("한 번 솟은 뒤 다시 솟을 수 있기까지(분). 솟기 시작한 때부터 잰다.")]
+        [SerializeField, Min(0f)] private float towerCooldownMinutes = 35f;
+
+        [Tooltip("자라 오르는 시간(초)")]
+        [SerializeField, Min(1f)] private float towerRiseSeconds = 240f;
+
+        [Tooltip("다 자라 머무는 시간(초). 이때 채운 갓구름이 얹힌다.")]
+        [SerializeField, Min(0f)] private float towerHoldSeconds = 300f;
+
+        [Tooltip("스러지는 시간(초)")]
+        [SerializeField, Min(1f)] private float towerFadeSeconds = 150f;
+
+        [Tooltip("탑이 솟는 동안 곁에 피는 뭉게구름 양")]
+        [SerializeField, Range(0f, 1f)] private float towerCumulus = 0.3f;
+
         [Header("채운 렌즈구름")]
         [Tooltip("렌즈구름이 피었다 사라지는 한 주기(분)")]
         [SerializeField, Min(0.1f)] private float lensCycleMinutes = 11f;
@@ -246,8 +281,17 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>다음 장면까지 남은 시간(초).</summary>
         public float SecondsUntilChange { get; private set; }
 
-        /// <summary>웅대적운 탑이 보이는 정도의 목표(0~1).</summary>
-        public float TowerPresence { get; private set; } = 1f;
+        /// <summary>웅대적운 탑이 보이는 정도의 목표(0~1). 탑이 솟지 않을 때는 0이다.</summary>
+        public float TowerPresence { get; private set; }
+
+        /// <summary>웅대적운 탑이 자란 정도의 목표(0~1).</summary>
+        public float TowerGrowth { get; private set; }
+
+        /// <summary>지금까지 탑이 솟은 횟수. 새로 솟을 때마다 하나씩 는다.</summary>
+        public int TowerEvents { get; private set; }
+
+        /// <summary>탑이 솟아 있는지(자라 오르거나 머물거나 스러지는 중).</summary>
+        public bool TowerActive => _towerAge >= 0f;
 
         /// <summary>이번 박명에 야광운이 뜨는지.</summary>
         public bool NoctilucentTonight { get; private set; }
@@ -267,6 +311,9 @@ namespace _SAIUN.Scripts.Weather
         private float _stormPeak;
         private bool _twilightEpisode;
         private float _lensTime;
+        private float _towerAge = -1f;
+        private float _towerCooldown;
+        private float _towerRollLeft;
 
         /// <summary>구름 종류의 목표 양(0~1).</summary>
         public float Target(CloudKind kind) => _targets[(int)kind];
@@ -300,6 +347,7 @@ namespace _SAIUN.Scripts.Weather
             {
                 _started = true;
                 _lensTime = lensStartPhase * lensCycleMinutes * 60f;
+                _towerRollLeft = towerRollSeconds;
                 _previousStorm = inputs.Storm;
                 ChooseScene(inputs);
             }
@@ -311,6 +359,7 @@ namespace _SAIUN.Scripts.Weather
             _lensTime += deltaTime;
             TrackStorm(deltaTime, inputs.Storm);
             TrackTwilight(inputs.Twilight);
+            TrackTower(deltaTime, inputs);
             ComputeTargets(inputs);
         }
 
@@ -324,7 +373,9 @@ namespace _SAIUN.Scripts.Weather
             for (int i = 0; i < SceneCount; i++)
             {
                 bool same = _sceneCover > 0f && i == (int)Scene;
-                weights[i] = same || i >= sceneWeights.Length ? 0f : sceneWeights[i].Weight(inputs.Progress, inputs.Wind);
+                // 탑이 솟아 있는 동안은 대류가 이는 장면끼리만 바뀐다(탑이 안개·층구름 속으로 사라지지 않게).
+                bool stable = TowerActive && TowerChance((SkyScene)i) <= 0f;
+                weights[i] = same || stable || i >= sceneWeights.Length ? 0f : sceneWeights[i].Weight(inputs.Progress, inputs.Wind);
                 total += weights[i];
             }
 
@@ -359,6 +410,59 @@ namespace _SAIUN.Scripts.Weather
         {
             return scene == SkyScene.Clear || scene == SkyScene.FairCumulus || scene == SkyScene.Altocumulus
                    || scene == SkyScene.Stratocumulus;
+        }
+
+        // ---- 웅대적운 ----
+
+        // 대류가 이는 장면에서 솟을 확률. 0이면 이 장면에서는 솟지 않는다.
+        private float TowerChance(SkyScene scene)
+        {
+            switch (scene)
+            {
+                case SkyScene.FairCumulus:
+                    return towerChanceCumulus;
+                case SkyScene.Clear:
+                case SkyScene.Cirrus:
+                case SkyScene.Altocumulus:
+                    return towerChanceOther;
+                default:
+                    return 0f;
+            }
+        }
+
+        // 솟은 탑은 제 일생을 이어 가고, 솟지 않았으면 이따금 굴린다.
+        private void TrackTower(float deltaTime, SkyInputs inputs)
+        {
+            _towerCooldown = Mathf.Max(0f, _towerCooldown - deltaTime);
+            if (TowerActive)
+            {
+                _towerAge += deltaTime;
+                if (_towerAge > towerRiseSeconds + towerHoldSeconds + towerFadeSeconds) _towerAge = -1f;
+                return;
+            }
+
+            _towerRollLeft -= deltaTime;
+            if (_towerRollLeft > 0f) return;
+            _towerRollLeft = towerRollSeconds;
+            if (TowerAllowed(inputs) && _random() < TowerChance(Scene)) StartTower();
+        }
+
+        // 맑은 날 한낮~오후에만 솟는다. 비가 오거나 뇌우거나 해가 졌으면, 또는 얼마 전에 솟았으면 솟지 않는다.
+        private bool TowerAllowed(SkyInputs inputs)
+        {
+            return _towerCooldown <= 0f
+                   && inputs.Storm < StormGone
+                   && inputs.Rain < VirgaFrontStart
+                   && inputs.Twilight < TwilightEpisodeStart
+                   && inputs.Progress >= towerWindow.x && inputs.Progress <= towerWindow.y;
+        }
+
+        /// <summary>탑을 솟게 한다. 테스트는 직접 부른다.</summary>
+        internal void StartTower()
+        {
+            _towerAge = 0f;
+            _towerCooldown = towerCooldownMinutes * 60f;
+            TowerEvents++;
         }
 
         // ---- 폭풍·박명 사건 ----
@@ -410,6 +514,16 @@ namespace _SAIUN.Scripts.Weather
 
             // 맑은 날 장면
             float tower = 1f;
+            float presence = 0f;
+            float growth = 0f;
+            if (TowerActive)
+            {
+                // 처음엔 뭉게구름 덩어리로 드러나 몇 분에 걸쳐 솟고, 다 자라 머문 뒤 조금 가라앉으며 스러진다.
+                float end = towerRiseSeconds + towerHoldSeconds;
+                float fading = Smooth(end, end + towerFadeSeconds, _towerAge);
+                presence = Smooth(0f, towerRiseSeconds * TowerAppearShare, _towerAge) * (1f - fading);
+                growth = Smooth(0f, towerRiseSeconds, _towerAge) * (1f - TowerSettle * fading);
+            }
             switch (Scene)
             {
                 case SkyScene.Clear:
@@ -442,6 +556,7 @@ namespace _SAIUN.Scripts.Weather
                     break;
             }
             if (_hasCompanion) Raise(_companion, companionCover);
+            Raise(CloudKind.Cumulus, towerCumulus * presence * cumulusByDay);
             if (_hole) Set(CloudKind.FallstreakHole, 1f);
             if (_virga) Set(CloudKind.Virga, 1f);
             if (_kelvinLeft > 0f && storm < StormGone) Set(CloudKind.KelvinHelmholtz, 1f);
@@ -469,8 +584,10 @@ namespace _SAIUN.Scripts.Weather
                 Mathf.Max(Target(CloudKind.Altostratus), Target(CloudKind.Nimbostratus)));
             Set(CloudKind.Lenticular, LensCycle() * (1f - blocking) * (1f - storm) * (1f - Smooth(LensDuskStart, 1f, inputs.Twilight)));
 
-            // 탑은 전선 비에 가려 사라지고, 뇌우면 적란운으로 솟아 뚜렷하다.
-            TowerPresence = Mathf.Lerp(tower * (1f - TowerFrontFade * Smooth(FairFadeStart, FairFadeEnd, front)), 1f, storm);
+            // 탑은 전선 비에 가려 사라지고, 뇌우면 적란운으로 끝까지 솟아 뚜렷하다.
+            presence *= tower * (1f - TowerFrontFade * Smooth(FairFadeStart, FairFadeEnd, front));
+            TowerPresence = Mathf.Lerp(presence, 1f, storm);
+            TowerGrowth = Mathf.Lerp(growth, 1f, storm);
         }
 
         // 렌즈구름은 주기의 앞쪽 lensPresence 동안 떠 있고, 앞뒤 lensFade 동안 피어나고 사라진다.

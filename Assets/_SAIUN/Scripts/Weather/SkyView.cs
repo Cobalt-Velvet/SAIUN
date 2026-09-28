@@ -9,8 +9,8 @@ namespace _SAIUN.Scripts.Weather
     /// 카드 위쪽의 하늘 (2026-09-28, 사용자: "구름이 이 프로그램의 50%", "가슴이 웅장해지고 노스탤지어를 느껴야").
     /// 셰이더(Hidden/SAIUN/Sky)가 웅대적운 탑과 채운 갓구름을 부피로 그리고, 지평선 아래로는 투명해져 유리로 이어진다.
     ///  - 세션 진행률(해)이 하루다: 아침 금빛 → 한낮 파랑 → 늦은 오후 금빛 → 해 질 녘 노을.
-    ///  - 웅대적운: 해가 오를수록(집중 세션이 무르익을수록) 자라고, 쉴 때도 몇 분 주기로 자랐다 가라앉아 늘 볼 수 있다.
-    ///    먹구름이 오면 끝까지 솟고 어두워지며, 낮은 먹구름 층이 하늘을 덮는다.
+    ///  - 웅대적운: 드물게, 특별하게. 맑은 날 한낮~오후에 가끔 솟아 몇 분에 걸쳐 자라고, 머물다 스러진다(예보가 정한다).
+    ///    솟을 때마다 모양이 다르다. 먹구름이 오면 적란운으로 끝까지 솟고 어두워진다.
     ///  - 채운: 탑과 따로, 왼쪽 빈 하늘의 렌즈구름 무리 가장자리에 빛깔 띠가 선다. 몇 분마다 피었다 사라지며 대부분의 시간 보인다.
     ///    탑이 다 자라면 꼭대기의 갓구름에도 채운이 선다(가끔 보는 장면). SAIUN을 만든 이유가 웅대적운과 채운이다.
     ///  - 나머지 구름(권운·권적운·권층운·고적운·고층운·층적운·층운·난층운·적운 떼, 모루·유방운·아치구름·꼬리구름,
@@ -75,17 +75,8 @@ namespace _SAIUN.Scripts.Weather
         [SerializeField, Min(0f)] private float evolveSpeed = 0.15f;
 
         [Header("웅대적운")]
-        [Tooltip("쉴 때 탑이 자랐다 가라앉는 한 주기(분)")]
-        [SerializeField, Min(0.1f)] private float idleCycleMinutes = 6f;
-
-        [Tooltip("쉴 때 자람의 범위(가장 낮을 때~가장 높을 때)")]
-        [SerializeField] private Vector2 idleGrowthRange = new Vector2(0.45f, 0.92f);
-
-        [Tooltip("해 진행률이 이 구간을 지나는 동안 탑이 끝까지 자란다(오후 대류)")]
-        [SerializeField] private Vector2 focusGrowthProgress = new Vector2(0.1f, 0.7f);
-
-        [Tooltip("자람이 목표를 따라가는 데 걸리는 시간(초)")]
-        [SerializeField, Min(0.01f)] private float growthResponse = 20f;
+        [Tooltip("탑의 자람·보이는 정도가 예보를 따라가는 데 걸리는 시간(초). 예보가 이미 천천히 바꾸므로 짧게 둔다.")]
+        [SerializeField, Min(0.01f)] private float growthResponse = 4f;
 
         [Header("채운 갓구름")]
         [Tooltip("탑이 이만큼 자라면 꼭대기에 갓구름이 얹히기 시작한다")]
@@ -105,7 +96,7 @@ namespace _SAIUN.Scripts.Weather
         public float CapVisibility { get; private set; }
 
         /// <summary>웅대적운 탑이 보이는 정도(0~1). 층구름·비구름이 덮으면 흐려진다.</summary>
-        public float TowerPresence { get; private set; } = 1f;
+        public float TowerPresence { get; private set; }
 
         /// <summary>구름 예보.</summary>
         public CloudForecast Forecast => forecast;
@@ -128,7 +119,7 @@ namespace _SAIUN.Scripts.Weather
         private RenderTexture _current;   // 마지막으로 다 그린 장
         private RenderTexture _previous;  // 그 앞에 다 그린 장
         private RenderTexture _display;   // 둘을 섞어 카드에 보이는 장
-        private float _cycleTime;
+        private int _towerEvents;
         private float _skyTime;
         private float _sinceRefresh;
         private readonly float[] _coverage = new float[CloudForecast.KindCount];
@@ -163,7 +154,8 @@ namespace _SAIUN.Scripts.Weather
             forecast.Tick(0f, Inputs());
             for (int i = 0; i < _coverage.Length; i++) _coverage[i] = forecast.Target((CloudKind)i);
             TowerPresence = forecast.TowerPresence;
-            TowerGrowth = GrowthTarget(Storminess());
+            TowerGrowth = forecast.TowerGrowth;
+            _towerEvents = forecast.TowerEvents;
             UpdateCap(Storminess());
             ApplyParameters();
         }
@@ -207,11 +199,9 @@ namespace _SAIUN.Scripts.Weather
         {
             if (_material == null) return;
             float storm = Storminess();
-            _cycleTime += deltaTime;
             _skyTime += deltaTime * evolveSpeed;
-            TowerGrowth = Mathf.Lerp(TowerGrowth, GrowthTarget(storm), 1f - Mathf.Exp(-deltaTime / growthResponse));
-            UpdateCap(storm);
             UpdateClouds(deltaTime);
+            UpdateCap(storm);
             ApplyParameters();
 
             _sinceRefresh += deltaTime;
@@ -290,8 +280,15 @@ namespace _SAIUN.Scripts.Weather
                 var kind = (CloudKind)i;
                 _coverage[i] = Mathf.Lerp(_coverage[i], forecast.Target(kind), 1f - Mathf.Exp(-deltaTime / forecast.ResponseSeconds(kind)));
             }
-            TowerPresence = Mathf.Lerp(TowerPresence, forecast.TowerPresence,
-                1f - Mathf.Exp(-deltaTime / forecast.ResponseSeconds(CloudKind.Cumulus)));
+            // 탑은 예보가 이미 천천히 키우고 줄이므로 짧게 따라간다. 새로 솟을 때마다 다른 모양을 고른다.
+            float follow = 1f - Mathf.Exp(-deltaTime / growthResponse);
+            TowerPresence = Mathf.Lerp(TowerPresence, forecast.TowerPresence, follow);
+            TowerGrowth = Mathf.Lerp(TowerGrowth, forecast.TowerGrowth, follow);
+            if (forecast.TowerEvents != _towerEvents)
+            {
+                _towerEvents = forecast.TowerEvents;
+                _material.SetFloat(SeedId, ShapeSeeds[Random.Range(0, ShapeSeeds.Length)]);
+            }
         }
 
         private SkyInputs Inputs()
@@ -315,17 +312,7 @@ namespace _SAIUN.Scripts.Weather
         private void UpdateCap(float storm)
         {
             float cap = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(capGrowth, capGrowth + capFadeRange, TowerGrowth));
-            CapVisibility = cap * (1f - storm);
-        }
-
-        // 쉴 때는 몇 분 주기로 자랐다 가라앉고, 해가 오를수록 더 자란다. 먹구름이면 끝까지 솟는다.
-        private float GrowthTarget(float storm)
-        {
-            float cycle = 0.5f - 0.5f * Mathf.Cos(_cycleTime / (idleCycleMinutes * 60f) * Mathf.PI * 2f);
-            float idle = Mathf.Lerp(idleGrowthRange.x, idleGrowthRange.y, cycle);
-            float progress = sun != null ? sun.Progress : 0f;
-            float focus = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(focusGrowthProgress.x, focusGrowthProgress.y, progress));
-            return Mathf.Lerp(Mathf.Max(idle, focus), 1f, storm);
+            CapVisibility = cap * (1f - storm) * TowerPresence;
         }
 
         private float Storminess()

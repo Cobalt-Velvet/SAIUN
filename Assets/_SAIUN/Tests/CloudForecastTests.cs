@@ -102,8 +102,13 @@ namespace _SAIUN.Tests
         [Test]
         public void 비가_다가오면_권층운_고층운_난층운_순으로_두꺼워지고_맑은_날_구름과_탑이_가려진다()
         {
-            CloudForecast forecast = Make(Seeded(6));
+            // 난수 0이면 맑음 장면이라 탑이 층에 가리지 않는다.
+            CloudForecast forecast = Make(() => 0f);
             var inputs = Day(0.5f);
+            forecast.Tick(0.01f, inputs);
+            forecast.StartTower();
+            forecast.Tick(120f, inputs);
+            Assert.Greater(forecast.TowerPresence, 0.99f, "맑을 때 솟은 탑");
 
             inputs.Rain = 0.06f;   // 전선이 막 다가온다
             forecast.Tick(0.1f, inputs);
@@ -215,6 +220,88 @@ namespace _SAIUN.Tests
             }
             Assert.Greater(holes, 0, "드물지만 뚫린다");
             Assert.Less(holes, Rolls / 10, "드물다");
+        }
+
+        [Test]
+        public void 웅대적운은_맑은_날_한낮_대류_장면에서만_가끔_솟고_한번_솟으면_한동안_다시_솟지_않는다()
+        {
+            // 난수 0이면 첫 장면은 맑음이고, 굴릴 때마다 솟을 수 있다.
+            CloudForecast forecast = Make(() => 0f);
+            float roll = Get(forecast, "towerRollSeconds");
+
+            forecast.Tick(0.01f, Day(0.1f));
+            forecast.Tick(roll, Day(0.1f));
+            Assert.IsFalse(forecast.TowerActive, "아침에는 대류가 약해 솟지 않는다");
+
+            var rainy = Day(0.5f);
+            rainy.Rain = 0.3f;
+            forecast.Tick(roll, rainy);
+            Assert.IsFalse(forecast.TowerActive, "비가 오면 솟지 않는다");
+
+            forecast.Tick(roll, Day(0.5f));
+            Assert.IsTrue(forecast.TowerActive, "맑은 날 한낮에 솟는다");
+            Assert.AreEqual(1, forecast.TowerEvents);
+
+            // 다 스러진 뒤에도 쉬는 시간(35분)이 지나기 전에는 다시 솟지 않는다.
+            for (int i = 0; i < 20; i++) forecast.Tick(60f, Day(0.5f));
+            Assert.IsFalse(forecast.TowerActive, "한 번의 일생이 끝났다");
+            Assert.AreEqual(1, forecast.TowerEvents, "쉬는 시간이 지나기 전에는 다시 솟지 않는다");
+            for (int i = 0; i < 20; i++) forecast.Tick(60f, Day(0.5f));
+            Assert.AreEqual(2, forecast.TowerEvents, "쉬는 시간이 지나면 다시 솟을 수 있다");
+        }
+
+        [Test]
+        public void 웅대적운은_안개나_햇무리구름_장면에서는_솟지_않고_드물다()
+        {
+            CloudForecast forecast = Make(Seeded(9));
+            forecast.Tick(0.01f, Day(0.5f));
+            float roll = Get(forecast, "towerRollSeconds");
+            int active = 0;
+            int ticks = 0;
+            // 한낮이 이어지는 긴 시간 동안 탑이 떠 있는 비율
+            for (int i = 0; i < 2000; i++)
+            {
+                forecast.Tick(roll / 5f, Day(0.5f));
+                ticks++;
+                if (forecast.TowerActive)
+                {
+                    active++;
+                    Assert.IsTrue(forecast.Scene != SkyScene.MorningFog && forecast.Scene != SkyScene.CirrostratusVeil
+                                  && forecast.Scene != SkyScene.Stratocumulus, forecast.Scene.ToString());
+                }
+            }
+            float share = active / (float)ticks;
+            Assert.Greater(share, 0.05f, "가끔은 솟는다");
+            Assert.Less(share, 0.4f, "늘 떠 있지 않다");
+        }
+
+        [Test]
+        public void 솟은_탑은_자라_오르고_머물다_스러진다()
+        {
+            CloudForecast forecast = Make(Seeded(10));
+            forecast.Tick(0.01f, Day(0.5f));
+            Assert.AreEqual(0f, forecast.TowerPresence, 0.0001f, "솟기 전에는 없다");
+
+            forecast.StartTower();
+            float rise = Get(forecast, "towerRiseSeconds");
+            float hold = Get(forecast, "towerHoldSeconds");
+            float fade = Get(forecast, "towerFadeSeconds");
+            forecast.Tick(rise * 0.5f, Day(0.5f));
+            Assert.Greater(forecast.TowerPresence, 0.99f, "먼저 뭉게구름 덩어리로 드러난다");
+            Assert.Greater(forecast.TowerGrowth, 0.2f);
+            Assert.Less(forecast.TowerGrowth, 0.8f, "아직 자라는 중이다");
+
+            forecast.Tick(rise * 0.5f + hold * 0.5f, Day(0.5f));
+            Assert.AreEqual(1f, forecast.TowerGrowth, 0.0001f, "다 자라 머문다");
+
+            forecast.Tick(hold * 0.5f + fade + 1f, Day(0.5f));
+            Assert.AreEqual(0f, forecast.TowerPresence, 0.0001f, "스러졌다");
+
+            var storm = Day(0.5f);
+            storm.Storm = 1f;
+            forecast.Tick(0.1f, storm);
+            Assert.AreEqual(1f, forecast.TowerPresence, 0.0001f, "뇌우면 적란운으로 솟는다");
+            Assert.AreEqual(1f, forecast.TowerGrowth, 0.0001f);
         }
 
         [Test]

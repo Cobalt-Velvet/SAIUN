@@ -273,10 +273,7 @@ MonoBehaviour:
   resolutionScale: 1
   refreshInterval: 0.1
   evolveSpeed: 0.15
-  idleCycleMinutes: 6
-  idleGrowthRange: {x: 0.45, y: 0.92}
-  focusGrowthProgress: {x: 0.1, y: 0.7}
-  growthResponse: 20
+  growthResponse: 4
   capGrowth: 0.8
   capFadeRange: 0.1
   forecast:
@@ -340,6 +337,15 @@ MonoBehaviour:
     stormDeck: 0.7
     stormRainShare: 0.8
     frontFullRain: 0.6
+    towerWindow: {x: 0.3, y: 0.85}
+    towerRollSeconds: 150
+    towerChanceCumulus: 0.16
+    towerChanceOther: 0.08
+    towerCooldownMinutes: 35
+    towerRiseSeconds: 240
+    towerHoldSeconds: 300
+    towerFadeSeconds: 150
+    towerCumulus: 0.3
     lensCycleMinutes: 11
     lensPresence: 0.72
     lensFade: 0.1
