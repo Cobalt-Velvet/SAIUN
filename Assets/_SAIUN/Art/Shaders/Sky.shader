@@ -53,7 +53,8 @@ Shader "Hidden/SAIUN/Sky"
             #define EYE float3(0.0, 0.1, 0.0)
             #define PITCH_DEG 14.0
             #define FOCAL 0.95
-            #define SIGMA 14.0
+            // 겉껍질이 반투명하게 비치도록 낮춘 소광 계수. 높으면 겉부터 꽉 막혀 석고 덩어리처럼 보인다.
+            #define SIGMA 9.0
             #define STEPS 170
             #define STORM_DECK_ALTITUDE 2.4
 
@@ -148,9 +149,17 @@ Shader "Hidden/SAIUN/Sky"
                 {
                     f += 0.02;
                 }
+                // 겉 가장자리: 잔 무늬로 갉아 실오라기처럼 풀린다. 해 받는 봉우리 위쪽은 또렷하고 옆·밑은 흐릿하다.
+                if (detail)
+                {
+                    float edge = 1.0 - smoothstep(0.0, 0.3, f);
+                    float wisp = Noise(q * 0.6 + drift * 3.0).r;
+                    f -= edge * (wisp - 0.3) * lerp(0.45, 0.14, crisp);
+                }
                 // 밑면은 평평하고 조금 흐릿하다.
                 f -= smoothstep(0.35, 0.0, q.y) * 0.4;
-                return Remap(f, 0.0, lerp(0.26, 0.06, crisp));
+                // 겉에서 속으로 천천히 짙어진다. 겉껍질이 반투명해야 덩어리가 아니라 김으로 읽힌다.
+                return Remap(f, 0.0, lerp(0.55, 0.11, crisp));
             }
 
             // 채운 갓구름: 꼭대기를 두건처럼 덮는 얇고 매끈한 너울. 울퉁불퉁한 탑과 달리 비단처럼 매끈하고 양옆으로 길게 흘러내린다.
@@ -277,7 +286,10 @@ Shader "Hidden/SAIUN/Sky"
                 if (d <= 0.0) return 0.0;
                 // 비단 결: 긴 축을 따라 늘어난 옅은 무늬로 군데군데 얇아진다.
                 float silk = Noise(float3(dir * float2(0.08, 0.9), 0.83) + float3(_SkyTime * 0.002, 0.0, 0.0)).r;
-                d *= lerp(0.65, 1.0, silk);
+                d *= lerp(0.55, 1.0, silk);
+                // 가장자리는 잔 무늬로 갉혀 실처럼 풀린다.
+                float fray = Noise(float3(dir * float2(0.35, 1.2), 0.47) + float3(_SkyTime * 0.003, 0.0, 0.0)).r;
+                d -= (1.0 - smoothstep(0.0, 0.35, d)) * (fray - 0.35) * 0.35;
                 float grow = _Lens * (1.0 - _Storm);
                 return saturate(d - (1.0 - grow));
             }
@@ -300,7 +312,7 @@ Shader "Hidden/SAIUN/Sky"
                 float3 s = SunDir();
 
                 // 빛 세기: 한낮은 앞에서 받아 하얗게 날리기 쉬워 낮추고, 노을은 색이 살도록 더 낮춘다.
-                float strength = lerp(1.8, 1.35, smoothstep(0.0, 0.4, _Progress));
+                float strength = lerp(1.8, 1.55, smoothstep(0.0, 0.4, _Progress));
                 strength = lerp(strength, 1.6, smoothstep(0.55, 0.8, _Progress));
                 strength = lerp(strength, 1.05, smoothstep(0.88, 1.0, _Progress));
                 float3 sc = SunColor() * strength * (1.0 - 0.8 * _Storm);
@@ -394,13 +406,13 @@ Shader "Hidden/SAIUN/Sky"
                         }
                         t += dt;
                     }
-                    // 먼 거리의 대기 원근: 밑동일수록 지평선 안개에 잠긴다.
+                    // 대기 원근: 20 km 밖이라 그 사이 공기가 하늘빛을 섞어 대비가 누그러지고 푸르스름해진다. 밑동은 더 잠긴다.
                     if (firstHit > 0.0)
                     {
                         float3 hit = ro + rd * firstHit;
-                        float haze = 1.0 - exp(-firstHit * 0.006);
-                        haze += 0.35 * exp(-max(hit.y - 0.2, 0.0) / 0.7);
-                        col = lerp(col, hor * 0.8 * (1.0 - T), saturate(min(haze, 0.6)));
+                        float haze = 1.0 - exp(-firstHit * 0.008);
+                        haze += 0.35 * exp(-max(hit.y - 0.2, 0.0) / 0.9);
+                        col = lerp(col, sky * (1.0 - T), saturate(min(haze, 0.65)));
                     }
                 }
 
@@ -429,7 +441,7 @@ Shader "Hidden/SAIUN/Sky"
                     float3 iri = Iridescence(ph);
                     light = light * lerp(1.0, iri, sat) + (iri - 0.78) * sat * 0.9;
                     // 가장자리가 넓게 비치도록 두께만큼 천천히 짙어진다.
-                    float a = pow(smoothstep(0.0, 0.75, lens), 0.7) * 0.92;
+                    float a = pow(smoothstep(0.0, 0.85, lens), 0.8) * 0.82;
                     c = lerp(c, light, a);
                     T *= 1.0 - a;
                 }
