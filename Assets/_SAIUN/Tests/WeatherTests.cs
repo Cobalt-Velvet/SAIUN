@@ -239,6 +239,32 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 채운_렌즈구름은_탑과_따로_몇_분_주기로_피었다_사라지고_대부분의_시간_떠_있다()
+        {
+            SkyView sky = MakeSky(null);
+            Set(sky, "idleGrowthRange", new Vector2(0.3f, 0.3f));
+            Set(sky, "lensCycleMinutes", 1f);
+            sky.Tick(0.01f);
+            Assert.Greater(sky.LensVisibility, 0.99f, "켜자마자 떠 있다");
+            Assert.AreEqual(0f, sky.CapVisibility, 0.0001f, "탑이 덜 자라 갓구름이 없어도 채운 렌즈구름은 있다");
+
+            int shown = 0;
+            float lowest = float.MaxValue;
+            const int Samples = 120;
+            for (int i = 0; i < Samples; i++)
+            {
+                sky.Tick(0.5f);
+                lowest = Mathf.Min(lowest, sky.LensVisibility);
+                if (sky.LensVisibility > 0.5f) shown++;
+            }
+            Assert.AreEqual(0f, lowest, 0.0001f, "주기마다 한 번은 사라진다");
+            // 피어나고 사라지는 시간의 절반씩을 빼면 온전히 떠 있는 비율이다.
+            float expected = Get<float>(sky, "lensPresence") - Get<float>(sky, "lensFade");
+            Assert.AreEqual(expected, shown / (float)Samples, 0.05f, "주기의 정해진 비율만큼 떠 있다");
+            Assert.AreEqual(sky.LensVisibility, Material(sky).GetFloat("_Lens"), 0.0001f, "셰이더로 간다");
+        }
+
+        [Test]
         public void 하늘은_한_번에_화소의_8분의_1만_새로_그리고_다_그린_장끼리만_섞어_넘긴다()
         {
             SkyView sky = MakeSky(null);

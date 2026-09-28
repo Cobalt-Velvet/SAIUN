@@ -4,7 +4,9 @@
 //    해도 같은 궤도로 돈다(아침엔 왼쪽 옆, 한낮엔 등 뒤 높이, 해 질 녘엔 오른쪽 옆).
 //  - 탑: 넓은 밑동에서 봉우리 넷이 한 덩어리로 솟고(가장 높은 봉우리가 가운데), 큰·중간·잔 송이(뒤집은 워리 노이즈)를
 //    겉으로 불룩하게 더해 콜리플라워 결을 만든다. _Growth만큼 꼭대기가 오른다.
-//  - 채운 갓구름: 꼭대기를 두건처럼 덮는 매끈한 너울. 얇은 가장자리일수록 분홍·박하·연보라 빛깔이 조각조각 번진다.
+//  - 채운 갓구름: 탑이 다 자라면 꼭대기를 두건처럼 덮는 매끈한 너울. 얇은 가장자리일수록 분홍·박하·연보라 빛깔이 조각조각 번진다.
+//  - 채운 렌즈구름: 탑과 따로, 왼쪽 빈 하늘에 떠 있는 렌즈구름(고적운) 무리. 가장자리를 따라 빛깔 띠가 층층이 둘러지고,
+//    해가 가까운 아침에 가장 곱다. 몇 분마다 피었다 사라진다(_Lens).
 //  - 먹구름: 하늘이 잿빛으로 가라앉고, 낮은 구름층이 하늘을 덮어 탑을 가린다.
 //  - 지평선 아래로는 하늘이 안개처럼 투명해져 아래의 유리(바탕화면)로 이어진다.
 // 패스 0(하늘): 무거우므로 한 번에 화소의 1/8만 그린다(_Phase 0~7, 4×2 격자). _Phase가 음수면 전부 그린다.
@@ -20,6 +22,7 @@ Shader "Hidden/SAIUN/Sky"
         _Growth ("Tower Growth", Range(0, 1)) = 1
         _Storm ("Storm", Range(0, 1)) = 0
         _Cap ("Pileus", Range(0, 1)) = 1
+        _Lens ("Iridescent Lenticulars", Range(0, 1)) = 1
         _SkyTime ("Evolve Time", Float) = 0
         _Seed ("Shape Seed", Float) = 3
         _Exposure ("Exposure", Float) = 1
@@ -59,6 +62,7 @@ Shader "Hidden/SAIUN/Sky"
             float _Growth;
             float _Storm;
             float _Cap;
+            float _Lens;
             float _SkyTime;
             float _Seed;
             float _Exposure;
@@ -80,7 +84,7 @@ Shader "Hidden/SAIUN/Sky"
             // 해: 아침엔 왼쪽 옆 낮게, 한낮엔 등 뒤 높이, 해 질 녘엔 오른쪽 옆 낮게. 방위는 보는 방향에서 시계 방향.
             float3 SunDir()
             {
-                float az = radians(lerp(285.0, 85.0, _Progress));
+                float az = radians(lerp(300.0, 85.0, _Progress));
                 float el = radians(lerp(12.0, 62.0, sin(PI * _Progress)));
                 return normalize(float3(sin(az) * cos(el), sin(el), cos(az) * cos(el)));
             }
@@ -240,6 +244,44 @@ Shader "Hidden/SAIUN/Sky"
                 return lerp(a, b, smoothstep(0.0, 1.0, frac(t)));
             }
 
+            // ---- 채운 렌즈구름 ----
+            // 산을 넘는 바람의 물결 꼭대기에 생겨 제자리에 머무는 매끈한 렌즈. 막 생긴 작고 고른 물방울이라 채운이 가장 곱게 선다.
+            // 물방울은 가장자리에서 생겨 안쪽으로 갈수록 자라므로, 빛깔 띠가 가장자리를 따라 층층이 둘러진다.
+            // 멀리 얇게 떠 있어 보는 방향의 각(방위·고도, 도)으로 모양을 잡는다. 탑과 시계를 피해 왼쪽 아래 빈 하늘에 둔다.
+            // 렌즈마다 가운데(방위, 고도)와 반폭(가로, 두께).
+            #define LENS0 float4(-9.5, 15.0, 10.5, 1.7)
+            #define LENS1 float4(-12.5, 9.8, 8.0, 1.15)
+            #define LENS2 float4(-3.5, 20.0, 4.5, 0.7)
+
+            // 렌즈 하나의 두께(0~1). 아몬드꼴: 가운데가 두껍고 양 끝으로 갈수록 가늘어 실처럼 흩어진다.
+            float LensShape(float2 dir, float4 lens, float salt)
+            {
+                float2 q = (dir - lens.xy) / lens.zw;
+                // 결을 따라 윤곽이 조금 일렁인다.
+                float wob = Noise(float3(dir * float2(0.05, 0.16), salt) + float3(_SkyTime * 0.0012, 0.0, 0.0)).r - 0.5;
+                q.y += wob * 0.9;
+                q.x += wob * 0.25;
+                float halfThickness = pow(max(1.0 - q.x * q.x, 0.0), 0.85);
+                // 윗면은 볼록하고 밑면은 조금 평평하다.
+                float y = q.y > 0.0 ? q.y : q.y * 1.3;
+                float t = 1.0 - (y * y) / max(halfThickness * halfThickness, 1e-4);
+                return saturate(t) * smoothstep(0.0, 0.25, halfThickness);
+            }
+
+            // 렌즈구름 무리의 두께(0~1). dir은 보는 방향의 방위·고도(도).
+            float LensField(float3 rd, out float2 dir)
+            {
+                dir = float2(degrees(atan2(rd.x, rd.z)), degrees(asin(clamp(rd.y, -1.0, 1.0))));
+                if (dir.x > 2.0 || dir.y < 3.0 || dir.y > 26.0) return 0.0;
+                float d = max(LensShape(dir, LENS0, 0.1), max(LensShape(dir, LENS1, 0.4) * 0.9, LensShape(dir, LENS2, 0.7) * 0.8));
+                if (d <= 0.0) return 0.0;
+                // 비단 결: 긴 축을 따라 늘어난 옅은 무늬로 군데군데 얇아진다.
+                float silk = Noise(float3(dir * float2(0.08, 0.9), 0.83) + float3(_SkyTime * 0.002, 0.0, 0.0)).r;
+                d *= lerp(0.65, 1.0, silk);
+                float grow = _Lens * (1.0 - _Storm);
+                return saturate(d - (1.0 - grow));
+            }
+
             float4 Fragment(v2f_img input) : SV_Target
             {
                 // 한 번에 4×2 격자의 한 칸만 그린다. 나머지 화소는 지난 그림을 그대로 둔다.
@@ -363,6 +405,34 @@ Shader "Hidden/SAIUN/Sky"
                 }
 
                 float3 c = col + T * sky;
+
+                // 채운 렌즈구름: 탑보다 가까워 앞에 온다.
+                float2 ldir;
+                float lens = LensField(rd, ldir);
+                if (lens > 0.001)
+                {
+                    float ang = degrees(acos(clamp(cosT, -1.0, 1.0)));
+                    // 채운은 해에 가까울수록 진하다(아침 해가 왼쪽에 있다). 해가 멀어도 옅게는 남긴다.
+                    float nearSun = lerp(0.45, 1.0, smoothstep(90.0, 40.0, ang));
+                    float forward = min(HG(cosT, 0.6) * 4.0 * PI, 6.0);
+                    // 얇아 빛이 거의 그대로 지난다. 두꺼운 가운데는 조금 그늘지고, 결을 따라 밝고 어두운 줄이 옅게 진다.
+                    float streak = Noise(float3(ldir * float2(0.12, 1.4), 0.57)).r;
+                    // 높이 떠 있어 해 질 녘에도 햇빛을 곧게 받아 하늘보다 밝게 물든다.
+                    float dusk = smoothstep(0.86, 1.0, _Progress);
+                    float3 light = (sc * (1.0 + 0.3 * forward) * lerp(1.0, 1.8, dusk) + lerp(ambBottom, ambTop, 0.8) * 1.1)
+                                 * lerp(1.04, 0.86, lens) * lerp(0.9, 1.06, streak);
+                    float wob = Noise(float3(ldir * float2(0.06, 0.25), 0.29) + float3(_SkyTime * 0.002, 0.0, 0.0)).r;
+                    float ph = lens * 1.8 + wob * 1.0 + ang / 90.0;
+                    // 빛깔은 몸이 보이기 시작하는 바깥쪽 절반에 번진다(끝은 너무 옅어 안 보이고, 가운데는 두꺼워 하얗다).
+                    float sat = smoothstep(0.02, 0.25, lens) * (1.0 - smoothstep(0.55, 0.95, lens)) * nearSun;
+                    // 채운은 휘어 나온 빛이라 색을 곱하기만 하면 밝은 구름에서 톤매핑에 눌려 사라진다. 빛깔을 조금 더한다.
+                    float3 iri = Iridescence(ph);
+                    light = light * lerp(1.0, iri, sat) + (iri - 0.78) * sat * 0.9;
+                    // 가장자리가 넓게 비치도록 두께만큼 천천히 짙어진다.
+                    float a = pow(smoothstep(0.0, 0.75, lens), 0.7) * 0.92;
+                    c = lerp(c, light, a);
+                    T *= 1.0 - a;
+                }
                 // 먹구름 층: 낮게 깔려 하늘을 덮고, 그보다 높은 탑을 가린다. 반쯤 흐리면 조각나 하늘이 보인다.
                 if (_Storm > 0.01 && rd.y > 0.0)
                 {

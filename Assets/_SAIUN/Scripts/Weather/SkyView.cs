@@ -11,7 +11,8 @@ namespace _SAIUN.Scripts.Weather
     ///  - 세션 진행률(해)이 하루다: 아침 금빛 → 한낮 파랑 → 늦은 오후 금빛 → 해 질 녘 노을.
     ///  - 웅대적운: 해가 오를수록(집중 세션이 무르익을수록) 자라고, 쉴 때도 몇 분 주기로 자랐다 가라앉아 늘 볼 수 있다.
     ///    먹구름이 오면 끝까지 솟고 어두워지며, 낮은 먹구름 층이 하늘을 덮는다.
-    ///  - 채운 갓구름: 탑이 충분히 자라면 꼭대기에 얹혀 파스텔 무지갯빛으로 빛난다. SAIUN을 만든 이유가 이 둘이다.
+    ///  - 채운: 탑과 따로, 왼쪽 빈 하늘의 렌즈구름 무리 가장자리에 빛깔 띠가 선다. 몇 분마다 피었다 사라지며 대부분의 시간 보인다.
+    ///    탑이 다 자라면 꼭대기의 갓구름에도 채운이 선다(가끔 보는 장면). SAIUN을 만든 이유가 웅대적운과 채운이다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -22,6 +23,7 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int GrowthId = Shader.PropertyToID("_Growth");
         private static readonly int StormId = Shader.PropertyToID("_Storm");
         private static readonly int CapId = Shader.PropertyToID("_Cap");
+        private static readonly int LensId = Shader.PropertyToID("_Lens");
         private static readonly int SkyTimeId = Shader.PropertyToID("_SkyTime");
         private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static readonly int PhaseId = Shader.PropertyToID("_Phase");
@@ -85,11 +87,27 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("갓구름이 다 나타나는 데 필요한 자람 폭")]
         [SerializeField, Range(0.01f, 0.5f)] private float capFadeRange = 0.1f;
 
+        [Header("채운 렌즈구름")]
+        [Tooltip("렌즈구름이 피었다 사라지는 한 주기(분)")]
+        [SerializeField, Min(0.1f)] private float lensCycleMinutes = 11f;
+
+        [Tooltip("한 주기 가운데 렌즈구름이 떠 있는 비율(피어나고 사라지는 시간 포함)")]
+        [SerializeField, Range(0.1f, 1f)] private float lensPresence = 0.72f;
+
+        [Tooltip("피어나고 사라지는 데 걸리는 비율(주기 대비)")]
+        [SerializeField, Range(0.01f, 0.3f)] private float lensFade = 0.1f;
+
+        [Tooltip("처음 켰을 때 주기의 어디서 시작할지(0~1). 켜자마자 떠 있게 한다.")]
+        [SerializeField, Range(0f, 1f)] private float lensStartPhase = 0.25f;
+
         /// <summary>지금 탑이 자란 정도(0~1).</summary>
         public float TowerGrowth { get; private set; }
 
         /// <summary>지금 채운 갓구름의 세기(0~1). 0이면 갓구름이 없다.</summary>
         public float CapVisibility { get; private set; }
+
+        /// <summary>지금 채운 렌즈구름이 피어난 정도(0~1). 먹구름은 셰이더가 따로 가린다.</summary>
+        public float LensVisibility { get; private set; }
 
         /// <summary>다음에 새로 그릴 칸(0~7).</summary>
         public int Phase { get; private set; }
@@ -138,6 +156,7 @@ namespace _SAIUN.Scripts.Weather
 
             TowerGrowth = GrowthTarget(Storminess());
             UpdateCap(Storminess());
+            UpdateLens();
             ApplyParameters();
         }
 
@@ -184,6 +203,7 @@ namespace _SAIUN.Scripts.Weather
             _skyTime += deltaTime * evolveSpeed;
             TowerGrowth = Mathf.Lerp(TowerGrowth, GrowthTarget(storm), 1f - Mathf.Exp(-deltaTime / growthResponse));
             UpdateCap(storm);
+            UpdateLens();
             ApplyParameters();
 
             _sinceRefresh += deltaTime;
@@ -240,6 +260,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);
+            _material.SetFloat(LensId, LensVisibility);
             _material.SetFloat(SkyTimeId, _skyTime);
         }
 
@@ -248,6 +269,16 @@ namespace _SAIUN.Scripts.Weather
         {
             float cap = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(capGrowth, capGrowth + capFadeRange, TowerGrowth));
             CapVisibility = cap * (1f - storm);
+        }
+
+        // 렌즈구름은 주기의 앞쪽 lensPresence 동안 떠 있고, 앞뒤 lensFade 동안 피어나고 사라진다.
+        private void UpdateLens()
+        {
+            float phase = Mathf.Repeat(lensStartPhase + _cycleTime / (lensCycleMinutes * 60f), 1f);
+            float fade = Mathf.Min(lensFade, lensPresence / 2f);
+            float rise = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, fade, phase));
+            float fall = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(lensPresence - fade, lensPresence, phase));
+            LensVisibility = Mathf.Min(rise, fall);
         }
 
         // 쉴 때는 몇 분 주기로 자랐다 가라앉고, 해가 오를수록 더 자란다. 먹구름이면 끝까지 솟는다.
