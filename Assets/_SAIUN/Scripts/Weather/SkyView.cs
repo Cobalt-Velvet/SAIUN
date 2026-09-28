@@ -13,6 +13,9 @@ namespace _SAIUN.Scripts.Weather
     ///    먹구름이 오면 끝까지 솟고 어두워지며, 낮은 먹구름 층이 하늘을 덮는다.
     ///  - 채운: 탑과 따로, 왼쪽 빈 하늘의 렌즈구름 무리 가장자리에 빛깔 띠가 선다. 몇 분마다 피었다 사라지며 대부분의 시간 보인다.
     ///    탑이 다 자라면 꼭대기의 갓구름에도 채운이 선다(가끔 보는 장면). SAIUN을 만든 이유가 웅대적운과 채운이다.
+    ///  - 나머지 구름(권운·권적운·권층운·고적운·고층운·층적운·층운·난층운·적운 떼, 모루·유방운·아치구름·꼬리구름,
+    ///    구멍구름·물결구름·야광운)은 예보(CloudForecast)가 때·날씨·바람과 무작위로 정한 양을 향해 천천히 옮겨 간다.
+    ///  - 쉬는 동안 해가 지면(해의 Twilight) 박명 하늘이 되고, 높은 구름만 붉게 남는다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -23,7 +26,11 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int GrowthId = Shader.PropertyToID("_Growth");
         private static readonly int StormId = Shader.PropertyToID("_Storm");
         private static readonly int CapId = Shader.PropertyToID("_Cap");
-        private static readonly int LensId = Shader.PropertyToID("_Lens");
+        private static readonly int HighId = Shader.PropertyToID("_High");
+        private static readonly int MidId = Shader.PropertyToID("_Mid");
+        private static readonly int LowId = Shader.PropertyToID("_Low");
+        private static readonly int SpecialId = Shader.PropertyToID("_Special");
+        private static readonly int ExtraId = Shader.PropertyToID("_Extra");
         private static readonly int SkyTimeId = Shader.PropertyToID("_SkyTime");
         private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static readonly int PhaseId = Shader.PropertyToID("_Phase");
@@ -87,18 +94,9 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("갓구름이 다 나타나는 데 필요한 자람 폭")]
         [SerializeField, Range(0.01f, 0.5f)] private float capFadeRange = 0.1f;
 
-        [Header("채운 렌즈구름")]
-        [Tooltip("렌즈구름이 피었다 사라지는 한 주기(분)")]
-        [SerializeField, Min(0.1f)] private float lensCycleMinutes = 11f;
-
-        [Tooltip("한 주기 가운데 렌즈구름이 떠 있는 비율(피어나고 사라지는 시간 포함)")]
-        [SerializeField, Range(0.1f, 1f)] private float lensPresence = 0.72f;
-
-        [Tooltip("피어나고 사라지는 데 걸리는 비율(주기 대비)")]
-        [SerializeField, Range(0.01f, 0.3f)] private float lensFade = 0.1f;
-
-        [Tooltip("처음 켰을 때 주기의 어디서 시작할지(0~1). 켜자마자 떠 있게 한다.")]
-        [SerializeField, Range(0f, 1f)] private float lensStartPhase = 0.25f;
+        [Header("구름 예보")]
+        [Tooltip("어떤 구름이 언제 얼마나 뜰지 정하는 예보")]
+        [SerializeField] private CloudForecast forecast = new CloudForecast();
 
         /// <summary>지금 탑이 자란 정도(0~1).</summary>
         public float TowerGrowth { get; private set; }
@@ -106,8 +104,14 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>지금 채운 갓구름의 세기(0~1). 0이면 갓구름이 없다.</summary>
         public float CapVisibility { get; private set; }
 
-        /// <summary>지금 채운 렌즈구름이 피어난 정도(0~1). 먹구름은 셰이더가 따로 가린다.</summary>
-        public float LensVisibility { get; private set; }
+        /// <summary>웅대적운 탑이 보이는 정도(0~1). 층구름·비구름이 덮으면 흐려진다.</summary>
+        public float TowerPresence { get; private set; } = 1f;
+
+        /// <summary>구름 예보.</summary>
+        public CloudForecast Forecast => forecast;
+
+        /// <summary>지금 하늘에 뜬 구름의 양(0~1). 예보의 목표로 천천히 옮겨 간다.</summary>
+        public float Coverage(CloudKind kind) => _coverage[(int)kind];
 
         /// <summary>다음에 새로 그릴 칸(0~7).</summary>
         public int Phase { get; private set; }
@@ -127,6 +131,7 @@ namespace _SAIUN.Scripts.Weather
         private float _cycleTime;
         private float _skyTime;
         private float _sinceRefresh;
+        private readonly float[] _coverage = new float[CloudForecast.KindCount];
 
         private void Awake()
         {
@@ -154,9 +159,12 @@ namespace _SAIUN.Scripts.Weather
             _material.SetVector(SkySizeId, new Vector4(sizeInt.x, sizeInt.y, 0f, 0f));
             _image.texture = _display;
 
+            // 처음에는 예보의 목표 그대로 시작한다(켜자마자 구름이 몰려오는 모습이 보이지 않게).
+            forecast.Tick(0f, Inputs());
+            for (int i = 0; i < _coverage.Length; i++) _coverage[i] = forecast.Target((CloudKind)i);
+            TowerPresence = forecast.TowerPresence;
             TowerGrowth = GrowthTarget(Storminess());
             UpdateCap(Storminess());
-            UpdateLens();
             ApplyParameters();
         }
 
@@ -203,7 +211,7 @@ namespace _SAIUN.Scripts.Weather
             _skyTime += deltaTime * evolveSpeed;
             TowerGrowth = Mathf.Lerp(TowerGrowth, GrowthTarget(storm), 1f - Mathf.Exp(-deltaTime / growthResponse));
             UpdateCap(storm);
-            UpdateLens();
+            UpdateClouds(deltaTime);
             ApplyParameters();
 
             _sinceRefresh += deltaTime;
@@ -260,8 +268,47 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);
-            _material.SetFloat(LensId, LensVisibility);
             _material.SetFloat(SkyTimeId, _skyTime);
+            _material.SetVector(HighId, Pack(CloudKind.Cirrus, CloudKind.Cirrocumulus, CloudKind.Cirrostratus, CloudKind.Noctilucent));
+            _material.SetVector(MidId, Pack(CloudKind.Altocumulus, CloudKind.Altostratus, CloudKind.Lenticular, CloudKind.Virga));
+            _material.SetVector(LowId, Pack(CloudKind.Stratocumulus, CloudKind.Stratus, CloudKind.Cumulus, CloudKind.Nimbostratus));
+            _material.SetVector(SpecialId, Pack(CloudKind.Anvil, CloudKind.Mammatus, CloudKind.Arcus, CloudKind.FallstreakHole));
+            _material.SetVector(ExtraId, new Vector4(Coverage(CloudKind.KelvinHelmholtz), Twilight(), TowerPresence, 0f));
+        }
+
+        private Vector4 Pack(CloudKind x, CloudKind y, CloudKind z, CloudKind w)
+        {
+            return new Vector4(Coverage(x), Coverage(y), Coverage(z), Coverage(w));
+        }
+
+        // 예보를 한 걸음 진행하고, 구름마다 제 빠르기로 목표를 따라간다.
+        private void UpdateClouds(float deltaTime)
+        {
+            forecast.Tick(deltaTime, Inputs());
+            for (int i = 0; i < _coverage.Length; i++)
+            {
+                var kind = (CloudKind)i;
+                _coverage[i] = Mathf.Lerp(_coverage[i], forecast.Target(kind), 1f - Mathf.Exp(-deltaTime / forecast.ResponseSeconds(kind)));
+            }
+            TowerPresence = Mathf.Lerp(TowerPresence, forecast.TowerPresence,
+                1f - Mathf.Exp(-deltaTime / forecast.ResponseSeconds(CloudKind.Cumulus)));
+        }
+
+        private SkyInputs Inputs()
+        {
+            return new SkyInputs
+            {
+                Progress = sun != null ? sun.Progress : 0f,
+                Twilight = Twilight(),
+                Storm = Storminess(),
+                Rain = weather != null ? weather.RainIntensity : 0f,
+                Wind = weather != null ? weather.WindAmount : 0f,
+            };
+        }
+
+        private float Twilight()
+        {
+            return sun != null ? sun.Twilight : 0f;
         }
 
         // 다 자라면 꼭대기에 채운 갓구름이 얹힌다. 먹구름이 오면 사라진다.
@@ -269,16 +316,6 @@ namespace _SAIUN.Scripts.Weather
         {
             float cap = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(capGrowth, capGrowth + capFadeRange, TowerGrowth));
             CapVisibility = cap * (1f - storm);
-        }
-
-        // 렌즈구름은 주기의 앞쪽 lensPresence 동안 떠 있고, 앞뒤 lensFade 동안 피어나고 사라진다.
-        private void UpdateLens()
-        {
-            float phase = Mathf.Repeat(lensStartPhase + _cycleTime / (lensCycleMinutes * 60f), 1f);
-            float fade = Mathf.Min(lensFade, lensPresence / 2f);
-            float rise = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0f, fade, phase));
-            float fall = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(lensPresence - fade, lensPresence, phase));
-            LensVisibility = Mathf.Min(rise, fall);
         }
 
         // 쉴 때는 몇 분 주기로 자랐다 가라앉고, 해가 오를수록 더 자란다. 먹구름이면 끝까지 솟는다.

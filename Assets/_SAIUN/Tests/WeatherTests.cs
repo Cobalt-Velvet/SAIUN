@@ -239,29 +239,38 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 채운_렌즈구름은_탑과_따로_몇_분_주기로_피었다_사라지고_대부분의_시간_떠_있다()
+        public void 구름은_예보의_목표로_천천히_옮겨_가고_셰이더_자리에_실린다()
         {
             SkyView sky = MakeSky(null);
-            Set(sky, "idleGrowthRange", new Vector2(0.3f, 0.3f));
-            Set(sky, "lensCycleMinutes", 1f);
-            sky.Tick(0.01f);
-            Assert.Greater(sky.LensVisibility, 0.99f, "켜자마자 떠 있다");
-            Assert.AreEqual(0f, sky.CapVisibility, 0.0001f, "탑이 덜 자라 갓구름이 없어도 채운 렌즈구름은 있다");
+            Assert.AreEqual(sky.Forecast.Target(CloudKind.Cumulus), sky.Coverage(CloudKind.Cumulus), 0.0001f, "처음에는 목표 그대로 시작한다");
 
-            int shown = 0;
-            float lowest = float.MaxValue;
-            const int Samples = 120;
-            for (int i = 0; i < Samples; i++)
-            {
-                sky.Tick(0.5f);
-                lowest = Mathf.Min(lowest, sky.LensVisibility);
-                if (sky.LensVisibility > 0.5f) shown++;
-            }
-            Assert.AreEqual(0f, lowest, 0.0001f, "주기마다 한 번은 사라진다");
-            // 피어나고 사라지는 시간의 절반씩을 빼면 온전히 떠 있는 비율이다.
-            float expected = Get<float>(sky, "lensPresence") - Get<float>(sky, "lensFade");
-            Assert.AreEqual(expected, shown / (float)Samples, 0.05f, "주기의 정해진 비율만큼 떠 있다");
-            Assert.AreEqual(sky.LensVisibility, Material(sky).GetFloat("_Lens"), 0.0001f, "셰이더로 간다");
+            // 비가 오면 비구름이 목표가 되고, 한 번에 덮지 않고 천천히 몰려온다.
+            Set(_weather, "_rainTarget", 0.6f);
+            Set(_weather, "_rainEndsAt", float.MaxValue);
+            Settle();
+            sky.Tick(1f);
+            float target = sky.Forecast.Target(CloudKind.Nimbostratus);
+            Assert.Greater(target, 0.8f);
+            Assert.Less(sky.Coverage(CloudKind.Nimbostratus), target * 0.5f, "한 번에 덮지 않는다");
+            for (int i = 0; i < 120; i++) sky.Tick(1f);
+            Assert.AreEqual(target, sky.Coverage(CloudKind.Nimbostratus), 0.02f, "시간이 지나면 목표에 이른다");
+
+            Material runtime = Material(sky);
+            Assert.AreEqual(sky.Coverage(CloudKind.Nimbostratus), runtime.GetVector("_Low").w, 0.0001f);
+            Assert.AreEqual(sky.Coverage(CloudKind.Altostratus), runtime.GetVector("_Mid").y, 0.0001f);
+            Assert.AreEqual(sky.Coverage(CloudKind.Cirrostratus), runtime.GetVector("_High").z, 0.0001f);
+            Assert.AreEqual(sky.TowerPresence, runtime.GetVector("_Extra").z, 0.0001f);
+        }
+
+        [Test]
+        public void 쉬는_동안_해가_지면_하늘도_박명이_된다()
+        {
+            SunOrbitController orbit = MakeSun();
+            SkyView sky = MakeSky(orbit);
+            orbit.Apply(1f);
+            orbit.StepTwilight(1f, 10000f);
+            sky.Tick(0.1f);
+            Assert.AreEqual(1f, Material(sky).GetVector("_Extra").y, 0.0001f);
         }
 
         [Test]

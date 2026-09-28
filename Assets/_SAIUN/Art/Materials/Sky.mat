@@ -23,12 +23,21 @@ Material:
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _Noise:
         m_Texture: {fileID: 11700000, guid: 2054173fd1602e145a615e1e31b1455a, type: 2}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _PrevTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
+    - _Blend: 1
     - _Cap: 1
     - _Exposure: 1
     - _Growth: 1
@@ -38,6 +47,11 @@ Material:
     - _SkyTime: 0
     - _Storm: 0
     m_Colors:
+    - _Extra: {r: 0, g: 0, b: 1, a: 0}
+    - _High: {r: 0, g: 0, b: 0, a: 0}
+    - _Low: {r: 0, g: 0, b: 0, a: 0}
+    - _Mid: {r: 0, g: 0, b: 0, a: 0}
     - _SkySize: {r: 480, g: 680, b: 0, a: 0}
+    - _Special: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

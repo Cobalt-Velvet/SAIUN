@@ -279,6 +279,73 @@ MonoBehaviour:
   growthResponse: 20
   capGrowth: 0.8
   capFadeRange: 0.1
+  forecast:
+    sceneMinutes: {x: 5, y: 10}
+    sceneWeights:
+    - morning: 1
+      midday: 1
+      evening: 1
+      perWind: 0
+      cover: {x: 1, y: 1}
+    - morning: 0.8
+      midday: 3.5
+      evening: 1.8
+      perWind: 0
+      cover: {x: 0.4, y: 0.6}
+    - morning: 1.5
+      midday: 1.2
+      evening: 2.5
+      perWind: 1.5
+      cover: {x: 0.45, y: 0.75}
+    - morning: 1
+      midday: 0.8
+      evening: 1.2
+      perWind: 0
+      cover: {x: 0.5, y: 0.75}
+    - morning: 2.5
+      midday: 1
+      evening: 1.5
+      perWind: 0
+      cover: {x: 0.45, y: 0.65}
+    - morning: 0.7
+      midday: 0.7
+      evening: 0.7
+      perWind: 1.2
+      cover: {x: 0.45, y: 0.62}
+    - morning: 2.5
+      midday: 0.1
+      evening: 0.2
+      perWind: 0
+      cover: {x: 0.5, y: 0.7}
+    - morning: 0.8
+      midday: 0.8
+      evening: 0.8
+      perWind: 0
+      cover: {x: 0.6, y: 0.85}
+    companionChance: 0.35
+    companionCover: 0.3
+    clearCumulus: 0.2
+    cirrusCumulus: 0.2
+    veilCirrus: 0.3
+    holeChance: 0.25
+    virgaChance: 0.35
+    kelvinChance: 0.04
+    kelvinWindChance: 0.14
+    kelvinSeconds: {x: 120, y: 240}
+    noctilucentChance: 0.35
+    arcusTrigger: 0.3
+    arcusSeconds: 40
+    mammatusChance: 0.6
+    mammatusSeconds: 90
+    stormDeck: 0.7
+    stormRainShare: 0.8
+    frontFullRain: 0.6
+    lensCycleMinutes: 11
+    lensPresence: 0.72
+    lensFade: 0.1
+    lensStartPhase: 0.25
+    fairResponse: 45
+    stormResponse: 8
 --- !u!114 &10825362
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -25072,6 +25139,9 @@ MonoBehaviour:
     m_NumAlphaKeys: 2
   intensity: 1
   horizonIntensity: 0.8
+  twilightMinutes: 2.5
+  twilightIntensity: 0.3
+  twilightColor: {r: 0.55, g: 0.62, b: 0.95, a: 1}
   previewProgress: 0
 --- !u!1 &420826015
 GameObject:
