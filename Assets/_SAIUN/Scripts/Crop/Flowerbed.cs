@@ -7,8 +7,9 @@ namespace _SAIUN.Scripts.Crop
     /// 아이소메트릭 화단의 그리드 좌표계 (사양서 v1.1 2-5, 7-4).
     /// 트랜스폼 위치가 화단 바닥 중심이자 월드 원점이다. 열은 로컬 X, 행은 로컬 Z 방향으로 늘어난다.
     /// 칸 간격·윗면 높이·작물 Y 오프셋은 실측 대기값이라 인스펙터에 둔다.
-    /// 외형(화분·흙·그림자 받이)이 연결돼 있으면 값을 바꿀 때 따라 맞춘다.
-    /// 화분과 흙은 기본 도형 대신 FlowerbedMeshes가 만드는 메시다(둥근 테두리 여물통, 둔덕·고랑이 있는 흙 면).
+    /// 외형(화분·흙·데크)이 연결돼 있으면 값을 바꿀 때 따라 맞춘다.
+    /// 화분·흙·데크는 기본 도형 대신 FlowerbedMeshes가 만드는 메시다(바랜 나무 판자 상자, 둔덕·고랑이 있는 흙 면,
+    /// 화분이 놓인 바닷가 나무 데크). 데크가 그림자를 받으므로 그림자만 그리는 바닥은 두지 않는다(2026-09-29).
     /// 메시는 실행할 때(에디터에서는 값을 바꿀 때) 새로 만들고 씬에는 저장하지 않는다.
     /// </summary>
     public class Flowerbed : MonoBehaviour
@@ -33,14 +34,8 @@ namespace _SAIUN.Scripts.Crop
         [Tooltip("테두리 윗면이 흙 둔덕 꼭대기보다 높은 정도")]
         [SerializeField, Min(0f)] private float rimLip = 0.025f;
 
-        [Tooltip("테두리 입술의 둥근 반경")]
-        [SerializeField, Min(0.001f)] private float lipRadius = 0.025f;
-
-        [Tooltip("흙 가장자리 모서리 반경. 화분 바깥 모서리는 여기에 테두리 폭을 더한 만큼 둥글다.")]
-        [SerializeField, Min(0.001f)] private float cornerRadius = 0.006f;
-
-        [Tooltip("둥근 부분을 나누는 조각 수")]
-        [SerializeField, Range(1, 16)] private int arcSteps = 6;
+        [Tooltip("나무 텍스처 한 장이 덮는 결 방향 길이(월드). 화분과 데크가 같이 쓴다.")]
+        [SerializeField, Min(0.01f)] private float woodRepeat = 1.3f;
 
         [Header("흙 (외형)")]
         [Tooltip("MeshFilter가 있으면 흙 면 메시를 채운다")]
@@ -67,11 +62,42 @@ namespace _SAIUN.Scripts.Crop
         [Tooltip("칸 한 변을 나누는 수. 클수록 둔덕·고랑이 매끈하다.")]
         [SerializeField, Range(2, 32)] private int soilResolution = 16;
 
-        [Header("그림자 받이")]
-        [Tooltip("그림자만 그리는 바닥. 화단보다 이만큼 넓게 깐다.")]
-        [SerializeField] private Transform shadowGround;
+        [Header("데크 (외형)")]
+        [Tooltip("MeshFilter가 있으면 데크 메시를 채운다. 화분은 데크 뒤 모서리에 놓이고 데크는 보는 쪽으로 뻗는다.")]
+        [SerializeField] private Transform deck;
 
-        [SerializeField, Min(0f)] private float shadowMargin = 1f;
+        [Tooltip("화분 왼쪽(−X)으로 드러나는 데크 폭(월드)")]
+        [SerializeField, Min(0f)] private float deckSideMargin = 0.62f;
+
+        [Tooltip("화분 앞(−Z, 보는 쪽)으로 뻗는 데크 길이. 화면 아래로 빠질 만큼 길게 둔다.")]
+        [SerializeField, Min(0f)] private float deckReach = 3.2f;
+
+        [Tooltip("화분 뒤·오른쪽으로 삐져나오는 데크 턱. 크면 데크가 지평선 위(하늘·바다)를 덮는다.")]
+        [SerializeField, Min(0f)] private float deckLip = 0.05f;
+
+        [Tooltip("널빤지 폭")]
+        [SerializeField, Min(0.01f)] private float plankWidth = 0.14f;
+
+        [Tooltip("널빤지 사이 틈")]
+        [SerializeField, Min(0f)] private float plankGap = 0.012f;
+
+        [Tooltip("널빤지 두께")]
+        [SerializeField, Min(0.005f)] private float plankThickness = 0.04f;
+
+        [Tooltip("널빤지 밑 장선 층 두께(틈으로 어둡게 보인다)")]
+        [SerializeField, Min(0.005f)] private float joistDepth = 0.09f;
+
+        [Tooltip("왼쪽 모서리를 덮는 옆판 두께")]
+        [SerializeField, Min(0.005f)] private float fasciaThickness = 0.03f;
+
+        [Tooltip("기둥 굵기")]
+        [SerializeField, Min(0.01f)] private float postSize = 0.1f;
+
+        [Tooltip("기둥이 내려가는 깊이(화면 아래로 빠진다)")]
+        [SerializeField, Min(0f)] private float postDepth = 3f;
+
+        [Tooltip("기둥 사이 간격")]
+        [SerializeField, Min(0.05f)] private float postSpacing = 1.2f;
 
         public int Columns => SceneMetrics.FlowerbedColumns;
         public int Rows => SceneMetrics.FlowerbedRows;
@@ -86,17 +112,40 @@ namespace _SAIUN.Scripts.Crop
         /// <summary>화분 윗면(테두리) 높이. 흙 둔덕 꼭대기보다 조금 높다.</summary>
         public float RimHeight => surfaceHeight + rimLip;
 
-        /// <summary>
-        /// 화분 뒤 모서리(+X,+Z)의 테두리 윗면 가운데 점(로컬). 풍향계를 세운다.
-        /// 둥근 모서리 호의 한가운데(대각선 방향)에서 테두리 폭의 절반만큼 바깥이다.
-        /// </summary>
+        /// <summary>화분 뒤 모서리(+X,+Z)의 판자 윗면 가운데 점(로컬). 풍향계를 세운다.</summary>
         public Vector3 RimCorner
         {
             get
             {
                 Vector2 grid = GridSize;
-                float along = (cornerRadius + rimWidth / 2f) * Diagonal;
-                return new Vector3(grid.x / 2f - cornerRadius + along, RimHeight, grid.y / 2f - cornerRadius + along);
+                return new Vector3(grid.x / 2f + rimWidth / 2f, RimHeight, grid.y / 2f + rimWidth / 2f);
+            }
+        }
+
+        /// <summary>데크 모양(로컬, 윗면 높이 0).</summary>
+        internal DeckShape DeckShape
+        {
+            get
+            {
+                Vector2 grid = GridSize;
+                float x = grid.x / 2f + rimWidth;
+                float z = grid.y / 2f + rimWidth;
+                return new DeckShape
+                {
+                    XMin = -x - deckSideMargin,
+                    XMax = x + deckLip,
+                    ZMin = -z - deckReach,
+                    ZMax = z + deckLip,
+                    PlankWidth = plankWidth,
+                    PlankGap = plankGap,
+                    PlankThickness = plankThickness,
+                    JoistDepth = joistDepth,
+                    FasciaThickness = fasciaThickness,
+                    PostSize = postSize,
+                    PostDepth = postDepth,
+                    PostSpacing = postSpacing,
+                    WoodRepeat = woodRepeat,
+                };
             }
         }
 
@@ -115,13 +164,9 @@ namespace _SAIUN.Scripts.Crop
             Resolution = soilResolution,
         };
 
-        // 45도 대각선 방향의 성분(√½)
-        private const float Diagonal = 0.70710678f;
-        // 화분 안쪽 벽은 흙이 가장 낮은 곳보다 테두리 폭만큼 더 내려 흙 가장자리에 틈이 보이지 않게 한다.
-        private float WallBottom => Mathf.Max(0f, SoilShape.Floor - rimWidth);
-
         private Mesh _planterMesh;
         private Mesh _soilMesh;
+        private Mesh _deckMesh;
 
         /// <summary>흙 윗면의 가로(열 방향)·세로(행 방향) 월드 길이. 테두리는 뺀다.</summary>
         public Vector2 GridSize => new Vector2(Columns * cellSize, Rows * cellSize);
@@ -151,6 +196,7 @@ namespace _SAIUN.Scripts.Crop
         {
             Release(ref _planterMesh);
             Release(ref _soilMesh);
+            Release(ref _deckMesh);
         }
 
         /// <summary>외형을 현재 그리드 값에 맞춘다. 연결되지 않은 외형은 건너뛴다.</summary>
@@ -162,7 +208,7 @@ namespace _SAIUN.Scripts.Crop
             {
                 SetLocal(planter, Vector3.zero, Vector3.one);
                 Release(ref _planterMesh);
-                _planterMesh = FlowerbedMeshes.BuildPlanter(grid, rimWidth, RimHeight, lipRadius, cornerRadius, WallBottom, arcSteps);
+                _planterMesh = FlowerbedMeshes.BuildPlanter(grid, rimWidth, RimHeight, woodRepeat);
                 planterFilter.sharedMesh = _planterMesh;
             }
 
@@ -174,13 +220,12 @@ namespace _SAIUN.Scripts.Crop
                 soilFilter.sharedMesh = _soilMesh;
             }
 
-            if (shadowGround != null)
+            if (deck != null && deck.TryGetComponent(out MeshFilter deckFilter))
             {
-                // Quad는 XY 평면이라 눕혀서 깐다. 배율의 y가 월드 Z 길이가 된다.
-                float border = (rimWidth + shadowMargin) * 2f;
-                shadowGround.localPosition = Vector3.zero;
-                shadowGround.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                shadowGround.localScale = new Vector3(grid.x + border, grid.y + border, 1f);
+                SetLocal(deck, Vector3.zero, Vector3.one);
+                Release(ref _deckMesh);
+                _deckMesh = FlowerbedMeshes.BuildDeck(DeckShape);
+                deckFilter.sharedMesh = _deckMesh;
             }
         }
 

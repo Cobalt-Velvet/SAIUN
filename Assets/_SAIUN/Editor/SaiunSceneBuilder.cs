@@ -40,9 +40,7 @@ namespace _SAIUN.Editor
         private const string SoilMaterialPath = MaterialFolder + "/Flowerbed_Soil.mat";
         private const string VaneMaterialPath = MaterialFolder + "/WeatherVane_Metal.mat";
         private const string VaneAccentMaterialPath = MaterialFolder + "/WeatherVane_Accent.mat";
-        private const string ShadowCatcherMaterialPath = MaterialFolder + "/ShadowCatcher.mat";
         private const string LitShaderName = "Universal Render Pipeline/Lit";
-        private const string ShadowCatcherShaderName = "SAIUN/ShadowCatcher";
         private const string GlowMaterialPath = MaterialFolder + "/Particle_Glow.mat";
         private const string ParticleShaderName = "Universal Render Pipeline/Particles/Unlit";
 
@@ -67,15 +65,12 @@ namespace _SAIUN.Editor
         // 화단 흙 윗면 중심을 둘 창 픽셀. 사양서 2-3 "우측 고정 / 중앙 하단"에 따라
         // Scene Layer(340~612px)의 오른쪽 절반에 들어가고 하단 바와 16px 떨어지게 잡았다.
         private static readonly Vector2 FlowerbedWindowPixel = new Vector2(352f, 490f);
-        // 화분은 둥근 테두리가 빛을 받아 반짝이도록 도자기처럼 조금 매끈하게, 흙은 거의 무광.
-        private const float PlanterSmoothness = 0.42f;
+        // 바랜 나무는 거의 무광이고 결이 조금 도드라진다. 흙도 거의 무광.
+        private const float PlanterSmoothness = 0.14f;
+        private const float WoodBumpScale = 0.8f;
         private const float SoilSmoothness = 0.12f;
         // 흙 알갱이(디테일 맵)의 칸 대비 반복 비율. 칸과 어긋나게 두어 칸마다 같은 무늬가 보이지 않는다.
         private const float SoilDetailTiling = 0.37f;
-        private const float ShadowStrength = 0.55f;
-        private const float ShadowFadeWidth = 0.8f;
-        // 해가 22도까지 낮아지면 작물 그림자가 키의 2.5배로 늘어난다. 그만큼 받이를 넓게 깐다.
-        private const float ShadowGroundMargin = 2.4f;
 
         // 유리 배경은 모든 투명 오브젝트보다 먼저 그려야 그림자·파티클을 덮지 않는다.
         private const int BackdropSortingOrder = -1000;
@@ -844,14 +839,20 @@ namespace _SAIUN.Editor
         private static Flowerbed EnsureFlowerbed()
         {
             Shader lit = Shader.Find(LitShaderName);
-            Shader catcher = Shader.Find(ShadowCatcherShaderName);
-            if (lit == null || catcher == null)
+            if (lit == null)
             {
                 Debug.LogError("SaiunSceneBuilder: 화단 셰이더를 찾지 못했습니다.");
                 return null;
             }
 
-            Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, m => m.SetColor("_BaseColor", SaiunPalette.Eggshell));
+            // 화분과 데크는 바닷바람에 바랜 나무 한 장을 같이 쓴다(2026-09-29 사용자 선택).
+            Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, _ => { });
+            (Texture2D wood, Texture2D woodNormal) = WoodArtBuilder.EnsureWoodTextures();
+            planterMaterial.SetColor("_BaseColor", Color.white);
+            planterMaterial.SetTexture("_BaseMap", wood);
+            planterMaterial.SetTexture("_BumpMap", woodNormal);
+            planterMaterial.SetFloat("_BumpScale", WoodBumpScale);
+            planterMaterial.EnableKeyword("_NORMALMAP");
             planterMaterial.SetFloat("_Smoothness", PlanterSmoothness);
 
             // 흙 색은 텍스처가 들고 있어 기본색은 흰색으로 둔다(젖음은 기본색을 어둡게 해서 표현한다).
@@ -871,12 +872,6 @@ namespace _SAIUN.Editor
             soilMaterial.SetFloat("_Smoothness", SoilSmoothness);
             EditorUtility.SetDirty(planterMaterial);
             EditorUtility.SetDirty(soilMaterial);
-            Material catcherMaterial = EnsureMaterial(ShadowCatcherMaterialPath, catcher, m =>
-            {
-                m.SetColor("_ShadowColor", SaiunPalette.DeepJungle);
-                m.SetFloat("_ShadowStrength", ShadowStrength);
-                m.SetFloat("_FadeWidth", ShadowFadeWidth);
-            });
 
             GameObject bedGo = GameObject.Find("Flowerbed");
             bool created = bedGo == null;
@@ -892,14 +887,15 @@ namespace _SAIUN.Editor
                 if (soilRoot.GetChild(i).name.StartsWith("Soil_")) Object.DestroyImmediate(soilRoot.GetChild(i).gameObject);
             }
 
-            Transform ground = EnsurePrimitiveChild(bedGo.transform, "ShadowGround", PrimitiveType.Quad,
-                catcherMaterial, ShadowCastingMode.Off);
+            // 그림자만 그리던 바닥은 데크가 대신한다(데크가 그림자를 받는다).
+            Transform oldGround = bedGo.transform.Find("ShadowGround");
+            if (oldGround != null) Object.DestroyImmediate(oldGround.gameObject);
+            Transform deck = EnsureMeshChild(bedGo.transform, "Deck", planterMaterial, ShadowCastingMode.On);
 
             var so = new SerializedObject(bed);
             so.FindProperty("planter").objectReferenceValue = planter;
-            so.FindProperty("shadowMargin").floatValue = ShadowGroundMargin;
             so.FindProperty("soilRoot").objectReferenceValue = soilRoot;
-            so.FindProperty("shadowGround").objectReferenceValue = ground;
+            so.FindProperty("deck").objectReferenceValue = deck;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             if (created)
@@ -1015,6 +1011,12 @@ namespace _SAIUN.Editor
             Transform glass = backdropCanvas.Find("DesktopGlass");
             so.FindProperty("desktopGlass").objectReferenceValue = glass != null ? glass.gameObject : null;
             so.ApplyModifiedPropertiesWithoutUndo();
+
+            // 정원이 그려진 하늘빛을 주변광·햇빛으로 받게 한다.
+            var lighting = new SerializedObject(EnsureComponent<SkyLighting>(sky));
+            lighting.FindProperty("sky").objectReferenceValue = sky.GetComponent<SkyView>();
+            lighting.FindProperty("sun").objectReferenceValue = Object.FindFirstObjectByType<SunOrbitController>();
+            lighting.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // 시계 글자에 은은한 그림자를 깐다. 흰 구름 위를 지나도 밝은 글자가 읽힌다.
@@ -1504,31 +1506,6 @@ namespace _SAIUN.Editor
             configure(material);
             AssetDatabase.CreateAsset(material, path);
             return material;
-        }
-
-        private static Transform EnsurePrimitiveChild(Transform parent, string name, PrimitiveType type,
-            Material material, ShadowCastingMode shadows)
-        {
-            Transform existing = parent.Find(name);
-            GameObject go;
-            if (existing != null)
-            {
-                go = existing.gameObject;
-            }
-            else
-            {
-                go = GameObject.CreatePrimitive(type);
-                go.name = name;
-                go.transform.SetParent(parent, false);
-                // 클릭 판정이 필요 없는 장식이다.
-                Object.DestroyImmediate(go.GetComponent<Collider>());
-            }
-
-            var renderer = go.GetComponent<MeshRenderer>();
-            renderer.sharedMaterial = material;
-            renderer.shadowCastingMode = shadows;
-            renderer.receiveShadows = true;
-            return go.transform;
         }
 
         // 코드로 만든 메시를 그릴 자식. 기본 도형 메시나 콜라이더 없이 MeshFilter·MeshRenderer만 둔다.

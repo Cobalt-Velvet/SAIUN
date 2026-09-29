@@ -1,5 +1,4 @@
 using System.IO;
-using _SAIUN.Scripts.Core;
 using UnityEditor;
 using UnityEngine;
 
@@ -8,7 +7,7 @@ namespace _SAIUN.Editor
     /// <summary>
     /// 화단 흙의 텍스처를 코드로 만든다 (2026-09-27). 외부 그림이 없어 라이선스 걱정이 없다. 세 장이다.
     ///  - 칸 텍스처(기본 맵): 흙 칸 하나에 한 장이 꼭 맞게 깔린다. 가장자리(고랑)는 어둡고 가운데(둔덕)는 조금 밝아
-    ///    칸이 또렷이 읽힌다. 짙은 정글 녹색.
+    ///    칸이 또렷이 읽힌다. 촉촉한 흙의 짙은 밤색(2026-09-29: 예전 짙은 녹색은 검은 판처럼 보였다).
     ///  - 알갱이 텍스처(디테일 맵, 선형 회색 0.5가 중립): 비틀린 노이즈로 덩이진 명암, 잘고 많은 밝은 부스러기,
     ///    조금 큰 짙은 흙덩이, 드문 옅은 잔돌. 칸과 어긋난 비율로 반복돼 칸마다 같은 무늬가 보이지 않는다.
     ///  - 알갱이 노멀 맵(디테일 노멀).
@@ -23,6 +22,9 @@ namespace _SAIUN.Editor
         public const string SoilNormalPath = TextureFolder + "/soil_normal.png";
 
         private const int Size = 256;
+
+        // 촉촉한 밭흙 빛깔(sRGB). 나무 화분·데크와 어울리는 짙은 밤색이다.
+        private static readonly Color Earth = new Color32(0x4B, 0x3A, 0x2C, 0xFF);
         private const int CellSize = 128;
 
         // ---- 칸 텍스처 ----
@@ -156,7 +158,7 @@ namespace _SAIUN.Editor
                     float groove = Mathf.Lerp(GrooveShade, 1f, Mathf.SmoothStep(0f, 1f, edge / GrooveFade));
                     float fromCenter = Vector2.Distance(new Vector2(u, v), center);
                     float mound = Mathf.Lerp(MoundLight, 1f, Mathf.SmoothStep(0f, 1f, fromCenter / MoundFade));
-                    Color color = SaiunPalette.DeepJungle * (groove * mound);
+                    Color color = Earth * (groove * mound);
                     color.a = 1f;
                     pixels[y * CellSize + x] = color;
                 }

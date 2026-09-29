@@ -89,6 +89,12 @@ namespace _SAIUN.Scripts.Lighting
         /// <summary>빛이 나아가는 방향(월드).</summary>
         public Vector3 LightDirection => Quaternion.Euler(Elevation, HorizontalAngle, 0f) * Vector3.forward;
 
+        /// <summary>하늘이 셈한 햇빛을 받고 있는지. 받으면 진행률 그러데이션 대신 그 빛깔·세기를 쓴다.</summary>
+        public bool HasSkyLight { get; private set; }
+
+        private Color _skyLight = Color.white;
+        private float _skyStrength = 1f;
+
         private void Awake()
         {
             if (sun == null) sun = GetComponent<Light>();
@@ -162,8 +168,29 @@ namespace _SAIUN.Scripts.Lighting
 
             if (sun == null) return;
             sun.transform.rotation = Quaternion.Euler(Elevation, HorizontalAngle, 0f);
-            sun.color = Color.Lerp(SunColor, twilightColor, Twilight);
-            sun.intensity = intensity * Mathf.Lerp(horizonIntensity, 1f, Daylight(Progress)) * Mathf.Lerp(1f, twilightIntensity, Twilight);
+            ApplyLight();
+        }
+
+        /// <summary>
+        /// 하늘이 대기를 지난 햇빛으로 셈한 빛깔(가장 밝은 성분 1)과 한낮 대비 세기(0~1)를 받는다(2026-09-29, 정원이 하늘빛을 받게).
+        /// 낮은 해는 붉고 어둡고, 해가 지면 0이 되어 정원은 하늘의 주변광만 받는다.
+        /// </summary>
+        public void SetSkyLight(Color sunlight, float strength)
+        {
+            _skyLight = sunlight;
+            _skyStrength = Mathf.Clamp01(strength);
+            HasSkyLight = true;
+            ApplyLight();
+        }
+
+        // 빛깔·세기를 광원에 적용한다. 하늘 빛이 있으면 그 빛을, 없으면 진행률 그러데이션과 고도 배율을 쓴다.
+        private void ApplyLight()
+        {
+            if (sun == null) return;
+            Color baseColor = HasSkyLight ? _skyLight : SunColor;
+            float scale = HasSkyLight ? _skyStrength : Mathf.Lerp(horizonIntensity, 1f, Daylight(Progress));
+            sun.color = Color.Lerp(baseColor, twilightColor, Twilight);
+            sun.intensity = intensity * scale * Mathf.Lerp(1f, twilightIntensity, Twilight);
         }
 
         /// <summary>사양서 4장 수식(선형). 범위 밖 진행률은 0~1로 자른다.</summary>

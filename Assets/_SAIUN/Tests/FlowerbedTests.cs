@@ -77,11 +77,10 @@ namespace _SAIUN.Tests
         {
             Transform planter = MeshChild("Planter");
             Transform soil = MeshChild("Soil");
-            var ground = new GameObject("Ground").transform;
-            ground.SetParent(_go.transform, false);
+            Transform deck = MeshChild("Deck");
             SetField("planter", planter);
             SetField("soilRoot", soil);
-            SetField("shadowGround", ground);
+            SetField("deck", deck);
 
             _bed.FitVisuals();
 
@@ -91,7 +90,15 @@ namespace _SAIUN.Tests
             Assert.AreEqual(grid.y + _bed.RimWidth * 2f, pot.size.z, 0.001f);
             Assert.AreEqual(_bed.RimHeight, pot.max.y, 0.0001f, "테두리 윗면 높이");
             Assert.AreEqual(0f, pot.min.y, 0.0001f, "화분은 바닥에 닿는다");
-            Assert.Greater(ground.localScale.x, pot.size.x, "그림자 받이는 화분보다 넓다");
+
+            // 데크: 윗면이 화분 바닥 높이이고, 화분 뒤·오른쪽 모서리에 맞추며(지평선 위를 덮지 않게) 보는 쪽으로 뻗는다.
+            Bounds floor = deck.GetComponent<MeshFilter>().sharedMesh.bounds;
+            Assert.AreEqual(0f, floor.max.y, 0.0001f, "데크 윗면 = 화분 바닥");
+            Assert.Less(floor.max.x - pot.max.x, 0.1f, "화분 오른쪽으로 거의 뻗지 않는다");
+            Assert.Less(floor.max.z - pot.max.z, 0.1f, "화분 뒤로 거의 뻗지 않는다");
+            Assert.Less(floor.min.x, pot.min.x - 0.3f, "화분 왼쪽으로 드러난다");
+            Assert.Less(floor.min.z, pot.min.z - 1f, "보는 쪽으로 길게 뻗는다");
+            Assert.Less(floor.min.y, -1f, "기둥이 아래로 내려간다(떠 있는 데크)");
 
             Bounds earth = soil.GetComponent<MeshFilter>().sharedMesh.bounds;
             Assert.AreEqual(grid.x, earth.size.x, 0.0001f, "흙은 화분 안쪽을 꼭 채운다");

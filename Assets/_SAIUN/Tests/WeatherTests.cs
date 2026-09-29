@@ -349,6 +349,56 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 정원은_그려진_하늘빛을_주변광으로_받는다()
+        {
+            SunOrbitController orbit = MakeSun();
+            SkyView sky = MakeSky(orbit);
+            orbit.Apply(0.5f);
+            sky.Tick(0.1f);
+            sky.RenderAll();
+            SkyLighting lighting = MakeSkyLighting(sky, orbit);
+
+            lighting.SampleNow();
+            Assert.IsTrue(lighting.HasSample);
+            Assert.AreEqual(UnityEngine.Rendering.AmbientMode.Trilight, RenderSettings.ambientMode);
+            Assert.AreEqual(lighting.SkyColor, RenderSettings.ambientSkyColor);
+            Assert.Greater(lighting.SkyColor.b, lighting.SkyColor.r, "한낮 위쪽 하늘빛은 푸르다");
+            float Warmth(Color c) => c.r / Mathf.Max(c.b, 1e-4f);
+            Assert.Greater(Warmth(lighting.GroundColor), Warmth(lighting.SkyColor), "아래(모래밭·바다)에서 튀는 빛은 하늘보다 따뜻하다");
+
+            sky.ApplyGlass(true);
+            lighting.Tick(0.1f);
+            Assert.AreNotEqual(UnityEngine.Rendering.AmbientMode.Trilight, RenderSettings.ambientMode, "창 전체 유리면 씬 주변광으로 돌아간다");
+        }
+
+        [Test]
+        public void 해는_하늘의_해_고도로_셈한_햇빛을_받아_낮으면_붉고_어둡고_지면_꺼진다()
+        {
+            SunOrbitController orbit = MakeSun();
+            SkyView sky = MakeSky(orbit);
+            SkyLighting lighting = MakeSkyLighting(sky, orbit);
+            var light = orbit.GetComponent<Light>();
+
+            orbit.Apply(0.5f);
+            sky.Tick(0.1f);
+            lighting.Tick(0.1f);
+            Assert.IsTrue(orbit.HasSkyLight);
+            float noon = light.intensity;
+            Assert.Greater(light.color.b, 0.7f, "한낮 햇빛은 희다");
+
+            orbit.Apply(1f);
+            sky.Tick(0.1f);
+            lighting.Tick(0.1f);
+            Assert.Less(light.intensity, noon * 0.5f, "지는 해는 어둡다");
+            Assert.Greater(light.color.r, light.color.g * 2f, "지는 해는 붉다");
+
+            orbit.StepTwilight(1f, 100000f);
+            sky.Tick(0.1f);
+            lighting.Tick(0.1f);
+            Assert.AreEqual(0f, light.intensity, 0.0001f, "해가 지면 햇빛이 끊기고 하늘빛만 남는다");
+        }
+
+        [Test]
         public void 바람이_셀수록_구름이_빨리_흐른다()
         {
             SetWind(Vector3.right, 0f);
@@ -645,6 +695,17 @@ namespace _SAIUN.Tests
         private static Material Material(SkyView sky)
         {
             return (Material)typeof(SkyView).GetField("_material", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sky);
+        }
+
+        private SkyLighting MakeSkyLighting(SkyView sky, SunOrbitController orbit)
+        {
+            var go = Own(new GameObject("SkyLighting"));
+            go.SetActive(false);
+            var lighting = go.AddComponent<SkyLighting>();
+            Set(lighting, "sky", sky);
+            Set(lighting, "sun", orbit);
+            go.SetActive(true);
+            return lighting;
         }
 
         private SunOrbitController MakeSun()

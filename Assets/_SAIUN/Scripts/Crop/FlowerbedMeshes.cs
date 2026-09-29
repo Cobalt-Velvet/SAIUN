@@ -26,17 +26,57 @@ namespace _SAIUN.Scripts.Crop
     }
 
     /// <summary>
+    /// 데크 모양 값(화단 로컬, 윗면 높이 0). 화분은 데크 뒤 모서리(+X, +Z)에 놓이고, 데크는 보는 쪽(−X, −Z)으로 뻗는다.
+    /// 화분 뒤로 데크가 뻗으면 아이소메트릭 화면에서 지평선 위(하늘·바다)를 덮으므로 뒤 모서리는 화분에 맞춘다.
+    /// </summary>
+    internal struct DeckShape
+    {
+        public float XMin;
+        public float XMax;
+        public float ZMin;
+        public float ZMax;
+        public float PlankWidth;
+        public float PlankGap;
+        public float PlankThickness;
+        public float JoistDepth;       // 널빤지 밑 장선 층 두께. 널빤지 틈으로 어둡게 보인다.
+        public float FasciaThickness;  // 왼쪽 모서리를 덮는 옆판 두께
+        public float PostSize;
+        public float PostDepth;        // 기둥이 내려가는 깊이(화면 아래로 빠진다)
+        public float PostSpacing;
+        public float WoodRepeat;       // 나무 텍스처 한 장이 덮는 결 방향 길이(월드)
+    }
+
+    /// <summary>
     /// 화단 외형 메시를 코드로 만든다 (2026-09-27, "요소는 적게, 비주얼은 훌륭하게").
-    /// 화분: 흙 둘레(모서리가 살짝 둥근 사각형)를 따라 테두리 단면을 쓸어 만든 여물통.
-    ///       안쪽 벽 → 둥근 안쪽 입술 → 평평한 윗면 → 둥근 바깥 입술 → 바깥 벽 → 둥근 밑동. 둥근 면이 빛을 받아 반짝인다.
+    /// 화분: 바닷바람에 바랜 나무 판자 상자(2026-09-29, 사용자 선택 "바랜 나무"). 벽마다 판자 두 장이 포개져 있고
+    ///       앞뒤 벽이 모서리까지 뻗어 옆 벽을 막는다. 윗면은 벽 두께의 판자다.
+    /// 데크: 화분이 놓인 바닷가 나무 데크(사용자 선택 "바닷가 나무 데크"). 틈을 두고 깐 널빤지, 틈으로 보이는 어두운 장선,
+    ///       왼쪽 모서리를 덮는 옆판, 아래로 내려가는 기둥. 가까이 내려다보는 바닥이 생겨 먼 바다와 시점이 이어진다.
+    /// 나무 UV: U는 결 방향 길이(WoodRepeat마다 한 장), V는 나무 텍스처의 판자 네 줄(WoodArtBuilder)이다.
     /// 흙: 칸마다 작물이 설 둔덕, 칸 사이 얕은 고랑, 잔 알갱이 요철이 있는 한 장의 면. 칸이 흙 모양으로 읽힌다.
     ///     UV는 칸 단위(칸 하나 = 0~1)라 칸 텍스처가 칸마다 한 장씩 깔린다.
     /// 좌표는 화단 로컬(바닥 중심 원점, 열 X·행 Z)이다.
     /// </summary>
     internal static class FlowerbedMeshes
     {
-        // 밑동의 둥근 반경은 입술 반경의 이만큼. 바닥에 닿는 선을 부드럽게만 한다.
-        private const float FootRadiusRatio = 0.5f;
+        // ---- 나무 텍스처 배치 (WoodArtBuilder와 맞춘다) ----
+        // 판자 줄 수와 쓰임: 화분 벽은 0·1줄, 화분 윗면은 2줄, 데크 옆판은 3줄. 널빤지·기둥은 네 줄을 돌려 쓴다.
+        private const int WoodRows = 4;
+        private const int TopRow = 2;
+        private const int FasciaRow = 3;
+        private const float FasciaOffset = 0.29f;
+        // 널빤지 옆면·끝면은 줄 가운데의 좁은 띠를 쓴다(판자 틈 그늘이 들지 않게).
+        private const float EdgeStart = 0.4f;
+        private const float EdgeBand = 0.2f;
+        // 장선 그늘은 판자 틈의 가장 어두운 곳이다.
+        private const float ShadowV = 0.0005f;
+        // 그늘 면도 UV 폭이 0이면 접선을 셈할 수 없어 아주 좁게 편다.
+        private static readonly Vector2 ShadowSpan = new Vector2(0.01f, 0f);
+        private static readonly Vector2 ShadowSpanV = new Vector2(0f, 0.0002f);
+        // 널빤지마다 결 위치를 흩뜨리는 폭(텍스처 장 수)과 해시 소금
+        private const float PlankOffsetRange = 7f;
+        private const int PlankSalt = 3;
+        private const int PostSalt = 101;
         // 알갱이 요철을 이 거리(둔덕 반경 대비) 안쪽에서는 지워 작물이 정확히 둔덕 꼭대기에 선다.
         private const float GrainClearRatio = 0.35f;
         // 알갱이 노이즈는 두 겹이다. 둘째 겹은 더 잘고 어긋나게 둔다.
@@ -51,70 +91,135 @@ namespace _SAIUN.Scripts.Crop
         // ---- 화분 ----
 
         /// <summary>
-        /// 흙 가장자리(inner, 모서리 반경 cornerRadius)를 둘러싸는 화분 메시.
-        /// 바깥 크기는 inner + 테두리 폭×2, 윗면 높이는 rimHeight, 바깥 벽은 바닥(0)까지 내려간다.
+        /// 흙(inner)을 둘러싸는 나무 판자 상자. 바깥 크기는 inner + 테두리 폭×2, 윗면 높이 rimHeight, 바닥(0)부터 선다.
+        /// 벽 옆면은 판자 두 장(텍스처 0·1줄), 윗면은 셋째 줄이다.
         /// </summary>
-        public static Mesh BuildPlanter(Vector2 inner, float rimWidth, float rimHeight, float lipRadius,
-            float cornerRadius, float wallBottom, int arcSteps)
+        public static Mesh BuildPlanter(Vector2 inner, float rimWidth, float rimHeight, float woodRepeat)
         {
-            arcSteps = Mathf.Max(1, arcSteps);
-            float lip = Mathf.Clamp(lipRadius, 0.0001f, Mathf.Min(rimWidth / 2f, rimHeight / 2f));
-            float foot = lip * FootRadiusRatio;
+            var parts = new Parts();
+            float repeat = Mathf.Max(0.01f, woodRepeat);
+            float hx = inner.x / 2f;
+            float hz = inner.y / 2f;
+            float ox = hx + rimWidth;
+            float oz = hz + rimWidth;
 
-            // 단면: x = 흙 가장자리에서 바깥으로 잰 거리, y = 높이. 법선도 같은 평면에 둔다.
-            var profile = new List<Vector2>();
-            var profileNormals = new List<Vector2>();
-            profile.Add(new Vector2(0f, wallBottom));
-            profileNormals.Add(Vector2.left);
-            Arc(profile, profileNormals, new Vector2(lip, rimHeight - lip), lip, 180f, 90f, arcSteps);
-            Arc(profile, profileNormals, new Vector2(rimWidth - lip, rimHeight - lip), lip, 90f, 0f, arcSteps);
-            Arc(profile, profileNormals, new Vector2(rimWidth - foot, foot), foot, 0f, -90f, arcSteps);
+            // 앞뒤 벽(X 방향, 모서리까지)과 옆 벽(Z 방향, 앞뒤 벽 사이)
+            WallAlongX(parts, -ox, ox, hz, oz, rimHeight, repeat, 0.13f);
+            WallAlongX(parts, -ox, ox, -oz, -hz, rimHeight, repeat, 0.61f);
+            WallAlongZ(parts, hx, ox, -hz, hz, rimHeight, repeat, 0.37f);
+            WallAlongZ(parts, -ox, -hx, -hz, hz, rimHeight, repeat, 0.83f);
+            return parts.Finish("Planter");
+        }
 
-            // 경로: 흙 가장자리를 도는 둥근 사각형. 반시계 방향으로 네 모서리 호를 잇는다.
-            float corner = Mathf.Clamp(cornerRadius, 0.0001f, Mathf.Min(inner.x, inner.y) / 2f);
-            var centers = new[]
+        // X 방향으로 누운 벽: 옆면(±Z)은 판자 두 장, 윗면은 셋째 줄, 양 끝(±X)은 마구리.
+        private static void WallAlongX(Parts parts, float x0, float x1, float z0, float z1, float height, float repeat, float offset)
+        {
+            float length = x1 - x0;
+            var along = new Vector2(length / repeat, 0f);
+            var tall = new Vector2(0f, 2f / WoodRows);
+            Vector2 start = new Vector2(x0 / repeat + offset, 0f);
+            parts.Face(new Vector3(x0, 0f, z1), new Vector3(length, 0f, 0f), new Vector3(0f, height, 0f), Vector3.forward, start, along, tall);
+            parts.Face(new Vector3(x0, 0f, z0), new Vector3(length, 0f, 0f), new Vector3(0f, height, 0f), Vector3.back, start, along, tall);
+            parts.Face(new Vector3(x0, height, z0), new Vector3(length, 0f, 0f), new Vector3(0f, 0f, z1 - z0), Vector3.up,
+                new Vector2(start.x, TopRow / (float)WoodRows), along, new Vector2(0f, 1f / WoodRows));
+            var across = new Vector2((z1 - z0) / repeat, 0f);
+            parts.Face(new Vector3(x0, 0f, z0), new Vector3(0f, 0f, z1 - z0), new Vector3(0f, height, 0f), Vector3.left, Vector2.zero, across, tall);
+            parts.Face(new Vector3(x1, 0f, z0), new Vector3(0f, 0f, z1 - z0), new Vector3(0f, height, 0f), Vector3.right, Vector2.zero, across, tall);
+        }
+
+        // Z 방향으로 누운 벽(앞뒤 벽 사이). 끝은 앞뒤 벽에 막혀 보이지 않는다.
+        private static void WallAlongZ(Parts parts, float x0, float x1, float z0, float z1, float height, float repeat, float offset)
+        {
+            float length = z1 - z0;
+            var along = new Vector2(length / repeat, 0f);
+            var tall = new Vector2(0f, 2f / WoodRows);
+            Vector2 start = new Vector2(z0 / repeat + offset, 0f);
+            parts.Face(new Vector3(x1, 0f, z0), new Vector3(0f, 0f, length), new Vector3(0f, height, 0f), Vector3.right, start, along, tall);
+            parts.Face(new Vector3(x0, 0f, z0), new Vector3(0f, 0f, length), new Vector3(0f, height, 0f), Vector3.left, start, along, tall);
+            parts.Face(new Vector3(x0, height, z0), new Vector3(0f, 0f, length), new Vector3(x1 - x0, 0f, 0f), Vector3.up,
+                new Vector2(start.x, TopRow / (float)WoodRows), along, new Vector2(0f, 1f / WoodRows));
+        }
+
+        // ---- 데크 ----
+
+        /// <summary>화분이 놓인 나무 데크. 윗면 높이는 0이다.</summary>
+        public static Mesh BuildDeck(DeckShape shape)
+        {
+            var parts = new Parts();
+            float repeat = Mathf.Max(0.01f, shape.WoodRepeat);
+            float t = shape.PlankThickness;
+            float length = shape.ZMax - shape.ZMin;
+            float pitch = Mathf.Max(0.001f, shape.PlankWidth + shape.PlankGap);
+            var along = new Vector2(length / repeat, 0f);
+
+            // 널빤지: Z 방향으로 길게, 왼쪽(XMin)부터 틈을 두고 깐다. 널빤지마다 텍스처 줄과 결 위치가 다르다.
+            int index = 0;
+            for (float x0 = shape.XMin; x0 < shape.XMax - 0.001f; x0 += pitch, index++)
             {
-                new Vector2(inner.x / 2f - corner, inner.y / 2f - corner),
-                new Vector2(-(inner.x / 2f - corner), inner.y / 2f - corner),
-                new Vector2(-(inner.x / 2f - corner), -(inner.y / 2f - corner)),
-                new Vector2(inner.x / 2f - corner, -(inner.y / 2f - corner)),
-            };
-            var path = new List<Vector3>();
-            var pathNormals = new List<Vector3>();
-            for (int c = 0; c < centers.Length; c++)
-            {
-                for (int s = 0; s <= arcSteps; s++)
-                {
-                    float angle = (90f * c + 90f * s / arcSteps) * Mathf.Deg2Rad;
-                    var direction = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-                    path.Add(new Vector3(centers[c].x, 0f, centers[c].y) + direction * corner);
-                    pathNormals.Add(direction);
-                }
+                float x1 = Mathf.Min(x0 + shape.PlankWidth, shape.XMax);
+                float width = x1 - x0;
+                int row = index % WoodRows;
+                var start = new Vector2(shape.ZMin / repeat + PlankHash(index) * PlankOffsetRange, row / (float)WoodRows);
+                var edgeV = new Vector2(0f, EdgeBand / WoodRows);
+                var edgeStart = new Vector2(start.x, (row + EdgeStart) / WoodRows);
+                parts.Face(new Vector3(x0, 0f, shape.ZMin), new Vector3(0f, 0f, length), new Vector3(width, 0f, 0f), Vector3.up,
+                    start, along, new Vector2(0f, 1f / WoodRows));
+                parts.Face(new Vector3(x0, -t, shape.ZMin), new Vector3(0f, 0f, length), new Vector3(0f, t, 0f), Vector3.left,
+                    edgeStart, along, edgeV);
+                parts.Face(new Vector3(x1, -t, shape.ZMin), new Vector3(0f, 0f, length), new Vector3(0f, t, 0f), Vector3.right,
+                    edgeStart, along, edgeV);
+                parts.Face(new Vector3(x0, -t, shape.ZMax), new Vector3(width, 0f, 0f), new Vector3(0f, t, 0f), Vector3.forward,
+                    edgeStart, new Vector2(width / repeat, 0f), edgeV);
+                parts.Face(new Vector3(x0, -t, shape.ZMin), new Vector3(width, 0f, 0f), new Vector3(0f, t, 0f), Vector3.back,
+                    edgeStart, new Vector2(width / repeat, 0f), edgeV);
             }
 
-            var vertices = new List<Vector3>(path.Count * profile.Count);
-            var normals = new List<Vector3>(path.Count * profile.Count);
-            for (int i = 0; i < path.Count; i++)
+            // 장선 층: 널빤지 틈으로 보이는 그늘. 텍스처의 판자 틈(가장 어두운 곳)을 쓴다.
+            float joistTop = -t;
+            float joistBottom = -t - shape.JoistDepth;
+            var shadow = new Vector2(0.5f, ShadowV);
+            parts.Face(new Vector3(shape.XMin, joistTop, shape.ZMin), new Vector3(0f, 0f, length), new Vector3(shape.XMax - shape.XMin, 0f, 0f),
+                Vector3.up, shadow, ShadowSpan, ShadowSpanV);
+            parts.Face(new Vector3(shape.XMin, joistBottom, shape.ZMax), new Vector3(shape.XMax - shape.XMin, 0f, 0f),
+                new Vector3(0f, shape.JoistDepth, 0f), Vector3.forward, shadow, ShadowSpan, ShadowSpanV);
+
+            // 왼쪽 옆판: 데크 모서리를 덮는 판자 한 장(넷째 줄). 널빤지 윗면과 높이를 맞춘다.
+            float fx0 = shape.XMin - shape.FasciaThickness;
+            float fasciaHeight = t + shape.JoistDepth;
+            var fasciaStart = new Vector2(shape.ZMin / repeat + FasciaOffset, FasciaRow / (float)WoodRows);
+            var fasciaTall = new Vector2(0f, 1f / WoodRows);
+            parts.Face(new Vector3(fx0, joistBottom, shape.ZMin), new Vector3(0f, 0f, length), new Vector3(0f, fasciaHeight, 0f), Vector3.left,
+                fasciaStart, along, fasciaTall);
+            parts.Face(new Vector3(fx0, 0f, shape.ZMin), new Vector3(0f, 0f, length), new Vector3(shape.FasciaThickness, 0f, 0f), Vector3.up,
+                fasciaStart, along, new Vector2(0f, EdgeBand / WoodRows));
+            parts.Face(new Vector3(fx0, joistBottom, shape.ZMax), new Vector3(shape.FasciaThickness, 0f, 0f), new Vector3(0f, fasciaHeight, 0f),
+                Vector3.forward, fasciaStart, new Vector2(shape.FasciaThickness / repeat, 0f), fasciaTall);
+
+            // 기둥: 왼쪽 모서리 아래로 내려가 데크가 떠 있는 바닥임을 알린다. 결은 세로다.
+            float half = shape.PostSize / 2f;
+            float px = fx0 + half;
+            int post = 0;
+            for (float pz = shape.ZMax - half; pz > shape.ZMin; pz -= Mathf.Max(0.01f, shape.PostSpacing), post++)
             {
-                for (int j = 0; j < profile.Count; j++)
-                {
-                    vertices.Add(path[i] + pathNormals[i] * profile[j].x + Vector3.up * profile[j].y);
-                    normals.Add((pathNormals[i] * profileNormals[j].x + Vector3.up * profileNormals[j].y).normalized);
-                }
+                float y0 = joistBottom - shape.PostDepth;
+                var up = new Vector3(0f, shape.PostDepth, 0f);
+                var grain = new Vector2(shape.PostDepth / repeat, 0f);
+                var postStart = new Vector2(PlankHash(post + PostSalt), (post % WoodRows) / (float)WoodRows);
+                var postAcross = new Vector2(0f, 1f / WoodRows);
+                // 결이 세로라 U를 높이 쪽 변에 둔다.
+                parts.Face(new Vector3(px - half, y0, pz - half), up, new Vector3(0f, 0f, shape.PostSize), Vector3.left, postStart, grain, postAcross);
+                parts.Face(new Vector3(px + half, y0, pz - half), up, new Vector3(0f, 0f, shape.PostSize), Vector3.right, postStart, grain, postAcross);
+                parts.Face(new Vector3(px - half, y0, pz + half), up, new Vector3(shape.PostSize, 0f, 0f), Vector3.forward, postStart, grain, postAcross);
+                parts.Face(new Vector3(px - half, y0, pz - half), up, new Vector3(shape.PostSize, 0f, 0f), Vector3.back, postStart, grain, postAcross);
             }
 
-            var triangles = new List<int>();
-            int columns = profile.Count;
-            for (int i = 0; i < path.Count; i++)
-            {
-                int next = (i + 1) % path.Count;
-                for (int j = 0; j < columns - 1; j++)
-                {
-                    Quad(triangles, vertices, normals, i * columns + j, next * columns + j, next * columns + j + 1, i * columns + j + 1);
-                }
-            }
+            return parts.Finish("Deck");
+        }
 
-            return Finish("Planter", vertices, normals, null, triangles, recalculateNormals: false);
+        private static float PlankHash(int index)
+        {
+            float n = Mathf.Sin(index * HashX + PlankSalt * HashY) * HashScale;
+            return n - Mathf.Floor(n);
         }
 
         // ---- 흙 ----
@@ -201,21 +306,6 @@ namespace _SAIUN.Scripts.Crop
 
         // ---- 도우미 ----
 
-        // 호를 시작각에서 끝각까지 steps 조각으로 나눠 단면에 잇는다. 시작점이 앞 점과 같으면 겹치지 않게 건너뛴다.
-        private static void Arc(List<Vector2> points, List<Vector2> normals, Vector2 center, float radius,
-            float fromDegrees, float toDegrees, int steps)
-        {
-            for (int s = 0; s <= steps; s++)
-            {
-                float angle = Mathf.Lerp(fromDegrees, toDegrees, s / (float)steps) * Mathf.Deg2Rad;
-                var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-                Vector2 point = center + direction * radius;
-                if (points.Count > 0 && (points[points.Count - 1] - point).sqrMagnitude < 1e-10f) continue;
-                points.Add(point);
-                normals.Add(direction);
-            }
-        }
-
         // 네 점으로 두 삼각형을 만들고, 꼭짓점 법선 쪽이 앞면이 되게 감는다.
         private static void Quad(List<int> triangles, List<Vector3> vertices, List<Vector3> normals, int a, int b, int c, int d)
         {
@@ -231,6 +321,33 @@ namespace _SAIUN.Scripts.Crop
                 triangles.Add(a); triangles.Add(b); triangles.Add(c);
                 triangles.Add(a); triangles.Add(c); triangles.Add(d);
             }
+        }
+
+        // 판자 상자의 면들을 모은다. 면마다 꼭짓점을 따로 두어 모서리가 또렷하다.
+        private sealed class Parts
+        {
+            private readonly List<Vector3> _vertices = new List<Vector3>();
+            private readonly List<Vector3> _normals = new List<Vector3>();
+            private readonly List<Vector2> _uvs = new List<Vector2>();
+            private readonly List<int> _triangles = new List<int>();
+
+            // corner에서 edgeU·edgeV로 펼친 사각 면. UV는 uv0에서 uvU·uvV만큼 같은 방향으로 늘어난다.
+            public void Face(Vector3 corner, Vector3 edgeU, Vector3 edgeV, Vector3 normal, Vector2 uv0, Vector2 uvU, Vector2 uvV)
+            {
+                int first = _vertices.Count;
+                _vertices.Add(corner);
+                _vertices.Add(corner + edgeU);
+                _vertices.Add(corner + edgeU + edgeV);
+                _vertices.Add(corner + edgeV);
+                _uvs.Add(uv0);
+                _uvs.Add(uv0 + uvU);
+                _uvs.Add(uv0 + uvU + uvV);
+                _uvs.Add(uv0 + uvV);
+                for (int i = 0; i < 4; i++) _normals.Add(normal);
+                Quad(_triangles, _vertices, _normals, first, first + 1, first + 2, first + 3);
+            }
+
+            public Mesh Finish(string name) => FlowerbedMeshes.Finish(name, _vertices, _normals, _uvs, _triangles, recalculateNormals: false);
         }
 
         private static Mesh Finish(string name, List<Vector3> vertices, List<Vector3> normals, List<Vector2> uvs,
