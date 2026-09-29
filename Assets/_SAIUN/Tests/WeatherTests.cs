@@ -538,21 +538,45 @@ namespace _SAIUN.Tests
             Assert.AreEqual(Get<float>(wind, "maxLeavesPerSecond"), wind.LeavesPerSecond, 0.01f);
             Assert.AreEqual(wind.StreaksPerSecond, streaks.emission.rateOverTime.constant, 0.01f);
             Assert.AreEqual(wind.LeavesPerSecond, leaves.emission.rateOverTime.constant, 0.01f);
-            Assert.Greater(leaves.velocityOverLifetime.x.constant, 0f, "화면 오른쪽으로 날아간다");
-            Assert.Less(leaves.shape.position.x, 0f, "잎은 바람이 오는 왼쪽 가장자리에서 들어온다");
+            Assert.Greater(Dot(Flow(leaves), screenRight), 0f, "화면 오른쪽으로 날아간다");
+            Assert.Less(Vector3.Dot(leaves.shape.position, screenRight), 0f, "잎은 바람이 불어오는 왼쪽 가장자리에서 들어온다");
 
             SetWind(screenRight, 1f);
             wind.Tick();
             Assert.AreEqual(0f, leaves.emission.rateOverTime.constant, 0.01f, "잦아들면 새 잎은 없다");
-            Assert.Greater(leaves.velocityOverLifetime.x.constant, 0f, "떠 있던 잎은 허공에 멈추지 않고 마저 날아간다");
+            Assert.Greater(Dot(Flow(leaves), screenRight), 0f, "떠 있던 잎은 허공에 멈추지 않고 마저 날아간다");
 
             SetWind(-screenRight, WeatherController.MaxWindStrength);
             wind.Tick();
-            Assert.AreEqual(-1f, wind.ScreenDirection);
-            Assert.Less(leaves.velocityOverLifetime.x.constant, 0f);
-            Assert.Greater(leaves.shape.position.x, 0f);
-            Assert.Less(streaks.velocityOverLifetime.x.constant, 0f);
+            Assert.Less(Dot(Flow(leaves), screenRight), 0f);
+            Assert.Greater(Vector3.Dot(leaves.shape.position, screenRight), 0f);
+            Assert.Less(Dot(Flow(streaks), screenRight), 0f);
         }
+
+        [Test]
+        public void 바람결과_잎은_실제_바람_방향으로_흘러_바다_쪽_바람이면_멀어진다()
+        {
+            WindEffect wind = MakeWind(out ParticleSystem streaks, out ParticleSystem leaves);
+            Vector3 seaward = Vector3.ProjectOnPlane(SceneMetrics.CameraRotation * Vector3.forward, Vector3.up).normalized;
+            Vector3 screenRight = SceneMetrics.CameraRotation * Vector3.right;
+
+            SetWind(seaward, WeatherController.MaxWindStrength);
+            wind.Tick();
+            Assert.Less(Vector3.Angle(wind.FlowDirection, seaward), 0.5f, "풍향계·구름·물결과 같은 바람");
+            Assert.Greater(Dot(Flow(leaves), seaward), 0f, "잎이 바다 쪽으로 멀어진다");
+            Assert.AreEqual(0f, Dot(Flow(leaves), screenRight), 0.001f, "옆으로 흐르지 않는다");
+            Assert.Greater(Dot(Flow(streaks), seaward), 0f);
+            Assert.Less(Vector3.Dot(leaves.shape.position, seaward), 0f, "잎은 내 쪽(바람이 불어오는 쪽)에서 들어온다");
+            Assert.AreEqual(ParticleSystemSimulationSpace.World, leaves.velocityOverLifetime.space);
+        }
+
+        private static Vector3 Flow(ParticleSystem system)
+        {
+            ParticleSystem.VelocityOverLifetimeModule flow = system.velocityOverLifetime;
+            return new Vector3(flow.x.constant, flow.y.constant, flow.z.constant);
+        }
+
+        private static float Dot(Vector3 a, Vector3 b) => Vector3.Dot(a, b);
 
         // ---- 비 ----
 

@@ -6387,7 +6387,7 @@ ParticleSystem:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-  moveWithTransform: 0
+  moveWithTransform: 1
   moveWithCustomTransform: {fileID: 0}
   scalingMode: 1
   randomSeed: 0
@@ -6953,7 +6953,7 @@ ParticleSystem:
     donutRadius: 0.2
     m_Position: {x: 0, y: 0, z: 0}
     m_Rotation: {x: 0, y: 0, z: 0}
-    m_Scale: {x: 0.1, y: 1.4, z: 0.3}
+    m_Scale: {x: 11, y: 0.59999996, z: 0.3}
     placementMode: 0
     m_MeshMaterialIndex: 0
     m_MeshNormalOffset: 0
@@ -8356,7 +8356,7 @@ ParticleSystem:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-    inWorldSpace: 0
+    inWorldSpace: 1
   InheritVelocityModule:
     enabled: 0
     m_Mode: 0
@@ -18409,7 +18409,6 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1265337890}
-  - {fileID: 1287817180}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &330585547
@@ -30400,8 +30399,8 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1812618469}
-  - {fileID: 1227369194}
   - {fileID: 341622328}
+  - {fileID: 1227369194}
   - {fileID: 519109579}
   - {fileID: 1131481105}
   - {fileID: 1535962182}
@@ -40281,13 +40280,13 @@ Transform:
   m_GameObject: {fileID: 1287817179}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -2, z: 6.36}
+  m_LocalPosition: {x: 2.7361612, y: 0.4, z: 7.5175405}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1833911185}
   - {fileID: 120363133}
-  m_Father: {fileID: 330585546}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1287817181
 MonoBehaviour:
@@ -40304,8 +40303,8 @@ MonoBehaviour:
   weather: {fileID: 674210672}
   streaks: {fileID: 1833911187}
   leaves: {fileID: 120363135}
-  edgeOffset: 2.7
-  minSideways: 0.35
+  reach: 4.8
+  leafFrontWidth: 11
   streakThreshold: 1
   maxStreaksPerSecond: 14
   streakSpeedPerWind: 0.9
@@ -46675,7 +46674,7 @@ ParticleSystem:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-  moveWithTransform: 0
+  moveWithTransform: 1
   moveWithCustomTransform: {fileID: 0}
   scalingMode: 1
   randomSeed: 0
@@ -47240,8 +47239,8 @@ ParticleSystem:
     radiusThickness: 1
     donutRadius: 0.2
     m_Position: {x: 0, y: 0, z: 0}
-    m_Rotation: {x: 0, y: 0, z: 0}
-    m_Scale: {x: 4.8, y: 1.4, z: 0.3}
+    m_Rotation: {x: 0, y: 20, z: 0}
+    m_Scale: {x: 11, y: 0.59999996, z: 9}
     placementMode: 0
     m_MeshMaterialIndex: 0
     m_MeshNormalOffset: 0
@@ -48644,7 +48643,7 @@ ParticleSystem:
         m_PreInfinity: 2
         m_PostInfinity: 2
         m_RotationOrder: 4
-    inWorldSpace: 0
+    inWorldSpace: 1
   InheritVelocityModule:
     enabled: 0
     m_Mode: 0
@@ -50564,7 +50563,7 @@ ParticleSystem:
     textureScale: {x: 1, y: 1}
     ribbonCount: 1
     shadowBias: 0.5
-    worldSpace: 0
+    worldSpace: 1
     dieWithParticles: 1
     sizeAffectsWidth: 1
     sizeAffectsLifetime: 0
@@ -59070,3 +59069,4 @@ SceneRoots:
   - {fileID: 1194498434}
   - {fileID: 1687384623}
   - {fileID: 674210673}
+  - {fileID: 1287817180}

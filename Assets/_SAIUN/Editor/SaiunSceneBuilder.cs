@@ -101,7 +101,6 @@ namespace _SAIUN.Editor
         private const float SplashGravity = 0.6f;
 
         // ---- 바람 임시값 ----
-        private const float WindDepth = SceneMetrics.UnitDepth - 0.1f;   // 비보다 조금 앞. 모래밭·바다 위를 분다.
         private const float WindStreakWidth = 0.035f;     // 바람결 굵기(유닛)
         private const float WindStreakAlpha = 0.45f;
         private const float WindStreakTrail = 0.45f;      // 꼬리 길이(알갱이 수명에 대한 비율). 빠를수록 길다.
@@ -116,10 +115,14 @@ namespace _SAIUN.Editor
         private const float WindLeafSpin = 3.5f;          // 잎이 도는 빠르기(라디안/초)
         private const float WindLeafFlutter = 0.35f;      // 잎이 오르내리는 난류 세기
         private const float WindLeafFlutterFrequency = 0.6f;
-        // 바람이 지나는 띠(창 화소, 위에서부터): 지평선(약 500) 조금 위부터 하단 바 위까지, 모래밭과 바다 위로만 분다.
-        // 하늘에 그으면 사실적인 하늘 위에 긁힌 자국처럼 보인다(2026-09-29).
-        private const float WindBandTopPixels = 470f;
-        private const float WindBandBottomPixels = 610f;
+        // 바람이 지나는 구역(월드): 카메라 앞 데크·모래밭·바다 위, 눈높이(0.8) 아래라 하늘에는 긋지 않는다
+        // (하늘에 그으면 사실적인 하늘 위에 긁힌 자국처럼 보인다). 가운데는 앞으로 8, 폭 11, 깊이 9, 높이 0.1~0.7.
+        private const float WindAreaDistance = 8f;
+        private const float WindAreaWidth = 11f;
+        private const float WindAreaDepth = 9f;
+        private const float WindAreaBottom = 0.1f;
+        private const float WindAreaTop = 0.7f;
+        private const float WindLeafFrontThickness = 0.3f;   // 잎이 들어오는 띠의 두께(바람 방향)
 
         // ---- 풍향계 재질 (모양은 VaneModelBuilder) ----
         private const float VaneSmoothness = 0.55f;
@@ -1166,18 +1169,26 @@ namespace _SAIUN.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // 눈에 보이는 바람: 카메라 자식이라 화면 기준으로 흐른다. 모래밭·바다 위 낮은 띠로만 지나간다.
+        // 눈에 보이는 바람: 세상 공간에서 실제 바람 방향으로 흐른다. 카메라 앞 데크·모래밭·바다 위 눈높이 아래 구역에만 분다.
         private static void EnsureWind(Camera camera, WeatherController weather)
         {
+            // 예전엔 카메라 자식이었다(화면 평면 위로만 흘렀다). 세상으로 옮긴다.
             Transform existing = camera.transform.Find("Wind");
+            if (existing == null)
+            {
+                GameObject found = GameObject.Find("Wind");
+                existing = found != null ? found.transform : null;
+            }
             GameObject windGo = existing != null ? existing.gameObject : new GameObject("Wind");
-            windGo.transform.SetParent(camera.transform, false);
-            float bandCenter = SceneMetrics.PixelsToWorld(SceneMetrics.WindowHeight / 2f - (WindBandTopPixels + WindBandBottomPixels) / 2f);
-            windGo.transform.localPosition = new Vector3(0f, bandCenter, WindDepth);
-            windGo.transform.localRotation = Quaternion.identity;
+            windGo.transform.SetParent(null, false);
+            Vector3 ahead = Vector3.ProjectOnPlane(SceneMetrics.CameraRotation * Vector3.forward, Vector3.up).normalized;
+            Vector3 center = new Vector3(SceneMetrics.CameraPosition.x, (WindAreaBottom + WindAreaTop) / 2f, SceneMetrics.CameraPosition.z)
+                             + ahead * WindAreaDistance;
+            windGo.transform.SetPositionAndRotation(center, Quaternion.identity);
+            windGo.transform.localScale = Vector3.one;
 
-            float cardWidth = SceneMetrics.PixelsToWorld(SceneMetrics.WindowWidth);
-            float bandHeight = SceneMetrics.PixelsToWorld(WindBandBottomPixels - WindBandTopPixels);
+            float areaHeight = WindAreaTop - WindAreaBottom;
+            var areaRotation = new Vector3(0f, SceneMetrics.CameraYawDegrees, 0f);
 
             Material windMaterial = WeatherArtBuilder.EnsureWindMaterial();
             ParticleSystem streaks = EnsureParticles(windGo.transform, "Streaks", windMaterial, ps =>
@@ -1190,7 +1201,7 @@ namespace _SAIUN.Editor
                 main.startSpeed = 0f;
                 main.startSize = WindStreakWidth;
                 main.startColor = new Color(1f, 1f, 1f, WindStreakAlpha);
-                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
 
                 // 머리 알갱이는 그리지 않고 꼬리만 그린다. 가운데가 굵고 양 끝이 가늘다.
                 ParticleSystem.TrailModule trails = ps.trails;
@@ -1199,7 +1210,7 @@ namespace _SAIUN.Editor
                 trails.ratio = 1f;
                 trails.lifetime = WindStreakTrail;
                 trails.minVertexDistance = WindStreakVertexSpacing;
-                trails.worldSpace = false;
+                trails.worldSpace = true;
                 trails.dieWithParticles = true;
                 trails.inheritParticleColor = true;
                 trails.sizeAffectsWidth = true;
@@ -1217,15 +1228,16 @@ namespace _SAIUN.Editor
                 ParticleSystem.EmissionModule emission = ps.emission;
                 emission.rateOverTime = 0f;
 
-                // 띠 안 어디서나 생겨 잠깐 흐르다 사라진다.
+                // 구역 어디서나 생겨 잠깐 흐르다 사라진다. 구역은 보는 방향으로 눕힌다.
                 ParticleSystem.ShapeModule shape = ps.shape;
                 shape.shapeType = ParticleSystemShapeType.Box;
                 shape.position = Vector3.zero;
-                shape.scale = new Vector3(cardWidth, bandHeight, 0.3f);
+                shape.rotation = areaRotation;
+                shape.scale = new Vector3(WindAreaWidth, areaHeight, WindAreaDepth);
 
                 ParticleSystem.VelocityOverLifetimeModule velocity = ps.velocityOverLifetime;
                 velocity.enabled = true;
-                velocity.space = ParticleSystemSimulationSpace.Local;
+                velocity.space = ParticleSystemSimulationSpace.World;
                 velocity.x = 0f;
                 velocity.y = 0f;
                 velocity.z = 0f;
@@ -1250,20 +1262,20 @@ namespace _SAIUN.Editor
                 main.startSize = new ParticleSystem.MinMaxCurve(WindLeafSizeMin, WindLeafSizeMax);
                 main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
                 main.startColor = new ParticleSystem.MinMaxGradient(SaiunPalette.JungleTeal, SaiunPalette.TeaGreen);
-                main.simulationSpace = ParticleSystemSimulationSpace.Local;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
 
                 ParticleSystem.EmissionModule emission = ps.emission;
                 emission.rateOverTime = 0f;
 
-                // 바람이 오는 쪽 가장자리의 세로 띠. 가로 위치는 WindEffect가 바람 방향에 맞춘다.
+                // 바람이 불어오는 쪽 가장자리의 띠. 자리·방향은 WindEffect가 바람에 맞춘다.
                 ParticleSystem.ShapeModule shape = ps.shape;
                 shape.shapeType = ParticleSystemShapeType.Box;
                 shape.position = Vector3.zero;
-                shape.scale = new Vector3(0.1f, bandHeight, 0.3f);
+                shape.scale = new Vector3(WindAreaWidth, areaHeight, WindLeafFrontThickness);
 
                 ParticleSystem.VelocityOverLifetimeModule velocity = ps.velocityOverLifetime;
                 velocity.enabled = true;
-                velocity.space = ParticleSystemSimulationSpace.Local;
+                velocity.space = ParticleSystemSimulationSpace.World;
                 velocity.x = 0f;
                 velocity.y = 0f;
                 velocity.z = 0f;
@@ -1292,7 +1304,8 @@ namespace _SAIUN.Editor
             so.FindProperty("weather").objectReferenceValue = weather;
             so.FindProperty("streaks").objectReferenceValue = streaks;
             so.FindProperty("leaves").objectReferenceValue = leaves;
-            so.FindProperty("edgeOffset").floatValue = cardWidth / 2f + RainMargin / 2f;
+            so.FindProperty("reach").floatValue = WindAreaDepth / 2f + WindLeafFrontThickness;
+            so.FindProperty("leafFrontWidth").floatValue = WindAreaWidth;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
