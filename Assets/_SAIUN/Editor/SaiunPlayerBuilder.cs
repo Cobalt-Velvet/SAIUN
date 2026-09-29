@@ -16,6 +16,8 @@ namespace _SAIUN.Editor
         private const string OutputDir = "Build/Windows";
         private const string ExeName = "SAIUN.exe";
         private const long BytesPerMegabyte = 1024 * 1024;
+        private const string LicenseFolder = "Licenses";
+        private const string FontLicenseName = "SarasaGothic-OFL.txt";
 
         [MenuItem("SAIUN/Build Windows Player")]
         public static void BuildWindows()
@@ -36,6 +38,10 @@ namespace _SAIUN.Editor
 
             if (summary.result == BuildResult.Succeeded)
             {
+                // 앱에 넣은 글꼴(Sarasa Gothic, SIL OFL 1.1)은 라이선스 전문을 함께 배포해야 한다.
+                string licenses = Path.Combine(OutputDir, LicenseFolder);
+                Directory.CreateDirectory(licenses);
+                File.Copy(FontBuilder.LicensePath, Path.Combine(licenses, FontLicenseName), true);
                 Debug.Log($"SaiunPlayerBuilder: 빌드 성공 {outputPath} ({summary.totalSize / BytesPerMegabyte} MB, {summary.totalTime.TotalSeconds:F0}s)");
                 return;
             }

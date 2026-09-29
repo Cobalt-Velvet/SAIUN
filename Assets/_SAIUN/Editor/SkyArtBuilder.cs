@@ -16,7 +16,8 @@ namespace _SAIUN.Editor
     {
         private const string NoisePath = "Assets/_SAIUN/Art/Textures/SkyNoise.asset";
         private const string MaterialPath = "Assets/_SAIUN/Art/Materials/Sky.mat";
-        private const string TextShadowPath = "Assets/_SAIUN/Art/Materials/HUD_TextShadow.mat";
+        public const string TextShadowPath = "Assets/_SAIUN/Art/Materials/HUD_TextShadow.mat";
+        public const string ClockShadowPath = "Assets/_SAIUN/Art/Materials/HUD_ClockShadow.mat";
         private const string SkyShaderName = "Hidden/SAIUN/Sky";
 
         private const int NoiseSize = 64;
@@ -116,21 +117,29 @@ namespace _SAIUN.Editor
             return material;
         }
 
-        /// <summary>시계 글자 그림자 재질. 글꼴 재질을 복사해 underlay를 켠다.</summary>
-        public static Material EnsureTextShadowMaterial(TMP_FontAsset font)
+        /// <summary>
+        /// 시계 글자 그림자 재질. 글꼴 재질(아틀라스 포함)을 그대로 따라 underlay를 켠다.
+        /// 글꼴이 바뀌면 같은 자리의 재질을 새 글꼴로 다시 맞춘다.
+        /// </summary>
+        public static Material EnsureTextShadowMaterial(TMP_FontAsset font, string path)
         {
-            var material = AssetDatabase.LoadAssetAtPath<Material>(TextShadowPath);
-            if (material != null) return material;
             if (font == null || font.material == null) return null;
-
-            material = new Material(font.material) { name = Path.GetFileNameWithoutExtension(TextShadowPath) };
+            var material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            bool created = material == null;
+            if (created) material = new Material(font.material) { name = Path.GetFileNameWithoutExtension(path) };
+            material.shader = font.material.shader;
+            material.CopyPropertiesFromMaterial(font.material);
             material.EnableKeyword(UnderlayKeyword);
             material.SetColor("_UnderlayColor", TextShadowColor);
             material.SetFloat("_UnderlayOffsetY", TextShadowOffsetY);
             material.SetFloat("_UnderlayDilate", TextShadowDilate);
             material.SetFloat("_UnderlaySoftness", TextShadowSoftness);
-            Directory.CreateDirectory(Path.GetDirectoryName(TextShadowPath));
-            AssetDatabase.CreateAsset(material, TextShadowPath);
+            if (created)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                AssetDatabase.CreateAsset(material, path);
+            }
+            EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssets();
             return material;
         }

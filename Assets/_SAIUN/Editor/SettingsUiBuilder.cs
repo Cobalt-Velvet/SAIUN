@@ -69,7 +69,7 @@ namespace _SAIUN.Editor
         private static TMP_FontAsset s_font;
 
         private const string ScenePath = "Assets/_SAIUN/Scenes/Main.unity";
-        private const string FontAssetPath = "Assets/_SAIUN/Art/Fonts/MalgunGothic SDF.asset";
+        private const string FontAssetPath = FontBuilder.UiFontPath;
 
         // 레이아웃을 고친 뒤 기존 패널·설정 화면을 지우고 새로 만든다. 배치 모드에서도 쓴다.
         [MenuItem("SAIUN/Rebuild Settings UI")]

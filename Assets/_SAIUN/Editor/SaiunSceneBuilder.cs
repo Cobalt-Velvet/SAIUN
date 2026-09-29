@@ -30,8 +30,6 @@ namespace _SAIUN.Editor
         private const string ScenePath = "Assets/_SAIUN/Scenes/Main.unity";
         private const string LegacyScenePath = "Assets/Scenes/SampleScene.unity";
         private const string LegacySceneFolder = "Assets/Scenes";
-        private const string FontFolder = "Assets/_SAIUN/Art/Fonts";
-        private const string FontAssetPath = FontFolder + "/MalgunGothic SDF.asset";
         private const string PrefabFolder = "Assets/_SAIUN/Prefabs/UI";
         private const string BottomBarPrefabPath = PrefabFolder + "/BottomBar.prefab";
         private const string TimerHudPrefabPath = PrefabFolder + "/TimerHud.prefab";
@@ -49,7 +47,6 @@ namespace _SAIUN.Editor
         private const int WindowHeight = SceneMetrics.WindowHeight;
 
         // ---- 임시 레이아웃값 (실측 대기) ----
-        private const string PlaceholderFontFamily = "Malgun Gothic";
         private const int BarPadding = 16;
         private const int BarButtonWidth = 96;
         private const int BarControlHeight = 44;
@@ -138,7 +135,7 @@ namespace _SAIUN.Editor
                 return;
             }
 
-            TMP_FontAsset font = EnsureFontAsset();
+            TMP_FontAsset font = FontBuilder.EnsureUiFont();
             BuildPrefabsIfMissing(font);
             SetupMainScene();
             AssetDatabase.SaveAssets();
@@ -149,7 +146,7 @@ namespace _SAIUN.Editor
         public static void BuildPrefabs()
         {
             if (!EnsureTmpResources()) return;
-            BuildPrefabsIfMissing(EnsureFontAsset());
+            BuildPrefabsIfMissing(FontBuilder.EnsureUiFont());
             AssetDatabase.SaveAssets();
         }
 
@@ -159,7 +156,7 @@ namespace _SAIUN.Editor
         public static void RebuildPrefabs()
         {
             if (!EnsureTmpResources()) return;
-            TMP_FontAsset font = EnsureFontAsset();
+            TMP_FontAsset font = FontBuilder.EnsureUiFont();
             BuildBottomBarPrefab(font);
             BuildTimerHudPrefab(font);
             AssetDatabase.SaveAssets();
@@ -242,36 +239,6 @@ namespace _SAIUN.Editor
             TMP_PackageResourceImporter.ImportResources(true, false, false);
             AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
             return Resources.Load<TMP_Settings>("TMP Settings") != null;
-        }
-
-        // 한글 표시용 임시 폰트. OS 폰트를 DynamicOS 모드로 참조하므로 폰트 파일을 저장소에 넣지 않는다.
-        private static TMP_FontAsset EnsureFontAsset()
-        {
-            var existing = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
-            if (existing != null) return existing;
-
-            TMP_FontAsset fontAsset = TMP_FontAsset.CreateFontAsset(PlaceholderFontFamily, "Regular");
-            if (fontAsset == null)
-            {
-                Debug.LogWarning($"SaiunSceneBuilder: OS 폰트 '{PlaceholderFontFamily}'를 찾지 못해 TMP 기본 폰트를 씁니다. 한글이 표시되지 않을 수 있습니다.");
-                return TMP_Settings.defaultFontAsset;
-            }
-
-            EnsureFolder(FontFolder);
-            fontAsset.name = Path.GetFileNameWithoutExtension(FontAssetPath);
-            AssetDatabase.CreateAsset(fontAsset, FontAssetPath);
-
-            Texture2D atlas = fontAsset.atlasTextures[0];
-            atlas.name = fontAsset.name + " Atlas";
-            AssetDatabase.AddObjectToAsset(atlas, fontAsset);
-
-            Material material = fontAsset.material;
-            material.name = fontAsset.name + " Material";
-            AssetDatabase.AddObjectToAsset(material, fontAsset);
-
-            AssetDatabase.SaveAssets();
-            AssetDatabase.ImportAsset(FontAssetPath);
-            return AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath);
         }
 
         // ---- Bottom Bar 프리팹 ----
@@ -495,12 +462,16 @@ namespace _SAIUN.Editor
 
             // 세션 설정 패널과 시스템 설정 화면(P4-04). 하단 바보다 위, 알림·테두리보다 아래에 둔다.
             Transform barTransform = uiCard.Find("BottomBar");
-            SettingsUiBuilder.Build(uiCard, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath),
+            SettingsUiBuilder.Build(uiCard, FontBuilder.EnsureUiFont(),
                 gameManager, barTransform != null ? barTransform.GetComponent<BottomBarView>() : null, rebuild: false);
 
             EnsureScreenAlert(uiCard, gameManager);
             EnsureSound(gameManager);
             EnsureGlassRim(uiCard);
+
+            // 앱 글꼴(Sarasa Gothic K)을 프리팹과 씬의 모든 글자에 입히고, 시계 글자 그림자를 새 글꼴로 다시 입힌다.
+            FontBuilder.Apply(new[] { BottomBarPrefabPath, TimerHudPrefabPath });
+            ShadeHudText(uiCard.Find("TimerHud"));
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -1079,13 +1050,16 @@ namespace _SAIUN.Editor
         private static void ShadeHudText(Transform hud)
         {
             if (hud == null) return;
-            Material shadow = SkyArtBuilder.EnsureTextShadowMaterial(AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath));
-            if (shadow == null) return;
+            TMP_FontAsset ui = FontBuilder.EnsureUiFont();
+            TMP_FontAsset clock = FontBuilder.EnsureClockFont();
+            Material uiShadow = SkyArtBuilder.EnsureTextShadowMaterial(ui, SkyArtBuilder.TextShadowPath);
+            Material clockShadow = SkyArtBuilder.EnsureTextShadowMaterial(clock, SkyArtBuilder.ClockShadowPath);
+            if (uiShadow == null || clockShadow == null) return;
             foreach (string name in new[] { "PhaseLabel", "PrimaryText", "SecondaryText" })
             {
                 Transform child = hud.Find(name);
                 if (child == null || !child.TryGetComponent(out TMP_Text text)) continue;
-                text.fontSharedMaterial = shadow;
+                text.fontSharedMaterial = FontBuilder.FontFor(text, ui, clock) == clock ? clockShadow : uiShadow;
                 EditorUtility.SetDirty(text);
             }
         }
