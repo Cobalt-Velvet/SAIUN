@@ -141,15 +141,17 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 화면_오른쪽에_둔_기본_크기_화단은_Scene_Layer_안에_들어간다()
+        public void 눈높이_카메라에서_기본_크기_화단은_창_안_지평선_아래_하단_바_위에_앉는다()
         {
-            // 사양서 2-3: 화단은 우측, Scene Layer 중앙 하단. 기본 칸 간격이 그 영역에 맞는지 본다.
-            var anchor = new Vector2(
-                SceneMetrics.WindowWidth * 0.75f,
-                (SceneMetrics.SceneLayerTop + SceneMetrics.SceneLayerBottom) / 2f);
+            // 흙 윗면 가운데를 씬 조립기와 같은 자리(290, 560)에 둔다. 흙 칸 네 귀퉁이가 창 안, 하늘의 지평선(약 501) 아래,
+            // 하단 바(612) 위에 보여야 한다. 가운데는 창 가운데보다 오른쪽이다(사양서 2-3 "우측").
+            var anchor = new Vector2(290f, 560f);
             Vector3 surface = SceneMetrics.WindowPixelsToGround(anchor, _bed.SurfaceHeight);
             _go.transform.position = new Vector3(surface.x, 0f, surface.z);
+            Assert.Greater(anchor.x, SceneMetrics.WindowWidth / 2f);
 
+            float horizon = SceneMetrics.WindowHeight / 2f
+                            + SceneMetrics.CameraFocal * Mathf.Tan(SceneMetrics.CameraTiltUpDegrees * Mathf.Deg2Rad) * SceneMetrics.WindowHeight;
             float half = _bed.CellSize / 2f;
             foreach (Vector3 corner in new[]
                      {
@@ -160,8 +162,8 @@ namespace _SAIUN.Tests
                      })
             {
                 Vector2 pixel = SceneMetrics.WorldToWindowPixels(corner);
-                Assert.That(pixel.x, Is.InRange(SceneMetrics.WindowWidth / 2f, SceneMetrics.WindowWidth), "오른쪽 절반");
-                Assert.That(pixel.y, Is.InRange(SceneMetrics.SceneLayerTop, SceneMetrics.SceneLayerBottom), "Scene Layer");
+                Assert.That(pixel.x, Is.InRange(0f, SceneMetrics.WindowWidth), "창 안");
+                Assert.That(pixel.y, Is.InRange(horizon, SceneMetrics.SceneLayerBottom), "지평선 아래, 하단 바 위");
             }
         }
 

@@ -61,10 +61,16 @@ namespace _SAIUN.Editor
         private const int DotSize = 12;
         private const int DotSpacing = 10;
 
+        // ---- 하단 바 윗가장자리 번짐 ----
+        private const string BarFadeTexturePath = "Assets/_SAIUN/Art/Textures/ui_bar_fade.png";
+        private const int BarFadeTextureWidth = 4;
+        private const int BarFadeTextureHeight = 64;
+        private const float BarFadeHeight = 28f;
+
         // ---- 화단 임시값 (실측 대기) ----
-        // 화단 흙 윗면 중심을 둘 창 픽셀. 사양서 2-3 "우측 고정 / 중앙 하단"에 따라
-        // Scene Layer(340~612px)의 오른쪽 절반에 들어가고 하단 바와 16px 떨어지게 잡았다.
-        private static readonly Vector2 FlowerbedWindowPixel = new Vector2(352f, 490f);
+        // 화단 흙 윗면 중심을 둘 창 픽셀. 눈높이 카메라에서 화분이 하단 바 바로 위, 가운데보다 조금 오른쪽에 앉아
+        // 왼쪽 바다에 윤슬 길이 트이고 오른쪽 뒤 모서리의 풍향계가 창 안에 든다.
+        private static readonly Vector2 FlowerbedWindowPixel = new Vector2(290f, 560f);
         // 바랜 나무는 거의 무광이고 결이 조금 도드라진다. 흙도 거의 무광.
         private const float PlanterSmoothness = 0.14f;
         private const float WoodBumpScale = 0.8f;
@@ -82,7 +88,8 @@ namespace _SAIUN.Editor
         private const float GlowIntensity = 2.5f;
 
         // ---- 비 임시값 ----
-        private const float RainDepth = 4f;          // 카메라에서 빗줄기까지 거리. 화단(약 8)보다 앞이다.
+        // 카메라에서 빗줄기까지 거리. 한 유닛이 100 화소로 보이는 깊이라 화소로 잰 크기가 그대로 맞는다(화분보다 조금 뒤).
+        private const float RainDepth = SceneMetrics.UnitDepth;
         private const float RainFallSpeed = 9f;      // RainEffect 기본값과 같게 둔다
         private const float RainDropSize = 0.016f;
         private const float RainStreakPerSpeed = 0.03f;
@@ -97,7 +104,7 @@ namespace _SAIUN.Editor
         private const float SplashGravity = 0.6f;
 
         // ---- 바람 임시값 ----
-        private const float WindDepth = 3.6f;             // 비보다 조금 앞. 화단(약 8)보다 앞이다.
+        private const float WindDepth = SceneMetrics.UnitDepth - 0.1f;   // 비보다 조금 앞. 모래밭·바다 위를 분다.
         private const float WindStreakWidth = 0.035f;     // 바람결 굵기(유닛)
         private const float WindStreakAlpha = 0.45f;
         private const float WindStreakTrail = 0.45f;      // 꼬리 길이(알갱이 수명에 대한 비율). 빠를수록 길다.
@@ -484,6 +491,7 @@ namespace _SAIUN.Editor
             EnsurePrefabInstance<TimerHudView>(uiCard, "TimerHud", TimerHudPrefabPath, gameManager);
             ShadeHudText(uiCard.Find("TimerHud"));
             EnsurePrefabInstance<BottomBarView>(uiCard, "BottomBar", BottomBarPrefabPath, gameManager);
+            EnsureBarFade(uiCard);
 
             // 세션 설정 패널과 시스템 설정 화면(P4-04). 하단 바보다 위, 알림·테두리보다 아래에 둔다.
             Transform barTransform = uiCard.Find("BottomBar");
@@ -761,7 +769,7 @@ namespace _SAIUN.Editor
             rim.GetComponent<RawImage>().raycastTarget = false;
         }
 
-        // 사양서 2-4: 고정 Orthographic 아이소메트릭 카메라.
+        // 하늘과 같은 눈(원근, 14° 올려다봄, 같은 화각). 사양서 2-4의 정사영 아이소메트릭을 사용자 선택으로 바꿨다.
         // 배경 알파 0과 Solid Color 설정은 투명 창에 필요하므로 건드리지 않는다.
         private static Camera SetupCamera()
         {
@@ -772,17 +780,15 @@ namespace _SAIUN.Editor
                 return null;
             }
 
-            camera.orthographic = true;
-            camera.orthographicSize = SceneMetrics.CameraOrthographicSize;
+            camera.orthographic = false;
+            camera.fieldOfView = SceneMetrics.CameraFieldOfView;
             camera.nearClipPlane = SceneMetrics.CameraNearClip;
             camera.farClipPlane = SceneMetrics.CameraFarClip;
 
             Transform t = camera.transform;
-            t.rotation = Quaternion.Euler(SceneMetrics.CameraPitchDegrees, SceneMetrics.CameraYawDegrees, 0f);
-            t.position = -t.forward * SceneMetrics.CameraDistance;   // 씬 원점을 바라보게 물린다
+            t.SetPositionAndRotation(SceneMetrics.CameraPosition, SceneMetrics.CameraRotation);
 
-            Debug.Log($"SaiunSceneBuilder: 카메라 Orthographic Size {SceneMetrics.CameraOrthographicSize} " +
-                      $"(pixelsPerUnit {SceneMetrics.PixelsPerUnit})");
+            Debug.Log($"SaiunSceneBuilder: 카메라 원근 세로 화각 {SceneMetrics.CameraFieldOfView:F1}°, 눈높이 {SceneMetrics.CameraEyeHeight}");
             return camera;
         }
 
@@ -835,7 +841,7 @@ namespace _SAIUN.Editor
 
         // ---- 화단 (P2-02) ----
 
-        // 화단과 임시 외형, 그림자 받이를 만든다. 위치는 처음 만들 때만 정하고, 이후에는 인스펙터에서 조정한 값을 지킨다.
+        // 화단과 외형(화분·흙·데크)을 만들고, 흙 윗면 중심이 지정한 창 픽셀에 오도록 자리를 잡는다.
         private static Flowerbed EnsureFlowerbed()
         {
             Shader lit = Shader.Find(LitShaderName);
@@ -898,12 +904,9 @@ namespace _SAIUN.Editor
             so.FindProperty("deck").objectReferenceValue = deck;
             so.ApplyModifiedPropertiesWithoutUndo();
 
-            if (created)
-            {
-                // 흙 윗면 중심이 지정한 창 픽셀에 보이도록 바닥 원점을 역산한다.
-                Vector3 surface = SceneMetrics.WindowPixelsToGround(FlowerbedWindowPixel, bed.SurfaceHeight);
-                bedGo.transform.SetPositionAndRotation(new Vector3(surface.x, 0f, surface.z), Quaternion.identity);
-            }
+            // 흙 윗면 중심이 지정한 창 픽셀에 보이도록 바닥 원점을 역산한다. 카메라가 바뀌면 자리도 따라 바뀐다.
+            Vector3 surface = SceneMetrics.WindowPixelsToGround(FlowerbedWindowPixel, bed.SurfaceHeight);
+            bedGo.transform.SetPositionAndRotation(new Vector3(surface.x, 0f, surface.z), Quaternion.identity);
 
             bed.FitVisuals();
             Debug.Log($"SaiunSceneBuilder: 화단 원점 {bedGo.transform.position}, 칸 간격 {bed.CellSize}");
@@ -1017,6 +1020,59 @@ namespace _SAIUN.Editor
             lighting.FindProperty("sky").objectReferenceValue = sky.GetComponent<SkyView>();
             lighting.FindProperty("sun").objectReferenceValue = Object.FindFirstObjectByType<SunOrbitController>();
             lighting.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 하단 바 윗가장자리를 장면 쪽으로 번지게 한다. 곧은 선으로 장면을 자르지 않고 바다·데크가 바 속으로 가라앉는다.
+        private static void EnsureBarFade(Transform uiCard)
+        {
+            Transform bar = uiCard.Find("BottomBar");
+            if (bar == null) return;
+            Sprite fade = EnsureBarFadeSprite();
+            Transform existing = uiCard.Find("BarFade");
+            GameObject go = existing != null ? existing.gameObject : new GameObject("BarFade", typeof(RectTransform), typeof(Image));
+            go.transform.SetParent(uiCard, false);
+            go.transform.SetSiblingIndex(bar.GetSiblingIndex());
+
+            var rt = (RectTransform)go.transform;
+            rt.anchorMin = new Vector2(0f, 0f);
+            rt.anchorMax = new Vector2(1f, 0f);
+            rt.pivot = new Vector2(0.5f, 0f);
+            rt.anchoredPosition = new Vector2(0f, SceneMetrics.BottomBarHeight);
+            rt.sizeDelta = new Vector2(0f, BarFadeHeight);
+
+            var image = go.GetComponent<Image>();
+            image.sprite = fade;
+            image.type = Image.Type.Simple;
+            image.color = SaiunPalette.BottomBarBackground;
+            image.raycastTarget = false;
+        }
+
+        // 세로 그러데이션(흰색, 알파가 아래 1 → 위 0, 부드러운 곡선)
+        private static Sprite EnsureBarFadeSprite()
+        {
+            if (!System.IO.File.Exists(BarFadeTexturePath))
+            {
+                var texture = new Texture2D(BarFadeTextureWidth, BarFadeTextureHeight, TextureFormat.RGBA32, false);
+                for (int y = 0; y < BarFadeTextureHeight; y++)
+                {
+                    float t = (y + 0.5f) / BarFadeTextureHeight;
+                    float alpha = 1f - Mathf.SmoothStep(0f, 1f, t);
+                    for (int x = 0; x < BarFadeTextureWidth; x++) texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+                texture.Apply();
+                System.IO.File.WriteAllBytes(BarFadeTexturePath, texture.EncodeToPNG());
+                Object.DestroyImmediate(texture);
+                AssetDatabase.ImportAsset(BarFadeTexturePath, ImportAssetOptions.ForceSynchronousImport);
+            }
+            if (AssetImporter.GetAtPath(BarFadeTexturePath) is TextureImporter importer && importer.textureType != TextureImporterType.Sprite)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.wrapMode = TextureWrapMode.Clamp;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                importer.SaveAndReimport();
+            }
+            return AssetDatabase.LoadAssetAtPath<Sprite>(BarFadeTexturePath);
         }
 
         // 시계 글자에 은은한 그림자를 깐다. 흰 구름 위를 지나도 밝은 글자가 읽힌다.

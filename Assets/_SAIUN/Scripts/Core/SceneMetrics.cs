@@ -33,37 +33,49 @@ namespace _SAIUN.Scripts.Core
         /// </summary>
         public const float PixelsPerUnit = 100f;
 
-        /// <summary>
-        /// 카메라 Orthographic Size. 화면 높이 절반에 해당하는 월드 단위다.
-        /// PixelsPerUnit을 100으로 고정하기 위해 창 높이에서 계산한다.
-        /// 680 / (2 × 100) = 3.4
-        /// </summary>
-        public const float CameraOrthographicSize = WindowHeight / (2f * PixelsPerUnit);
+        // ---- 눈 (2026-09-29 사용자 선택 "수평선과 같은 눈높이") ----
+        // 사양서 v1.1 7-4의 아이소메트릭(위 45°·옆 45° 정사영)을 바꿨다. 정원을 하늘과 같은 카메라로 본다:
+        // 원근, 지평선에서 14° 올려다보고 세로 화각도 같다. 그래서 데크 선이 바다 수평선으로 모이고,
+        // 화분은 앉은 눈높이에서 살짝 내려다보여 작물이 바다와 노을을 배경으로 선다.
 
-        // ---- 아이소메트릭 시점 (사양서 v1.1 7-4: 위 45도 / 측면 45도) ----
-        public const float CameraPitchDegrees = 45f;
-        public const float CameraYawDegrees = 45f;
+        /// <summary>카메라가 지평선에서 올려다보는 각(도). 하늘 셰이더의 VIEW_PITCH와 같아야 한다.</summary>
+        public const float CameraTiltUpDegrees = 14f;
 
-        /// <summary>
-        /// 카메라와 씬 원점 사이의 거리. Orthographic이라 화면 크기에는 영향이 없고 클리핑과 그림자에만 쓰인다.
-        /// URP의 Shadow Distance는 카메라에서부터 재므로, 그 값보다 확실히 가깝게 둬야 씬이 그림자 범위 안에 들어온다.
-        /// </summary>
-        public const float CameraDistance = 10f;
+        /// <summary>카메라가 옆으로 돈 각(도). 화분 긴 변이 수평선과 거의 나란하게 보인다.</summary>
+        public const float CameraYawDegrees = 20f;
+
+        /// <summary>초점 거리(화면 높이를 1로 잰 값). 하늘 셰이더의 VIEW_FOCAL과 같아야 한다.</summary>
+        public const float CameraFocal = 0.95f;
+
+        /// <summary>데크 윗면(월드 y = 0)에서 눈까지의 높이. 앉은 눈높이쯤이라 화분 흙이 살짝 보인다.</summary>
+        public const float CameraEyeHeight = 0.8f;
 
         public const float CameraNearClip = 0.1f;
-        public const float CameraFarClip = CameraDistance * 3f;
+        public const float CameraFarClip = 40f;
 
         /// <summary>URP 에셋에 설정한 Shadow Distance. 여기서는 검증용으로만 쓴다.</summary>
         public const float ShadowDistance = 20f;
 
         /// <summary>
-        /// 유리 배경 캔버스를 카메라에서 떨어뜨리는 거리.
+        /// 유리 배경(하늘) 캔버스를 카메라에서 떨어뜨리는 거리.
         /// 씬의 어떤 오브젝트보다 뒤에 있어야 깊이 테스트로 가려지고, Far 클립 안에 있어야 그려진다.
         /// </summary>
         public const float BackdropPlaneDistance = CameraFarClip - 1f;
 
+        /// <summary>
+        /// 1 월드 유닛이 PixelsPerUnit 화소로 보이는 깊이. 카메라에 붙인 비·바람 효과를 여기 두면 화소 단위로 잰 크기가 그대로 맞는다.
+        /// 0.95 × 680 / 100 = 6.46
+        /// </summary>
+        public const float UnitDepth = CameraFocal * WindowHeight / PixelsPerUnit;
+
+        /// <summary>세로 화각(도). 2·atan(0.5 / 초점) ≈ 55.5°.</summary>
+        public static float CameraFieldOfView => 2f * Mathf.Atan(0.5f / CameraFocal) * Mathf.Rad2Deg;
+
+        /// <summary>카메라 자리(월드). 데크 윗면 위 눈높이다.</summary>
+        public static Vector3 CameraPosition => new Vector3(0f, CameraEyeHeight, 0f);
+
         /// <summary>카메라 회전. 투영 계산에 쓴다.</summary>
-        public static Quaternion CameraRotation => Quaternion.Euler(CameraPitchDegrees, CameraYawDegrees, 0f);
+        public static Quaternion CameraRotation => Quaternion.Euler(-CameraTiltUpDegrees, CameraYawDegrees, 0f);
 
         /// <summary>화면 픽셀 길이를 월드 단위로 바꾼다.</summary>
         public static float PixelsToWorld(float pixels) => pixels / PixelsPerUnit;
@@ -72,35 +84,36 @@ namespace _SAIUN.Scripts.Core
         public static float WorldToPixels(float worldUnits) => worldUnits * PixelsPerUnit;
 
         /// <summary>
-        /// 월드 좌표가 창의 어느 픽셀에 그려지는지 계산한다.
-        /// 원점은 창 왼쪽 위이고 y는 아래로 늘어난다(사양서 2-1 레이아웃 표기와 같다).
-        /// 카메라는 씬 원점을 창 한가운데에 비추는 Orthographic이라, 카메라 축에 내적만 하면 된다.
+        /// 월드 좌표가 창의 어느 픽셀에 그려지는지 계산한다(원근).
+        /// 원점은 창 왼쪽 위이고 y는 아래로 늘어난다(사양서 2-1 레이아웃 표기와 같다). 카메라 뒤의 점은 NaN이다.
         /// </summary>
         public static Vector2 WorldToWindowPixels(Vector3 world)
         {
-            Quaternion rotation = CameraRotation;
-            float right = Vector3.Dot(world, rotation * Vector3.right);
-            float up = Vector3.Dot(world, rotation * Vector3.up);
-            return new Vector2(
-                WindowWidth / 2f + WorldToPixels(right),
-                WindowHeight / 2f - WorldToPixels(up));
+            Vector3 view = Quaternion.Inverse(CameraRotation) * (world - CameraPosition);
+            if (view.z <= 1e-5f) return new Vector2(float.NaN, float.NaN);
+            float scale = CameraFocal * WindowHeight / view.z;
+            return new Vector2(WindowWidth / 2f + view.x * scale, WindowHeight / 2f - view.y * scale);
+        }
+
+        /// <summary>창 픽셀을 지나는 시선 방향(월드, 길이 1이 아님: 카메라 앞 깊이 1까지의 벡터).</summary>
+        public static Vector3 WindowPixelRay(Vector2 pixels)
+        {
+            float span = CameraFocal * WindowHeight;
+            var view = new Vector3((pixels.x - WindowWidth / 2f) / span, (WindowHeight / 2f - pixels.y) / span, 1f);
+            return CameraRotation * view;
         }
 
         /// <summary>
         /// 창 픽셀 위치에 보이는, 높이 <paramref name="height"/>인 수평면 위의 월드 점.
         /// <see cref="WorldToWindowPixels"/>의 역연산이다. 화단 원점처럼 화면 배치로 정한 값을 월드로 옮길 때 쓴다.
+        /// 눈보다 낮은 면은 지평선 아래 픽셀에서만 만난다(만나지 않으면 NaN).
         /// </summary>
         public static Vector3 WindowPixelsToGround(Vector2 pixels, float height = 0f)
         {
-            Quaternion rotation = CameraRotation;
-            Vector3 forward = rotation * Vector3.forward;
-
-            // 화면 평면 위의 점을 잡은 뒤, 화면 위치가 변하지 않는 시선 방향으로 수평면까지 내린다.
-            Vector3 onScreenPlane =
-                rotation * Vector3.right * PixelsToWorld(pixels.x - WindowWidth / 2f)
-                + rotation * Vector3.up * PixelsToWorld(WindowHeight / 2f - pixels.y);
-            float along = (height - onScreenPlane.y) / forward.y;
-            return onScreenPlane + forward * along;
+            Vector3 ray = WindowPixelRay(pixels);
+            float along = (height - CameraEyeHeight) / ray.y;
+            if (float.IsInfinity(along) || along <= 0f) return new Vector3(float.NaN, float.NaN, float.NaN);
+            return CameraPosition + ray * along;
         }
     }
 }

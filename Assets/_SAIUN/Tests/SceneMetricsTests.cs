@@ -26,16 +26,6 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void Orthographic_Size는_pixelsPerUnit_100이_되도록_계산된다()
-        {
-            Assert.AreEqual(3.4f, SceneMetrics.CameraOrthographicSize, 0.0001f);
-
-            // 화면 높이 = 2 × Size × pixelsPerUnit 이어야 한다.
-            float screenHeight = 2f * SceneMetrics.CameraOrthographicSize * SceneMetrics.PixelsPerUnit;
-            Assert.AreEqual(SceneMetrics.WindowHeight, screenHeight, 0.0001f);
-        }
-
-        [Test]
         public void 픽셀과_월드_환산은_서로_역연산이다()
         {
             Assert.AreEqual(3.4f, SceneMetrics.PixelsToWorld(340f), 0.0001f);
@@ -44,50 +34,43 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 카메라_시점은_위_45도_측면_45도다()
+        public void 카메라는_하늘과_같은_눈이다()
         {
-            Assert.AreEqual(45f, SceneMetrics.CameraPitchDegrees, 0.0001f);
-            Assert.AreEqual(45f, SceneMetrics.CameraYawDegrees, 0.0001f);
+            // 하늘 셰이더(view_common): 14° 올려다보고 초점 0.95. 세로 화각은 약 55.5°다.
+            Assert.AreEqual(14f, SceneMetrics.CameraTiltUpDegrees, 0.0001f);
+            Assert.AreEqual(0.95f, SceneMetrics.CameraFocal, 0.0001f);
+            Assert.AreEqual(55.51f, SceneMetrics.CameraFieldOfView, 0.01f);
+            Assert.Greater(SceneMetrics.CameraEyeHeight, 0f, "데크 위 눈높이");
         }
 
         [Test]
-        public void 클리핑_범위가_카메라_거리를_감싼다()
+        public void 눈높이의_먼_점은_하늘의_수평선에_그려진다()
         {
-            Assert.Less(SceneMetrics.CameraNearClip, SceneMetrics.CameraDistance);
-            Assert.Greater(SceneMetrics.CameraFarClip, SceneMetrics.CameraDistance);
+            // 하늘 셰이더의 지평선: 화면 가운데에서 0.95 × tan 14° × 680 ≈ 161 화소 아래.
+            Vector3 flat = Quaternion.Euler(0f, SceneMetrics.CameraYawDegrees, 0f) * Vector3.forward;
+            Vector2 horizon = SceneMetrics.WorldToWindowPixels(SceneMetrics.CameraPosition + flat * 10000f);
+            float expected = SceneMetrics.WindowHeight / 2f
+                             + SceneMetrics.CameraFocal * Mathf.Tan(SceneMetrics.CameraTiltUpDegrees * Mathf.Deg2Rad) * SceneMetrics.WindowHeight;
+            Assert.AreEqual(expected, horizon.y, 0.05f);
+            Assert.AreEqual(SceneMetrics.WindowWidth / 2f, horizon.x, 0.05f);
         }
 
         [Test]
-        public void 씬_원점은_창_한가운데에_그려진다()
+        public void 한_유닛_깊이에서는_1유닛이_100픽셀이다()
         {
-            Vector2 pixel = SceneMetrics.WorldToWindowPixels(Vector3.zero);
-            Assert.AreEqual(SceneMetrics.WindowWidth / 2f, pixel.x, 0.0001f);
-            Assert.AreEqual(SceneMetrics.WindowHeight / 2f, pixel.y, 0.0001f);
-        }
-
-        [Test]
-        public void 카메라_위쪽으로_1유닛은_100픽셀_위다()
-        {
+            Vector3 center = SceneMetrics.CameraPosition + SceneMetrics.CameraRotation * Vector3.forward * SceneMetrics.UnitDepth;
             Vector3 up = SceneMetrics.CameraRotation * Vector3.up;
-            Vector2 pixel = SceneMetrics.WorldToWindowPixels(up);
-            Assert.AreEqual(SceneMetrics.WindowHeight / 2f - SceneMetrics.PixelsPerUnit, pixel.y, 0.001f);
-        }
-
-        [Test]
-        public void 시선_방향으로_움직여도_같은_픽셀이다()
-        {
-            Vector3 point = new Vector3(0.3f, 0.2f, -1.1f);
-            Vector3 forward = SceneMetrics.CameraRotation * Vector3.forward;
-            Vector2 a = SceneMetrics.WorldToWindowPixels(point);
-            Vector2 b = SceneMetrics.WorldToWindowPixels(point + forward * 4f);
-            Assert.AreEqual(a.x, b.x, 0.001f);
-            Assert.AreEqual(a.y, b.y, 0.001f);
+            Vector2 a = SceneMetrics.WorldToWindowPixels(center);
+            Vector2 b = SceneMetrics.WorldToWindowPixels(center + up);
+            Assert.AreEqual(SceneMetrics.WindowHeight / 2f, a.y, 0.001f, "시선 가운데는 창 가운데");
+            Assert.AreEqual(SceneMetrics.PixelsPerUnit, a.y - b.y, 0.01f);
         }
 
         [Test]
         public void 창_픽셀에서_수평면으로의_역산은_투영의_역연산이다()
         {
-            foreach (var pixel in new[] { new Vector2(352f, 490f), new Vector2(10f, 600f), new Vector2(240f, 340f) })
+            // 지평선(약 501) 아래 픽셀만 눈보다 낮은 면과 만난다.
+            foreach (var pixel in new[] { new Vector2(290f, 575f), new Vector2(10f, 600f), new Vector2(470f, 520f) })
             {
                 foreach (float height in new[] { 0f, 0.24f, -0.5f })
                 {
@@ -99,22 +82,16 @@ namespace _SAIUN.Tests
                     Assert.AreEqual(pixel.y, back.y, 0.01f);
                 }
             }
+            Assert.IsTrue(float.IsNaN(SceneMetrics.WindowPixelsToGround(new Vector2(240f, 200f)).x), "지평선 위 픽셀은 바닥과 만나지 않는다");
         }
 
         [Test]
-        public void 유리_배경은_Far_클립_안쪽_카메라보다_먼_곳에_있다()
+        public void 유리_배경은_Far_클립_안쪽_화단과_효과보다_먼_곳에_있다()
         {
             Assert.Less(SceneMetrics.BackdropPlaneDistance, SceneMetrics.CameraFarClip);
-            Assert.Greater(SceneMetrics.BackdropPlaneDistance, SceneMetrics.CameraDistance * 2f,
-                "씬 오브젝트보다 충분히 뒤에 있어야 깊이 테스트로 가려진다.");
-        }
-
-        [Test]
-        public void 씬_원점이_그림자_거리_안에_들어온다()
-        {
-            // URP의 Shadow Distance는 카메라 기준이다. 원점이 경계에 걸리면 그림자가 사라진다.
-            Assert.Less(SceneMetrics.CameraDistance, SceneMetrics.ShadowDistance,
-                "카메라가 그림자 범위 경계에 있으면 씬의 그림자가 잘린다.");
+            Assert.Greater(SceneMetrics.BackdropPlaneDistance, SceneMetrics.UnitDepth * 3f,
+                "씬 오브젝트와 비·바람보다 충분히 뒤에 있어야 깊이 테스트로 가려진다.");
+            Assert.LessOrEqual(SceneMetrics.UnitDepth, SceneMetrics.ShadowDistance);
         }
     }
 }

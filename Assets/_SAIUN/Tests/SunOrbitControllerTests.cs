@@ -45,11 +45,11 @@ namespace _SAIUN.Tests
         [Test]
         public void 수평각은_진행률을_따라_선형으로_돈다()
         {
-            Assert.AreEqual(45f, SunOrbitController.HorizontalAngleFor(0f), 0.001f);
-            Assert.AreEqual(130f, SunOrbitController.HorizontalAngleFor(0.5f), 0.001f);
-            Assert.AreEqual(215f, SunOrbitController.HorizontalAngleFor(1f), 0.001f);
-            Assert.AreEqual(45f, SunOrbitController.HorizontalAngleFor(-1f), 0.001f, "범위 밖은 잘린다");
-            Assert.AreEqual(215f, SunOrbitController.HorizontalAngleFor(2f), 0.001f);
+            Assert.AreEqual(20f, SunOrbitController.HorizontalAngleFor(0f), 0.001f);
+            Assert.AreEqual(105f, SunOrbitController.HorizontalAngleFor(0.5f), 0.001f);
+            Assert.AreEqual(190f, SunOrbitController.HorizontalAngleFor(1f), 0.001f);
+            Assert.AreEqual(20f, SunOrbitController.HorizontalAngleFor(-1f), 0.001f, "범위 밖은 잘린다");
+            Assert.AreEqual(190f, SunOrbitController.HorizontalAngleFor(2f), 0.001f);
         }
 
         [Test]
@@ -57,8 +57,8 @@ namespace _SAIUN.Tests
         {
             _orbit.Apply(0.25f);
 
-            Assert.AreEqual(87.5f, _orbit.HorizontalAngle, 0.001f);
-            float angle = Quaternion.Angle(_light.transform.rotation, Quaternion.Euler(_orbit.Elevation, 87.5f, 0f));
+            Assert.AreEqual(62.5f, _orbit.HorizontalAngle, 0.001f);
+            float angle = Quaternion.Angle(_light.transform.rotation, Quaternion.Euler(_orbit.Elevation, 62.5f, 0f));
             Assert.Less(angle, 0.01f);
         }
 
@@ -125,12 +125,12 @@ namespace _SAIUN.Tests
             _timer.Tick();
 
             InvokeUpdate();
-            Assert.AreEqual(130f, _orbit.HorizontalAngle, 0.01f);
+            Assert.AreEqual(105f, _orbit.HorizontalAngle, 0.01f);
 
             _now += 150;   // 75%
             _timer.Tick();
             InvokeUpdate();
-            Assert.AreEqual(172.5f, _orbit.HorizontalAngle, 0.01f);
+            Assert.AreEqual(147.5f, _orbit.HorizontalAngle, 0.01f);
         }
 
         [Test]
