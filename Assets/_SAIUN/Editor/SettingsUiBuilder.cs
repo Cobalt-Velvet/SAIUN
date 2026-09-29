@@ -163,6 +163,7 @@ namespace _SAIUN.Editor
             gridLayout.spacing = new Vector2(Spacing, Spacing);
             gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
             gridLayout.constraintCount = CropColumns;
+            grid.gameObject.AddComponent<GridColumnFitter>();   // 사이드바처럼 폭이 좁아지면 칸 폭을 맞춘다
             Size(grid, height: CropButtonHeight);
             Button cropTemplate = CropButtonTemplate(grid);
 
@@ -265,6 +266,7 @@ namespace _SAIUN.Editor
 
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
+            Toggle windowSidebar = ToggleRow(content, "WindowSidebar", "화면 오른쪽에 세로로 붙이기");
             Toggle windowGlass = ToggleRow(content, "WindowGlass", "창 전체 유리 (하늘 대신 바탕화면 위에 구름만)");
             Button resetPosition = WideButton(content, "ResetPosition", "창 위치 초기화", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
 
@@ -304,6 +306,7 @@ namespace _SAIUN.Editor
             so.FindProperty("weatherRandomToggle").objectReferenceValue = weatherRandom;
             so.FindProperty("weatherFocusToggle").objectReferenceValue = weatherFocus;
             so.FindProperty("alwaysOnTopToggle").objectReferenceValue = alwaysOnTop;
+            so.FindProperty("windowSidebarToggle").objectReferenceValue = windowSidebar;
             so.FindProperty("windowGlassToggle").objectReferenceValue = windowGlass;
             so.FindProperty("resetPositionButton").objectReferenceValue = resetPosition;
             so.FindProperty("soundToggle").objectReferenceValue = sound;

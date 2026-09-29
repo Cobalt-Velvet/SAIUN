@@ -20,6 +20,7 @@ namespace _SAIUN.Scripts.Data
             public const string WindowPosX = "window.posX";
             public const string WindowPosY = "window.posY";
             public const string WindowAlwaysOnTop = "window.alwaysOnTop";
+            public const string WindowSidebar = "window.sidebar";
             public const string SoundEnabled = "sound.enabled";
             public const string SoundVolume = "sound.volume";
             public const string DistractionGraceSeconds = "distraction.graceSeconds";
@@ -31,6 +32,7 @@ namespace _SAIUN.Scripts.Data
 
         // ---- 기본값 (사양서 7장·8장) ----
         public const bool DefaultAlwaysOnTop = true;
+        public const bool DefaultWindowSidebar = false;
         public const bool DefaultSoundEnabled = true;
         public const float DefaultSoundVolume = 0.7f;
         public const int DefaultGraceSeconds = 7;
@@ -100,6 +102,13 @@ namespace _SAIUN.Scripts.Data
         {
             get => GetBool(Keys.WindowAlwaysOnTop, DefaultAlwaysOnTop);
             set => SetBool(Keys.WindowAlwaysOnTop, value);
+        }
+
+        /// <summary>사이드바: 켜면 화면 오른쪽 가장자리에 붙어 세로 전체를 채운다. 끄면 떠 있는 카드다.</summary>
+        public static bool WindowSidebar
+        {
+            get => GetBool(Keys.WindowSidebar, DefaultWindowSidebar);
+            set => SetBool(Keys.WindowSidebar, value);
         }
 
         // ---- 사운드 ----
@@ -179,6 +188,7 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.WindowPosX);
             PlayerPrefs.DeleteKey(Keys.WindowPosY);
             PlayerPrefs.DeleteKey(Keys.WindowAlwaysOnTop);
+            PlayerPrefs.DeleteKey(Keys.WindowSidebar);
             PlayerPrefs.DeleteKey(Keys.SoundEnabled);
             PlayerPrefs.DeleteKey(Keys.SoundVolume);
             PlayerPrefs.DeleteKey(Keys.DistractionGraceSeconds);

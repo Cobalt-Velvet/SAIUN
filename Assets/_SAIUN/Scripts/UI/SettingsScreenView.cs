@@ -56,6 +56,7 @@ namespace _SAIUN.Scripts.UI
 
         [Header("창")]
         [SerializeField] private Toggle alwaysOnTopToggle;
+        [SerializeField] private Toggle windowSidebarToggle;
         [SerializeField] private Toggle windowGlassToggle;
         [SerializeField] private Button resetPositionButton;
 
@@ -158,6 +159,7 @@ namespace _SAIUN.Scripts.UI
             if (weatherRandomToggle != null) weatherRandomToggle.SetIsOnWithoutNotify(SettingsStore.WeatherRandom);
             if (weatherFocusToggle != null) weatherFocusToggle.SetIsOnWithoutNotify(SettingsStore.WeatherFocusLinked);
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.SetIsOnWithoutNotify(SettingsStore.AlwaysOnTop);
+            if (windowSidebarToggle != null) windowSidebarToggle.SetIsOnWithoutNotify(SettingsStore.WindowSidebar);
             if (windowGlassToggle != null) windowGlassToggle.SetIsOnWithoutNotify(SettingsStore.WindowGlass);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
 
@@ -246,6 +248,7 @@ namespace _SAIUN.Scripts.UI
             if (weatherRandomToggle != null) weatherRandomToggle.onValueChanged.AddListener(gameManager.RequestSetWeatherRandom);
             if (weatherFocusToggle != null) weatherFocusToggle.onValueChanged.AddListener(gameManager.RequestSetWeatherFocusLinked);
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.onValueChanged.AddListener(gameManager.RequestSetAlwaysOnTop);
+            if (windowSidebarToggle != null) windowSidebarToggle.onValueChanged.AddListener(gameManager.RequestSetWindowSidebar);
             if (windowGlassToggle != null) windowGlassToggle.onValueChanged.AddListener(gameManager.RequestSetWindowGlass);
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);
             if (resetPositionButton != null) resetPositionButton.onClick.AddListener(gameManager.RequestResetWindowPosition);

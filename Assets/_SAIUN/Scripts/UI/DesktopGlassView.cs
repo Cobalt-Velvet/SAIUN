@@ -76,8 +76,11 @@ namespace _SAIUN.Scripts.UI
 
         /// <summary>실제로 읽어 올 크기. 창 크기를 축소 배율로 나눈 값이다.</summary>
         public Vector2Int CaptureSize => new Vector2Int(
-            Mathf.Max(1, SceneMetrics.WindowWidth / downscale),
-            Mathf.Max(1, SceneMetrics.WindowHeight / downscale));
+            Mathf.Max(1, _windowSize.x / downscale),
+            Mathf.Max(1, _windowSize.y / downscale));
+
+        // 읽을 창 크기(실제 화소). 켜질 때 창 크기를 읽는다(창 모양이 바뀌면 WindowLayoutView가 다시 켠다).
+        private Vector2Int _windowSize = new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
 
         // 이만큼 연달아 변화가 없으면 느린 간격으로 넘어간다.
         private const int IdleFramesBeforeSlowing = 8;
@@ -122,6 +125,7 @@ namespace _SAIUN.Scripts.UI
             // 에디터에서는 화면을 읽어도 게임 뷰가 아니라 에디터 창이 잡혀 의미가 없다.
             if (backdrop != null) backdrop.enabled = false;
 #else
+            _windowSize = new Vector2Int(Screen.width, Screen.height);
             _capture = new DesktopCapture(CaptureSize.x, CaptureSize.y);
 
             if (backdrop != null) backdrop.texture = _capture.Texture;
@@ -374,6 +378,7 @@ namespace _SAIUN.Scripts.UI
         private void WorkerLoop()
         {
             DesktopCapture capture = _capture;
+            Vector2Int windowSize = _windowSize;
             float nextWallpaper = 0f;
             int idleFrames = 0;
             var lastPosition = new Vector2Int(int.MinValue, int.MinValue);
@@ -397,7 +402,7 @@ namespace _SAIUN.Scripts.UI
                     if (refreshSource) nextWallpaper = now + wallpaperInterval;
 
                     capture.Capture(source, position.x, position.y,
-                        SceneMetrics.WindowWidth, SceneMetrics.WindowHeight, refreshSource);
+                        windowSize.x, windowSize.y, refreshSource);
 
                     // 창이 움직였거나 뒷배경이 바뀌었으면 빠르게, 아니면 느긋하게 돈다.
                     bool moved = position != lastPosition;
@@ -408,7 +413,7 @@ namespace _SAIUN.Scripts.UI
                     if (source == DesktopCapture.Source.WallpaperLayer && ambientInfluence > 0f)
                     {
                         bool ok = capture.SampleAmbient(position.x, position.y,
-                            SceneMetrics.WindowWidth, SceneMetrics.WindowHeight,
+                            windowSize.x, windowSize.y,
                             ambientMargin, ambientThickness, _workerAmbient);
 
                         lock (_shared)

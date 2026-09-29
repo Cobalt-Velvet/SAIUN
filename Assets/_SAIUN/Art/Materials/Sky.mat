@@ -60,5 +60,6 @@ Material:
     - _Special: {r: 0, g: 0, b: 0, a: 0}
     - _SunColor: {r: 1, g: 1, b: 1, a: 0}
     - _SunDir: {r: 0, g: 0.7, b: -0.7, a: 0}
+    - _View: {r: 14, g: 0.95, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

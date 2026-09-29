@@ -101,6 +101,7 @@ namespace _SAIUN.Scripts.UI
 
         private Func<float> _clock = () => Time.unscaledTime;
         private Texture2D _texture;
+        private Vector2Int _size = new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
         private float _glowStart;
         private AlertPulse _glowPulse;
         private float _fadeStart;
@@ -268,11 +269,25 @@ namespace _SAIUN.Scripts.UI
 
         // ---- 텍스처 ----
 
-        // 가장자리에서 안쪽으로 옅어지는 흰 빛. 색은 RawImage.color로 입힌다. 창 크기가 고정이라 한 번만 만든다.
+        /// <summary>창 크기(논리 화소)가 바뀌면 가장자리 빛을 다시 굽는다(카드 ↔ 사이드바).</summary>
+        internal void Resize(Vector2Int size)
+        {
+            _size = new Vector2Int(Mathf.Max(1, size.x), Mathf.Max(1, size.y));
+            if (edgeGlow == null) return;
+            if (_texture != null)
+            {
+                if (Application.isPlaying) Destroy(_texture);
+                else DestroyImmediate(_texture);
+                _texture = null;
+            }
+            BuildGlowTexture();
+        }
+
+        // 가장자리에서 안쪽으로 옅어지는 흰 빛. 색은 RawImage.color로 입힌다. 창 크기가 바뀔 때만 다시 만든다.
         private void BuildGlowTexture()
         {
-            int width = SceneMetrics.WindowWidth;
-            int height = SceneMetrics.WindowHeight;
+            int width = _size.x;
+            int height = _size.y;
             _texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
             {
                 name = "ScreenAlertGlow",

@@ -206,6 +206,13 @@ namespace _SAIUN.Scripts.Core
         // ---- 시스템 설정 요청 (사양서 v1.1 12-2) ----
 
         /// <summary>항상 위를 켜거나 끄고 저장한다.</summary>
+        /// <summary>화면 오른쪽 세로 전체 사이드바로 붙이거나 떠 있는 카드로 돌아간다.</summary>
+        public void RequestSetWindowSidebar(bool sidebar)
+        {
+            SettingsStore.WindowSidebar = sidebar;
+            if (windowController != null) windowController.SetSidebar(sidebar);
+        }
+
         public void RequestSetAlwaysOnTop(bool alwaysOnTop)
         {
             SettingsStore.AlwaysOnTop = alwaysOnTop;
@@ -405,6 +412,9 @@ namespace _SAIUN.Scripts.Core
             {
                 windowController.MoveToDefaultPosition();
             }
+
+            // 사이드바로 쓰던 사람은 카드 자리를 기억해 둔 채 곧바로 오른쪽 가장자리에 붙는다.
+            if (SettingsStore.WindowSidebar) windowController.SetSidebar(true);
         }
 
         private void HandleWindowMoved(Vector2Int position)

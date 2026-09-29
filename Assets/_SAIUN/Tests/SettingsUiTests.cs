@@ -179,6 +179,38 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 사이드바를_켜면_저장되고_창이_세로로_길어지며_하늘과_카메라가_넓어진다()
+        {
+            OpenSettings();
+            var window = Find<WindowController>();
+            var sky = Find<SkyView>();
+            var rig = Find<ViewRig>();
+            Camera eye = Camera.main;
+            float cardFov = eye.fieldOfView;
+            Assert.IsFalse(Get<Toggle>(_settings, "windowSidebarToggle").isOn, "처음엔 떠 있는 카드다");
+            Assert.IsFalse(window.Layout.Sidebar);
+
+            Get<Toggle>(_settings, "windowSidebarToggle").isOn = true;
+            Assert.IsTrue(SettingsStore.WindowSidebar);
+            Assert.IsTrue(window.Layout.Sidebar);
+            Vector2Int logical = window.Layout.Logical;
+            Assert.Greater(logical.y, SceneMetrics.WindowHeight, "세로로 길다");
+            Assert.Less(logical.x, SceneMetrics.WindowWidth, "폭은 좁다");
+
+            var uiCard = (RectTransform)GameObject.Find("UICanvas").transform.Find("Card");
+            Assert.AreEqual(logical.y, uiCard.sizeDelta.y, 0.01f, "UI 카드가 창 높이를 따른다");
+            Assert.AreEqual(logical.y, sky.Target.height, "하늘도 창 높이로 그린다");
+            Assert.Greater(eye.fieldOfView, cardFov + 10f, "화소당 각도를 지키며 화각이 넓어진다");
+            Assert.AreEqual(rig.Current.Focal, sky.View.y, 0.0001f, "하늘과 정원 카메라가 한 눈이다");
+
+            Get<Toggle>(_settings, "windowSidebarToggle").isOn = false;
+            Assert.IsFalse(SettingsStore.WindowSidebar);
+            Assert.IsFalse(window.Layout.Sidebar);
+            Assert.AreEqual(SceneMetrics.WindowHeight, uiCard.sizeDelta.y, 0.01f);
+            Assert.AreEqual(cardFov, eye.fieldOfView, 0.01f);
+        }
+
+        [Test]
         public void 창_전체_유리를_켜면_저장되고_하늘이_구름만_유리_위에_띄운다()
         {
             OpenSettings();

@@ -7,7 +7,7 @@ namespace _SAIUN.Scripts.UI
     /// <summary>
     /// 유리판 가장자리의 하이라이트를 그린다.
     /// Windows는 1픽셀 단색 테두리까지만 제공하므로, 굵기와 밝기 기울기가 있는 테두리는 직접 만든다.
-    /// 창 크기가 고정이라 텍스처를 시작할 때 한 번만 만들고 그대로 쓴다.
+    /// 텍스처는 시작할 때와 창 모양이 바뀔 때(카드 ↔ 사이드바) 창의 논리 크기로 만든다. 사이드바는 모서리를 깎지 않는다.
     /// </summary>
     [RequireComponent(typeof(RawImage))]
     public class GlassRimView : MonoBehaviour
@@ -36,6 +36,8 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private float bottomIntensity = 0.18f;
 
         private Texture2D _texture;
+        private Vector2Int _size = new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
+        private bool _rounded = true;
 
         private void Awake()
         {
@@ -49,6 +51,14 @@ namespace _SAIUN.Scripts.UI
             DestroyTexture();
         }
 
+        /// <summary>창 크기(논리 화소)와 모서리 둥글기를 바꿔 다시 만든다.</summary>
+        public void Rebuild(Vector2Int size, bool rounded)
+        {
+            _size = new Vector2Int(Mathf.Max(1, size.x), Mathf.Max(1, size.y));
+            _rounded = rounded;
+            Rebuild();
+        }
+
         /// <summary>테두리 텍스처를 다시 만든다. 값이 바뀌면 호출한다.</summary>
         public void Rebuild()
         {
@@ -56,8 +66,8 @@ namespace _SAIUN.Scripts.UI
 
             DestroyTexture();
 
-            int width = SceneMetrics.WindowWidth;
-            int height = SceneMetrics.WindowHeight;
+            int width = _size.x;
+            int height = _size.y;
 
             _texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
             {
@@ -70,7 +80,7 @@ namespace _SAIUN.Scripts.UI
             var pixels = new Color32[width * height];
             float halfWidth = width * 0.5f;
             float halfHeight = height * 0.5f;
-            float radius = Mathf.Min(cornerRadius, Mathf.Min(halfWidth, halfHeight));
+            float radius = _rounded ? Mathf.Min(cornerRadius, Mathf.Min(halfWidth, halfHeight)) : 0f;
             byte r = (byte)Mathf.RoundToInt(rimColor.r * 255f);
             byte g = (byte)Mathf.RoundToInt(rimColor.g * 255f);
             byte b = (byte)Mathf.RoundToInt(rimColor.b * 255f);

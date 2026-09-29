@@ -51,6 +51,9 @@ namespace _SAIUN.Scripts.Weather
         public int SplashCount { get; private set; }
 
         private float _splashDebt;
+        private bool _fitted;
+        private Vector3 _baseLocalPosition;
+        private float _baseLifetime;
 
         private void Awake()
         {
@@ -63,6 +66,24 @@ namespace _SAIUN.Scripts.Weather
         {
             Tick();
             Splash(Time.deltaTime);
+        }
+
+        /// <summary>
+        /// 화각이 카드보다 넓어진 배율(카드 1). 빗줄기가 넓어진 화면 위쪽 가장자리 밖에서 생겨 아래까지 떨어지게,
+        /// 생기는 높이와 수명을 같은 배율로 늘린다(사이드바).
+        /// </summary>
+        internal void FitView(float viewScale)
+        {
+            if (rain == null) return;
+            if (!_fitted)
+            {
+                _baseLocalPosition = transform.localPosition;
+                _baseLifetime = rain.main.startLifetime.constant;
+                _fitted = true;
+            }
+            transform.localPosition = new Vector3(_baseLocalPosition.x, _baseLocalPosition.y * viewScale, _baseLocalPosition.z);
+            ParticleSystem.MainModule main = rain.main;
+            main.startLifetime = _baseLifetime * viewScale;
         }
 
         /// <summary>현재 날씨를 파티클에 옮긴다. 테스트는 직접 부른다.</summary>

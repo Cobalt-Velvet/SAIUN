@@ -283,15 +283,17 @@ namespace _SAIUN.Scripts.Weather
             if (_material != null && _display != null) RenderAll();
         }
 
-        /// <summary>하늘의 눈: 지평선에서 올려다보는 각(도)과 초점(화면 높이 1 기준). 정원 카메라와 같아야 한다.</summary>
-        public Vector2 View { get; private set; } = new Vector2(SceneMetrics.CameraTiltUpDegrees, SceneMetrics.CameraFocal);
+        /// <summary>
+        /// 하늘의 눈: x 지평선에서 올려다보는 각(도), y 초점(화면 높이 1 기준), z 오른쪽으로 돈 각(도). 정원 카메라와 같아야 한다.
+        /// </summary>
+        public Vector3 View { get; private set; } = new Vector3(SceneMetrics.CameraTiltUpDegrees, SceneMetrics.CameraFocal, 0f);
 
-        /// <summary>하늘의 눈을 바꾼다(창 모양이 바뀔 때). 다음 그림부터 적용하고 곧바로 한 장 다시 그린다.</summary>
-        internal void SetView(float tiltUpDegrees, float focal)
+        /// <summary>하늘의 눈을 바꾼다(창 모양이 바뀔 때). 곧바로 한 장 다시 그린다.</summary>
+        internal void SetView(float tiltUpDegrees, float focal, float yawDegrees)
         {
-            View = new Vector2(tiltUpDegrees, focal);
+            View = new Vector3(tiltUpDegrees, focal, yawDegrees);
             if (_material == null) return;
-            _material.SetVector(ViewId, new Vector4(View.x, View.y, 0f, 0f));
+            _material.SetVector(ViewId, new Vector4(View.x, View.y, View.z, 0f));
             if (_display != null) RenderAll();
         }
 
@@ -299,6 +301,7 @@ namespace _SAIUN.Scripts.Weather
         internal void Resize(Vector2Int size)
         {
             if (_material == null) return;
+            if (_display != null && _display.width == size.x && _display.height == size.y) return;
             ReleaseTargets();
             CreateTargets(new Vector2Int(Mathf.Max(1, size.x), Mathf.Max(1, size.y)));
             RenderAll();
@@ -414,7 +417,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetVector(SeaWindId, new Vector4(wave.x, wave.y, weather != null ? weather.WindAmount : 0f, 0f));
             _material.SetFloat(SeaTimeId, SeaTime);
             _material.SetVector(SunColorId, SunlightAtSea(Mathf.Asin(Mathf.Clamp(SunDirection.y, -1f, 1f)) * Mathf.Rad2Deg));
-            _material.SetVector(ViewId, new Vector4(View.x, View.y, 0f, 0f));
+            _material.SetVector(ViewId, new Vector4(View.x, View.y, View.z, 0f));
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);

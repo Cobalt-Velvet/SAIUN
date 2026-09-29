@@ -1,4 +1,5 @@
 using _SAIUN.Scripts.Core;
+using _SAIUN.Scripts.Weather;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -92,6 +93,48 @@ namespace _SAIUN.Tests
             Assert.Greater(SceneMetrics.BackdropPlaneDistance, SceneMetrics.UnitDepth * 3f,
                 "씬 오브젝트와 비·바람보다 충분히 뒤에 있어야 깊이 테스트로 가려진다.");
             Assert.LessOrEqual(SceneMetrics.UnitDepth, SceneMetrics.ShadowDistance);
+        }
+
+        [Test]
+        public void 카드의_눈은_사양_그대로고_사이드바는_화소당_각도와_지평선_높이를_지킨다()
+        {
+            EyeView card = ViewRig.ViewFor(new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight));
+            Assert.AreEqual(SceneMetrics.CameraTiltUpDegrees, card.TiltUp, 0.001f);
+            Assert.AreEqual(SceneMetrics.CameraFocal, card.Focal, 0.0001f);
+            Assert.AreEqual(0f, card.Yaw, 0.0001f);
+
+            var tall = new Vector2Int(380, 1040);
+            EyeView bar = ViewRig.ViewFor(tall);
+            Assert.AreEqual(SceneMetrics.CameraFocal * SceneMetrics.WindowHeight, bar.Focal * tall.y, 0.01f, "초점(화소)이 같다");
+            float Horizon(EyeView view, int height) => (0.5f - view.Focal * Mathf.Tan(view.TiltUp * Mathf.Deg2Rad)) * height;
+            Assert.AreEqual(Horizon(card, SceneMetrics.WindowHeight), Horizon(bar, tall.y), 0.05f, "지평선은 창 아래에서 같은 높이");
+            Assert.Greater(bar.Yaw, 0f, "좁아진 만큼 오른쪽으로 돌아 오른쪽 가장자리와의 거리를 지킨다");
+            Assert.AreEqual(50f, Mathf.Tan(bar.Yaw * Mathf.Deg2Rad) * SceneMetrics.CameraFocal * SceneMetrics.WindowHeight, 0.01f);
+        }
+
+        [Test]
+        public void 창_모양은_배율만큼_크고_사이드바는_작업_영역_세로_전체를_채운다()
+        {
+            WindowLayout card = WindowLayout.Card(1.5f);
+            Assert.IsFalse(card.Sidebar);
+            Assert.AreEqual(new Vector2Int(480, 680), card.Logical);
+            Assert.AreEqual(720, card.Physical.width);
+            Assert.AreEqual(1020, card.Physical.height);
+
+            WindowLayout bar = WindowLayout.Dock(1.5f, 2560, 0, 1392, 380);
+            Assert.IsTrue(bar.Sidebar);
+            Assert.AreEqual(570, bar.Physical.width, "폭 380 × 배율 1.5");
+            Assert.AreEqual(2560 - 570, bar.Physical.x, "오른쪽 가장자리에 붙는다");
+            Assert.AreEqual(0, bar.Physical.y);
+            Assert.AreEqual(1392, bar.Physical.height, "작업 영역 세로 전체");
+            Assert.AreEqual(928, bar.Logical.y, "논리 높이 = 실제 높이 / 배율");
+            // 아주 높은 모니터(작업 영역 1872)에서는 논리 높이 1100을 넘지 않게 사이드바 전체를 키운다.
+            float tall = WindowLayout.SidebarScale(1f, 1872, 1100);
+            Assert.AreEqual(1872f / 1100f, tall, 0.0001f);
+            WindowLayout big = WindowLayout.Dock(tall, 3000, 0, 1872, 380);
+            Assert.AreEqual(1100, big.Logical.y);
+            Assert.AreEqual(Mathf.RoundToInt(380 * tall), big.Physical.width, "폭도 같은 비율로 커진다");
+            Assert.AreEqual(1.5f, WindowLayout.SidebarScale(1.5f, 1392, 1100), 0.0001f, "보통 모니터는 화면 배율 그대로");
         }
     }
 }

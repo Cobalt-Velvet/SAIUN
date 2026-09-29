@@ -472,6 +472,9 @@ namespace _SAIUN.Editor
             EnsureSound(gameManager);
             EnsureGlassRim(uiCard);
 
+            // 창 모양(카드·사이드바)에 맞춰 카메라·하늘과 UI를 맞춘다.
+            EnsureWindowLayout(camera, canvasGo, backdropCard, uiCard, windowController);
+
             // 앱 글꼴(Sarasa Gothic K)을 프리팹과 씬의 모든 글자에 입히고, 시계 글자 그림자를 새 글꼴로 다시 입힌다.
             FontBuilder.Apply(new[] { BottomBarPrefabPath, TimerHudPrefabPath });
             ShadeHudText(uiCard.Find("TimerHud"));
@@ -994,6 +997,37 @@ namespace _SAIUN.Editor
             lighting.FindProperty("sky").objectReferenceValue = sky.GetComponent<SkyView>();
             lighting.FindProperty("sun").objectReferenceValue = Object.FindFirstObjectByType<SunOrbitController>();
             lighting.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // 창 모양이 바뀌면 카메라·하늘(ViewRig)과 캔버스·카드·테두리(WindowLayoutView)가 따라 바뀐다.
+        private static void EnsureWindowLayout(Camera camera, GameObject uiCanvas, Transform backdropCard, Transform uiCard,
+            WindowController windowController)
+        {
+            if (camera == null) return;
+            var rig = new SerializedObject(EnsureComponent<ViewRig>(camera.gameObject));
+            rig.FindProperty("window").objectReferenceValue = windowController;
+            rig.FindProperty("eye").objectReferenceValue = camera;
+            rig.FindProperty("sky").objectReferenceValue = Object.FindFirstObjectByType<SkyView>();
+            Transform rain = camera.transform.Find("Rain");
+            rig.FindProperty("rain").objectReferenceValue = rain != null ? rain.GetComponent<RainEffect>() : null;
+            rig.ApplyModifiedPropertiesWithoutUndo();
+
+            var view = new SerializedObject(EnsureComponent<WindowLayoutView>(uiCanvas));
+            view.FindProperty("window").objectReferenceValue = windowController;
+            GameObject backdropCanvas = backdropCard.parent.gameObject;
+            SerializedProperty scalers = view.FindProperty("scalers");
+            scalers.arraySize = 2;
+            scalers.GetArrayElementAtIndex(0).objectReferenceValue = uiCanvas.GetComponent<CanvasScaler>();
+            scalers.GetArrayElementAtIndex(1).objectReferenceValue = backdropCanvas.GetComponent<CanvasScaler>();
+            SerializedProperty cards = view.FindProperty("cards");
+            cards.arraySize = 2;
+            cards.GetArrayElementAtIndex(0).objectReferenceValue = uiCard;
+            cards.GetArrayElementAtIndex(1).objectReferenceValue = backdropCard;
+            view.FindProperty("rim").objectReferenceValue = Object.FindFirstObjectByType<GlassRimView>(FindObjectsInactive.Include);
+            view.FindProperty("alert").objectReferenceValue = Object.FindFirstObjectByType<ScreenAlertView>(FindObjectsInactive.Include);
+            Transform glass = backdropCard.Find("DesktopGlass");
+            view.FindProperty("desktopGlass").objectReferenceValue = glass != null ? glass.gameObject : null;
+            view.ApplyModifiedPropertiesWithoutUndo();
         }
 
         // 하단 바 윗가장자리를 장면 쪽으로 번지게 한다. 곧은 선으로 장면을 자르지 않고 바다·데크가 바 속으로 가라앉는다.
