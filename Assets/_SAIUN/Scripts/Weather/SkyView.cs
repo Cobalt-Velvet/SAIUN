@@ -41,6 +41,7 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int SeaTimeId = Shader.PropertyToID("_SeaTime");
         private static readonly int SeaWindId = Shader.PropertyToID("_SeaWind");
         private static readonly int SunColorId = Shader.PropertyToID("_SunColor");
+        private static readonly int ViewId = Shader.PropertyToID("_View");
         private static readonly int GrowthId = Shader.PropertyToID("_Growth");
         private static readonly int StormId = Shader.PropertyToID("_Storm");
         private static readonly int CapId = Shader.PropertyToID("_Cap");
@@ -246,13 +247,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(SeedId, ShapeSeeds[Random.Range(0, ShapeSeeds.Length)]);
 
             Vector2 size = CardSize() * resolutionScale;
-            var sizeInt = new Vector2Int(Mathf.Max(1, Mathf.RoundToInt(size.x)), Mathf.Max(1, Mathf.RoundToInt(size.y)));
-            _work = NewTarget("Sky Work", sizeInt);
-            _current = NewTarget("Sky Current", sizeInt);
-            _previous = NewTarget("Sky Previous", sizeInt);
-            _display = NewTarget("Sky", sizeInt);
-            _material.SetVector(SkySizeId, new Vector4(sizeInt.x, sizeInt.y, 0f, 0f));
-            _image.texture = _display;
+            CreateTargets(new Vector2Int(Mathf.Max(1, Mathf.RoundToInt(size.x)), Mathf.Max(1, Mathf.RoundToInt(size.y))));
 
             // 처음에는 예보의 목표 그대로 시작한다(켜자마자 구름이 몰려오는 모습이 보이지 않게).
             forecast.Tick(0f, Inputs());
@@ -274,12 +269,7 @@ namespace _SAIUN.Scripts.Weather
 
         private void OnDestroy()
         {
-            foreach (RenderTexture target in new[] { _work, _current, _previous, _display })
-            {
-                if (target == null) continue;
-                target.Release();
-                Destroy(target);
-            }
+            ReleaseTargets();
             if (_material != null) Destroy(_material);
             if (gameManager != null) gameManager.OnWindowGlassChanged -= ApplyGlass;
         }
@@ -291,6 +281,47 @@ namespace _SAIUN.Scripts.Weather
             if (desktopGlass != null) desktopGlass.SetActive(on);
             if (_material != null) _material.SetFloat(GlassId, on ? 1f : 0f);
             if (_material != null && _display != null) RenderAll();
+        }
+
+        /// <summary>하늘의 눈: 지평선에서 올려다보는 각(도)과 초점(화면 높이 1 기준). 정원 카메라와 같아야 한다.</summary>
+        public Vector2 View { get; private set; } = new Vector2(SceneMetrics.CameraTiltUpDegrees, SceneMetrics.CameraFocal);
+
+        /// <summary>하늘의 눈을 바꾼다(창 모양이 바뀔 때). 다음 그림부터 적용하고 곧바로 한 장 다시 그린다.</summary>
+        internal void SetView(float tiltUpDegrees, float focal)
+        {
+            View = new Vector2(tiltUpDegrees, focal);
+            if (_material == null) return;
+            _material.SetVector(ViewId, new Vector4(View.x, View.y, 0f, 0f));
+            if (_display != null) RenderAll();
+        }
+
+        /// <summary>하늘 텍스처 크기를 바꾼다(창 모양이 바뀔 때). 지난 장들은 버리고 새로 그린다.</summary>
+        internal void Resize(Vector2Int size)
+        {
+            if (_material == null) return;
+            ReleaseTargets();
+            CreateTargets(new Vector2Int(Mathf.Max(1, size.x), Mathf.Max(1, size.y)));
+            RenderAll();
+        }
+
+        private void CreateTargets(Vector2Int size)
+        {
+            _work = NewTarget("Sky Work", size);
+            _current = NewTarget("Sky Current", size);
+            _previous = NewTarget("Sky Previous", size);
+            _display = NewTarget("Sky", size);
+            _material.SetVector(SkySizeId, new Vector4(size.x, size.y, 0f, 0f));
+            _image.texture = _display;
+        }
+
+        private void ReleaseTargets()
+        {
+            foreach (RenderTexture target in new[] { _work, _current, _previous, _display })
+            {
+                if (target == null) continue;
+                target.Release();
+                Destroy(target);
+            }
         }
 
         // 셰이더가 톤매핑까지 마친 값을 쓰고, sRGB 텍스처가 화면용으로 바꿔 둔다. 지난 그림을 남겨야 하므로 지우지 않는다.
@@ -383,6 +414,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetVector(SeaWindId, new Vector4(wave.x, wave.y, weather != null ? weather.WindAmount : 0f, 0f));
             _material.SetFloat(SeaTimeId, SeaTime);
             _material.SetVector(SunColorId, SunlightAtSea(Mathf.Asin(Mathf.Clamp(SunDirection.y, -1f, 1f)) * Mathf.Rad2Deg));
+            _material.SetVector(ViewId, new Vector4(View.x, View.y, 0f, 0f));
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);

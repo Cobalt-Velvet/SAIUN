@@ -36,6 +36,7 @@ Shader "Hidden/SAIUN/Sky"
         _SeaTime ("Sea Time (s)", Float) = 0
         _SeaWind ("Sea Wind (direction xy, amount z)", Vector) = (0.7, 0.7, 0.5, 0)
         _SunColor ("Sunlight At Sea Level", Vector) = (1, 1, 1, 0)
+        _View ("View (tilt up degrees, focal)", Vector) = (14, 0.95, 0, 0)
         _SkyTime ("Evolve Time", Float) = 0
         _Seed ("Shape Seed", Float) = 3
         _Exposure ("Exposure", Float) = 1
@@ -71,6 +72,7 @@ Shader "Hidden/SAIUN/Sky"
             float4 _Special;
             float4 _Extra;
             float4 _SunDir;
+            float4 _View;
             float _Glass;
             float4 _Drift;
             float4 _DriftHigh;
@@ -86,22 +88,20 @@ Shader "Hidden/SAIUN/Sky"
             float3 v3(float x) { return float3(x, x, x); }
 
             // ==== 보는 눈 (하늘 패스와 바다 패스가 같이 쓴다) ====
-            // 눈은 지평선에서 VIEW_PITCH만큼 위를 보고, 세로 화각은 약 55°다.
+            // 눈은 지평선에서 _View.x(도)만큼 올려다보고, 초점은 _View.y(화면 높이 1 기준)다. 떠 있는 카드는 14°·0.95(세로 화각 약 55°),
+            // 화면 세로 전체를 채우는 사이드바는 화소당 각도를 같게 두고 화각을 넓힌다(SkyView가 정한다).
             // uv는 화면 가운데가 0이고 세로 -0.5~0.5, 가로는 화면 비율만큼이다.
-            STATIC const float VIEW_PITCH = 14.0;
-            STATIC const float VIEW_FOCAL = 0.95;
-
             float3 CameraRay(float2 uv) {
-                float p = radians(VIEW_PITCH);
-                float3 rd = normalize(float3(uv.x, uv.y, VIEW_FOCAL));
+                float p = radians(_View.x);
+                float3 rd = normalize(float3(uv.x, uv.y, _View.y));
                 return float3(rd.x, rd.y * cos(p) + rd.z * sin(p), -rd.y * sin(p) + rd.z * cos(p));
             }
 
             // 방향이 화면에 맺히는 uv(CameraRay를 거꾸로). 눈 뒤를 보는 방향은 아주 멀리 보낸다.
             float2 CameraUv(float3 r) {
-                float p = radians(VIEW_PITCH);
+                float p = radians(_View.x);
                 float3 c = float3(r.x, r.y * cos(p) - r.z * sin(p), r.y * sin(p) + r.z * cos(p));
-                return c.xy / max(c.z, 1e-3) * VIEW_FOCAL;
+                return c.xy / max(c.z, 1e-3) * _View.y;
             }
 
             STATIC const float PI = 3.14159265;
@@ -1237,6 +1237,7 @@ Shader "Hidden/SAIUN/Sky"
             float _Blend;
             sampler3D _Noise;
             float4 _SunDir;
+            float4 _View;
             float4 _SkySize;
             float4 _SeaWind;
             float4 _SunColor;
@@ -1270,22 +1271,20 @@ Shader "Hidden/SAIUN/Sky"
             }
 
             // ==== 보는 눈 (하늘 패스와 바다 패스가 같이 쓴다) ====
-            // 눈은 지평선에서 VIEW_PITCH만큼 위를 보고, 세로 화각은 약 55°다.
+            // 눈은 지평선에서 _View.x(도)만큼 올려다보고, 초점은 _View.y(화면 높이 1 기준)다. 떠 있는 카드는 14°·0.95(세로 화각 약 55°),
+            // 화면 세로 전체를 채우는 사이드바는 화소당 각도를 같게 두고 화각을 넓힌다(SkyView가 정한다).
             // uv는 화면 가운데가 0이고 세로 -0.5~0.5, 가로는 화면 비율만큼이다.
-            STATIC const float VIEW_PITCH = 14.0;
-            STATIC const float VIEW_FOCAL = 0.95;
-
             float3 CameraRay(float2 uv) {
-                float p = radians(VIEW_PITCH);
-                float3 rd = normalize(float3(uv.x, uv.y, VIEW_FOCAL));
+                float p = radians(_View.x);
+                float3 rd = normalize(float3(uv.x, uv.y, _View.y));
                 return float3(rd.x, rd.y * cos(p) + rd.z * sin(p), -rd.y * sin(p) + rd.z * cos(p));
             }
 
             // 방향이 화면에 맺히는 uv(CameraRay를 거꾸로). 눈 뒤를 보는 방향은 아주 멀리 보낸다.
             float2 CameraUv(float3 r) {
-                float p = radians(VIEW_PITCH);
+                float p = radians(_View.x);
                 float3 c = float3(r.x, r.y * cos(p) - r.z * sin(p), r.y * sin(p) + r.z * cos(p));
-                return c.xy / max(c.z, 1e-3) * VIEW_FOCAL;
+                return c.xy / max(c.z, 1e-3) * _View.y;
             }
 
             // ==== 바다와 해변 (보이는 장을 만드는 패스, 매 프레임) ====
