@@ -226,7 +226,7 @@ namespace _SAIUN.Scripts.Core
             if (watcher != null) watcher.GraceSeconds = SettingsStore.GraceSeconds;
         }
 
-        /// <summary>창 전체 유리를 켜거나 끈다. 켜면 창 전체로 바탕화면이 비치고 구름만 뜨며, 끄면 위는 하늘이다.</summary>
+        /// <summary>창 전체 유리를 켜거나 끈다. 켜면 창 전체로 바탕화면이 비치고 구름만 뜨며, 끄면 하늘과 바다가 창을 채운다.</summary>
         public void RequestSetWindowGlass(bool enabled)
         {
             SettingsStore.WindowGlass = enabled;

@@ -1,6 +1,7 @@
 // 그림자만 그리는 바닥 (사양서 v1.1 2-3 "바닥 지형 - 그림자 수신 전용").
 // 창이 유리라 바닥 자체는 보이면 안 되고, 주 광원이 가린 곳만 어둡게 얹는다.
 // 가장자리는 월드 길이 기준으로 흐려서 바닥의 경계가 드러나지 않게 한다.
+// 뒤에 그려진 하늘·바다(Sky.shader)와 맞춘다: 지평선 위(하늘)에는 그림자를 얹지 않고, 바다 위는 옅게, 모래밭은 그대로 얹는다.
 Shader "SAIUN/ShadowCatcher"
 {
     Properties
@@ -8,6 +9,7 @@ Shader "SAIUN/ShadowCatcher"
         _ShadowColor ("Shadow Color", Color) = (0.141, 0.22, 0.173, 1)
         _ShadowStrength ("Shadow Strength", Range(0, 1)) = 0.55
         _FadeWidth ("Edge Fade Width (world)", Float) = 0.8
+        _SeaShadow ("Shadow On Sea (ratio)", Range(0, 1)) = 0.3
     }
 
     SubShader
@@ -46,7 +48,32 @@ Shader "SAIUN/ShadowCatcher"
                 half4 _ShadowColor;
                 half _ShadowStrength;
                 float _FadeWidth;
+                half _SeaShadow;
             CBUFFER_END
+
+            // Sky.shader의 눈·바다와 같은 값이다(view_common·sea_common). 그쪽을 바꾸면 같이 바꾼다.
+            static const float ViewPitch = 14.0;
+            static const float ViewFocal = 0.95;
+            static const float SeaEye = 0.012;
+            static const float Shore = 0.118;
+            static const float ShoreBend = 0.016;
+            static const float ShoreSoftness = 0.004;
+            static const float HorizonSoftness = 0.01;
+
+            // 화면 자리(0~1, 아래가 0)의 바닥에 그림자를 얼마나 얹을지: 하늘 0, 바다 _SeaShadow, 모래밭 1.
+            half GroundMask(float2 screenUv)
+            {
+                float2 uv = (screenUv - 0.5) * float2(_ScreenParams.x / _ScreenParams.y, 1.0);
+                float pitch = radians(ViewPitch);
+                float3 rd = normalize(float3(uv.x, uv.y, ViewFocal));
+                rd = float3(rd.x, rd.y * cos(pitch) + rd.z * sin(pitch), -rd.y * sin(pitch) + rd.z * cos(pitch));
+                if (rd.y >= 0.0) return 0.0;
+                float t = SeaEye / -rd.y;
+                float dist = t * length(rd.xz);
+                float shore = Shore + ShoreBend * sin(rd.x * t * 6.0 + 1.3);
+                half sand = 1.0 - smoothstep(shore - ShoreSoftness, shore + ShoreSoftness, dist);
+                return smoothstep(0.0, -HorizonSoftness, rd.y) * lerp(_SeaShadow, 1.0, sand);
+            }
 
             struct Attributes
             {
@@ -96,7 +123,11 @@ Shader "SAIUN/ShadowCatcher"
                 float edge = min(edgeDistance.x, edgeDistance.y);
                 half fade = saturate(edge / max(_FadeWidth, 1e-4));
 
-                half alpha = (1.0 - mainLight.shadowAttenuation) * _ShadowStrength * fade;
+                // 화면 자리: 클립 좌표를 아래가 0인 화면 좌표로(렌더 텍스처에 뒤집어 그릴 때도 같게).
+                float4 clip = TransformWorldToHClip(input.positionWS);
+                float2 screenUv = float2(clip.x, clip.y * _ProjectionParams.x) / clip.w * 0.5 + 0.5;
+
+                half alpha = (1.0 - mainLight.shadowAttenuation) * _ShadowStrength * fade * GroundMask(screenUv);
                 return half4(_ShadowColor.rgb, alpha);
             }
             ENDHLSL

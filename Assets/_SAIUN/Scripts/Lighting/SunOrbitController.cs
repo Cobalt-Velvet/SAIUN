@@ -6,7 +6,9 @@ namespace _SAIUN.Scripts.Lighting
 {
     /// <summary>
     /// 포모도로 진행률을 Directional Light의 궤도로 옮긴다 (사양서 v1.1 4장).
-    /// 수평각은 진행률 0 → 동쪽(+70°), 0.5 → 정수리(0°), 1 → 서쪽(−70°)으로 선형이다.
+    /// 수평각은 진행률을 따라 선형으로 돈다. 사양서 값(+70° → −70°)은 2026-09-29 사용자 결정으로 바꿨다:
+    /// 지평선 아래가 바다가 되면서 해가 앞바다로 져야 물에 윤슬 길이 서기 때문이다. 카메라에서 보아
+    /// 아침엔 등 뒤(45°), 한낮엔 왼쪽(130°), 해 질 녘엔 앞바다 조금 왼쪽(215°)이다. 해 질 녘 정원은 역광이 된다.
     /// 수직 고도는 아침·저녁에 낮고 한낮에 높아, 그림자가 길어졌다 짧아졌다 한다(4-1 "낮고 긴 그림자"·"짧은 그림자").
     /// 이 고도 변화는 사양서 10장 구현 금지 목록에 있었지만 2026-09-19 사용자 지시로 켰다. 끄면 45° 고정이다.
     /// 빛 색도 진행률을 따라 아침·저녁에 따뜻해지며, 구름 등이 이 색과 방향을 읽는다.
@@ -19,9 +21,9 @@ namespace _SAIUN.Scripts.Lighting
     /// </summary>
     public class SunOrbitController : MonoBehaviour
     {
-        // ---- 확정값 (사양서 8장) ----
-        public const float StartHorizontalAngle = 70f;
-        public const float EndHorizontalAngle = -70f;
+        // ---- 궤도 (사양서 8장 값 70° → −70°를 사용자 결정으로 바꿨다) ----
+        public const float StartHorizontalAngle = 45f;
+        public const float EndHorizontalAngle = 215f;
 
         /// <summary>고도 변화를 끌 때 쓰는 사양서 고정 고도.</summary>
         public const float VerticalAngle = 45f;
@@ -164,7 +166,7 @@ namespace _SAIUN.Scripts.Lighting
             sun.intensity = intensity * Mathf.Lerp(horizonIntensity, 1f, Daylight(Progress)) * Mathf.Lerp(1f, twilightIntensity, Twilight);
         }
 
-        /// <summary>사양서 4장 수식. 범위 밖 진행률은 0~1로 자른다.</summary>
+        /// <summary>사양서 4장 수식(선형). 범위 밖 진행률은 0~1로 자른다.</summary>
         public static float HorizontalAngleFor(float progress)
         {
             return Mathf.Lerp(StartHorizontalAngle, EndHorizontalAngle, Mathf.Clamp01(progress));

@@ -283,6 +283,7 @@ MonoBehaviour:
   weather: {fileID: 674210672}
   stateMachine: {fileID: 215741475}
   gameManager: {fileID: 215741472}
+  desktopGlass: {fileID: 861211981}
   sun: {fileID: 410087043}
   skyMaterial: {fileID: 2100000, guid: e119b83578ca36841aad72c791eb87e0, type: 2}
   noise: {fileID: 11700000, guid: 2054173fd1602e145a615e1e31b1455a, type: 2}
@@ -6931,7 +6932,7 @@ ParticleSystem:
     donutRadius: 0.2
     m_Position: {x: 0, y: 0, z: 0}
     m_Rotation: {x: 0, y: 0, z: 0}
-    m_Scale: {x: 0.1, y: 4.76, z: 0.3}
+    m_Scale: {x: 0.1, y: 1.4, z: 0.3}
     placementMode: 0
     m_MeshMaterialIndex: 0
     m_MeshNormalOffset: 0
@@ -24450,7 +24451,7 @@ Light:
   serializedVersion: 12
   m_Type: 1
   m_Color: {r: 1, g: 0.84, b: 0.7, a: 1}
-  m_Intensity: 0.8
+  m_Intensity: 1
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -24512,7 +24513,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 410087039}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.15630159, y: 0.5630383, z: -0.109443545, w: 0.80410194}
+  m_LocalRotation: {x: 0.17628454, y: 0.37565246, z: -0.07301945, w: 0.90690523}
   m_LocalPosition: {x: 0, y: 3, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -40085,7 +40086,7 @@ Transform:
   m_GameObject: {fileID: 1287817179}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.4, z: 3.6}
+  m_LocalPosition: {x: 0, y: -2, z: 3.6}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -46596,7 +46597,7 @@ ParticleSystem:
       serializedVersion: 2
       minMaxState: 0
       minColor: {r: 1, g: 1, b: 1, a: 1}
-      maxColor: {r: 1, g: 1, b: 1, a: 0.65}
+      maxColor: {r: 1, g: 1, b: 1, a: 0.45}
       maxGradient:
         serializedVersion: 2
         key0: {r: 1, g: 1, b: 1, a: 1}
@@ -47045,7 +47046,7 @@ ParticleSystem:
     donutRadius: 0.2
     m_Position: {x: 0, y: 0, z: 0}
     m_Rotation: {x: 0, y: 0, z: 0}
-    m_Scale: {x: 4.8, y: 4.76, z: 0.3}
+    m_Scale: {x: 4.8, y: 1.4, z: 0.3}
     placementMode: 0
     m_MeshMaterialIndex: 0
     m_MeshNormalOffset: 0

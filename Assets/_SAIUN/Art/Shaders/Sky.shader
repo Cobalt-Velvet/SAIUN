@@ -7,11 +7,13 @@
 //    뭉게구름 떼는 낮은 층을 걸어서, 멀리 옆으로 누운 구름(렌즈구름·아치구름·물결구름·야광운)은 보는 방향으로 그린다.
 //  - 만난 구름을 가까운 순서로 겹치고, 사이 공기가 빛을 더하고 덜어 멀수록 하늘에 잠긴다.
 //  - 구름은 층마다 다른 바람에 흘러간다(_Drift 낮은 층·중층, _DriftHigh 높은 층): 높을수록 빠르고 방향이 조금씩 비껴 돈다.
-//  - 위는 하늘이고, 지평선 아래로는 하늘이 안개처럼 풀려 바탕화면 유리로 이어진다.
+//  - 위는 하늘, 지평선 아래는 바다와 모래밭이다. 바다는 보이는 장을 만드는 패스(패스 1)가 매 프레임 그린다.
 //    창 전체를 유리로 하면(_Glass) 하늘빛 없이 구름만 유리 위에 뜬다.
 // 패스 0(하늘): 무거우므로 한 번에 화소의 1/8만 그린다(_Phase 0~7, 4×2 격자). _Phase가 음수면 전부 그린다.
 //   출력은 톤매핑까지 마친 값이고, sRGB 렌더 텍스처에 쓰면 화면에서 그대로 보인다. 알파는 곧은 알파다.
-// 패스 1(섞기): 다 그린 두 장(_PrevTex → _MainTex)을 _Blend만큼 섞고, 잔 얼룩을 살짝 거른다. 반쯤 새로 그린 장을 보이면 빗살이 지므로
+// 패스 1(보이기): 다 그린 두 장(_PrevTex → _MainTex)을 _Blend만큼 섞고 잔 얼룩을 살짝 거른 뒤, 지평선 아래를 바다로 채운다.
+//   바다는 섞은 하늘을 거울 방향으로 읽어 비추고, 윤슬·파도는 매 프레임(_SeaTime) 움직인다.
+//    반쯤 새로 그린 장을 보이면 빗살이 지므로
 //   다 그린 장끼리만 천천히 넘겨 보인다.
 Shader "Hidden/SAIUN/Sky"
 {
@@ -31,6 +33,9 @@ Shader "Hidden/SAIUN/Sky"
         _Glass ("Whole Window Glass (clouds only)", Range(0, 1)) = 0
         _Drift ("Wind Drift km (low xy, mid zw)", Vector) = (0, 0, 0, 0)
         _DriftHigh ("Wind Drift km (high xy, hole zw)", Vector) = (0, 0, 0, 0)
+        _SeaTime ("Sea Time (s)", Float) = 0
+        _SeaWind ("Sea Wind (direction xy, amount z)", Vector) = (0.7, 0.7, 0.5, 0)
+        _SunColor ("Sunlight At Sea Level", Vector) = (1, 1, 1, 0)
         _SkyTime ("Evolve Time", Float) = 0
         _Seed ("Shape Seed", Float) = 3
         _Exposure ("Exposure", Float) = 1
@@ -79,6 +84,25 @@ Shader "Hidden/SAIUN/Sky"
 
             float4 N(float3 p) { return tex3Dlod(_Noise, float4(p, 0.0)); }
             float3 v3(float x) { return float3(x, x, x); }
+
+            // ==== 보는 눈 (하늘 패스와 바다 패스가 같이 쓴다) ====
+            // 눈은 지평선에서 VIEW_PITCH만큼 위를 보고, 세로 화각은 약 55°다.
+            // uv는 화면 가운데가 0이고 세로 -0.5~0.5, 가로는 화면 비율만큼이다.
+            STATIC const float VIEW_PITCH = 14.0;
+            STATIC const float VIEW_FOCAL = 0.95;
+
+            float3 CameraRay(float2 uv) {
+                float p = radians(VIEW_PITCH);
+                float3 rd = normalize(float3(uv.x, uv.y, VIEW_FOCAL));
+                return float3(rd.x, rd.y * cos(p) + rd.z * sin(p), -rd.y * sin(p) + rd.z * cos(p));
+            }
+
+            // 방향이 화면에 맺히는 uv(CameraRay를 거꾸로). 눈 뒤를 보는 방향은 아주 멀리 보낸다.
+            float2 CameraUv(float3 r) {
+                float p = radians(VIEW_PITCH);
+                float3 c = float3(r.x, r.y * cos(p) - r.z * sin(p), r.y * sin(p) + r.z * cos(p));
+                return c.xy / max(c.z, 1e-3) * VIEW_FOCAL;
+            }
 
             STATIC const float PI = 3.14159265;
             // 탑 밑면 가운데(km): 오른쪽에서 솟아 화면 가장자리에서 잘린다(시계는 파란 하늘 위에 남는다).
@@ -786,9 +810,10 @@ Shader "Hidden/SAIUN/Sky"
             // uv: 화면 가운데가 0, 세로 한 칸이 1. pixel: 화소 번호(걸음 흔들기용). 반환: 톤매핑한 빛(선형)과 불투명도.
             float4 Shade(float2 uv, float2 pixel) {
                 gCount = 0;
-                float pitch = radians(14.0);
-                float3 rd = normalize(float3(uv.x, uv.y, 0.95));
-                rd = float3(rd.x, rd.y * cos(pitch) + rd.z * sin(pitch), -rd.y * sin(pitch) + rd.z * cos(pitch));
+                float3 rd = CameraRay(uv);
+                // 지평선 아래는 바다가 덮고(유리면 구름이 이미 풀려 사라진 곳), 무거운 셈을 건너뛴다.
+                // 지평선 바로 아래 몇 줄은 남긴다: 보이는 장을 거를 때 지평선 줄이 이웃을 읽는다.
+                if (rd.y < (_Glass > 0.5 ? -0.07 : -0.02)) return float4(0.0, 0.0, 0.0, 0.0);
                 float3 ro = EYE;
                 float3 s = SunDir();
                 float2 dir = Direction(rd);
@@ -1203,29 +1228,258 @@ Shader "Hidden/SAIUN/Sky"
             CGPROGRAM
             #pragma vertex vert_img
             #pragma fragment Mix
+            #pragma target 3.5
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
             float4 _MainTex_TexelSize;
             sampler2D _PrevTex;
             float _Blend;
+            sampler3D _Noise;
+            float4 _SunDir;
+            float4 _SkySize;
+            float4 _SeaWind;
+            float4 _SunColor;
+            float _Glass;
+            float _Storm;
+            float _Exposure;
+            float _SeaTime;
+
+            #define STATIC static
+
+            float4 N(float3 p) { return tex3Dlod(_Noise, float4(p, 0.0)); }
+            float3 v3(float x) { return float3(x, x, x); }
 
             // 반 화소씩 비낀 네 점을 모은다(겹선형 거르기와 합쳐 3×3 천막 거르기). 화소마다 흩뜨린 광선 시작점이 구름
             // 가장자리에 남기는 잔 얼룩을 누그러뜨린다. 알파를 곱해 모아야 유리 위 구름 가장자리가 검게 번지지 않는다.
             float4 Gather(sampler2D sky, float2 uv)
             {
                 float2 o = _MainTex_TexelSize.xy * 0.5;
-                float4 a = tex2D(sky, uv + float2(-o.x, -o.y));
-                float4 b = tex2D(sky, uv + float2(o.x, -o.y));
-                float4 c = tex2D(sky, uv + float2(-o.x, o.y));
-                float4 d = tex2D(sky, uv + float2(o.x, o.y));
+                float4 a = tex2Dlod(sky, float4(uv + float2(-o.x, -o.y), 0.0, 0.0));
+                float4 b = tex2Dlod(sky, float4(uv + float2(o.x, -o.y), 0.0, 0.0));
+                float4 c = tex2Dlod(sky, float4(uv + float2(-o.x, o.y), 0.0, 0.0));
+                float4 d = tex2Dlod(sky, float4(uv + float2(o.x, o.y), 0.0, 0.0));
                 return (float4(a.rgb * a.a, a.a) + float4(b.rgb * b.a, b.a) + float4(c.rgb * c.a, c.a) + float4(d.rgb * d.a, d.a)) * 0.25;
+            }
+
+            // 지난 장과 지금 장을 섞은 하늘(곧은 색·알파)
+            float4 SkySample(float2 uv)
+            {
+                float4 p = lerp(Gather(_PrevTex, uv), Gather(_MainTex, uv), _Blend);
+                return float4(p.rgb / max(p.a, 1e-4), p.a);
+            }
+
+            // ==== 보는 눈 (하늘 패스와 바다 패스가 같이 쓴다) ====
+            // 눈은 지평선에서 VIEW_PITCH만큼 위를 보고, 세로 화각은 약 55°다.
+            // uv는 화면 가운데가 0이고 세로 -0.5~0.5, 가로는 화면 비율만큼이다.
+            STATIC const float VIEW_PITCH = 14.0;
+            STATIC const float VIEW_FOCAL = 0.95;
+
+            float3 CameraRay(float2 uv) {
+                float p = radians(VIEW_PITCH);
+                float3 rd = normalize(float3(uv.x, uv.y, VIEW_FOCAL));
+                return float3(rd.x, rd.y * cos(p) + rd.z * sin(p), -rd.y * sin(p) + rd.z * cos(p));
+            }
+
+            // 방향이 화면에 맺히는 uv(CameraRay를 거꾸로). 눈 뒤를 보는 방향은 아주 멀리 보낸다.
+            float2 CameraUv(float3 r) {
+                float p = radians(VIEW_PITCH);
+                float3 c = float3(r.x, r.y * cos(p) - r.z * sin(p), r.y * sin(p) + r.z * cos(p));
+                return c.xy / max(c.z, 1e-3) * VIEW_FOCAL;
+            }
+
+            // ==== 바다와 해변 (보이는 장을 만드는 패스, 매 프레임) ====
+            // 지평선 아래는 바다다(2026-09-29 사용자 "해변은 어떰? 빛에 의해서 난반사가 일어나도록").
+            // 물은 하늘을 비추므로 하늘의 빛깔·구름·노을이 그대로 아래로 이어진다.
+            //  - 물결 면이 비추는 하늘은 이미 그린 하늘 장에서 거울 방향으로 읽는다. 웅대적운과 구름도 물에 비친다.
+            //  - 해 쪽으로는 물결 면마다 햇빛을 튕겨 윤슬 길이 선다(콕스-멍크 물결 기울기 분포). 반짝임은 매 프레임 새로 인다.
+            //  - 가까운 물결은 결이 보이고, 멀어질수록 한 화소에 물결이 여럿 들어가 매끈한 거울에 거친 반사로 바뀐다.
+            //  - 앞쪽은 모래밭이다. 물가에서 파도가 밀려왔다 빠지며 젖은 모래가 하늘을 비춘다.
+            // 하늘 장은 톤매핑을 마친 값이라 빛을 셈하기 전에 되돌리고(HDR), 셈한 뒤 다시 톤매핑한다.
+            // 바깥에서 줄 것: SkySample(텍스처 uv) = 하늘 장의 곧은 색(선형)·알파, N(p) = 3D 노이즈.
+
+            STATIC const float SEA_PI = 3.14159265;
+            // 모래 언덕 위 눈높이(km)
+            STATIC const float SEA_EYE = 0.012;
+            // 물가까지의 거리(km)와 물가가 휘는 정도
+            STATIC const float SHORE = 0.118;
+            STATIC const float SHORE_BEND = 0.016;
+            // 파도가 모래밭으로 올라오는 거리(km)와 한 번 밀려왔다 빠지는 시간(초)
+            STATIC const float RUNUP = 0.02;
+            STATIC const float SWASH_SECONDS = 9.0;
+            STATIC const float3 SAND_ALBEDO = float3(0.50, 0.43, 0.33);
+            // 물속에서 올라오는 빛의 빛깔(맑은 바다의 짙은 청록)
+            STATIC const float3 DEEP_WATER = float3(0.01, 0.055, 0.08);
+            // 해가 땅과 물을 비추는 세기(하늘 셰이더의 GROUND_SUN과 같은 단위)
+            STATIC const float SEA_SUN = 3.0;
+            // 먼 바다가 대기에 잠기는 거리(km)
+            STATIC const float SEA_HAZE = 16.0;
+
+            float SeaHash(float2 p) { return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453); }
+
+            float SeaSunElevation() { return degrees(asin(clamp(_SunDir.y, -1.0, 1.0))); }
+
+            // 하늘 셰이더와 같은 노출(해가 낮거나 지면 올린다).
+            float SeaExposure() {
+                float el = SeaSunElevation();
+                return _Exposure * lerp(1.0, 1.7, smoothstep(25.0, 0.0, el)) * lerp(1.0, 3.2, smoothstep(0.0, -9.0, el));
+            }
+
+            float3 ToHdr(float3 c) { return -log(max(float3(1.0, 1.0, 1.0) - c, float3(1e-3, 1e-3, 1e-3))) / SeaExposure(); }
+            float3 ToDisplay(float3 x) { return float3(1.0, 1.0, 1.0) - exp(-x * SeaExposure()); }
+
+            float2 TextureUv(float2 uv) { return uv / float2(_SkySize.x / _SkySize.y, 1.0) + 0.5; }
+
+            // 방향 r의 하늘빛(HDR). 지평선 아래를 가리키면 지평선 바로 위로, 화면 밖은 가장자리로 대신한다.
+            float3 SkyHdr(float3 r) {
+                float2 t = TextureUv(CameraUv(float3(r.x, max(r.y, 0.006), r.z)));
+                t = clamp(t, float2(0.003, 0.003), float2(0.997, 0.997));
+                return ToHdr(SkySample(t).rgb);
+            }
+
+            float Schlick(float cosT) {
+                float k = 1.0 - clamp(cosT, 0.0, 1.0);
+                return 0.02 + 0.98 * k * k * k * k * k;
+            }
+
+            // 물결 높이(0~1): 바람이 부는 쪽으로 흘러가는 결 두 겹. 결은 바람을 가로질러 길게 눕는다.
+            float WaveHeight(float2 p) {
+                float2 w = _SeaWind.xy;
+                float2 q = float2(dot(p, w), dot(p, float2(-w.y, w.x)));
+                float t = _SeaTime;
+                float a = N(float3(q.x * 26.0 - t * 0.045, q.y * 11.0, 0.13 + t * 0.004)).r;
+                float b = N(float3(q.x * 83.0 - t * 0.12 + 0.3, q.y * 47.0 + 0.6, 0.57 + t * 0.011)).r;
+                float2 k = float2(q.x * 0.8 + q.y * 0.6, q.y * 0.8 - q.x * 0.6);
+                float c = N(float3(k.x * 41.0 - t * 0.07, k.y * 29.0 + 0.2, 0.31 + t * 0.006)).r;
+                return a * 0.5 + b * 0.25 + c * 0.25;
+            }
+
+            // 해가 바다 수면에 닿는 빛(바깥에서 대기를 지난 해 빛깔을 준다). 해가 지면 사라진다.
+            float3 SunAtSea() { return _SunColor.rgb * smoothstep(-0.6, 0.4, SeaSunElevation()); }
+
+            // 하늘에서 고르게 내려오는 빛(HDR): 머리 위와 지평선 하늘을 섞는다.
+            float3 SkyAmbient() {
+                float3 up = SkyHdr(normalize(float3(0.0, 0.75, 0.66)));
+                float3 side = SkyHdr(normalize(float3(0.0, 0.12, 1.0)));
+                return up * 0.6 + side * 0.4;
+            }
+
+            // 물결 기울기 분포(콕스-멍크): 바람이 셀수록 넓다. 해가 튕겨 오는 면의 비율이 윤슬 세기다.
+            float SlopeVariance() {
+                float windMs = lerp(2.0, 10.0, _SeaWind.z) + _Storm * 6.0;
+                return 0.003 + 0.00512 * windMs;
+            }
+
+            float GlintPdf(float3 hN, float3 n, float variance) {
+                float c = max(dot(hN, n), 1e-3);
+                float c2 = c * c;
+                float tan2 = (1.0 - c2) / c2;
+                return exp(-tan2 / (2.0 * variance)) / (2.0 * SEA_PI * variance * c2 * c2);
+            }
+
+            // 한 화소의 반짝임(0 또는 번쩍): 물결 면 하나가 해를 튕기는 순간. 해가 튕겨 올 면이 많을수록 자주 반짝인다.
+            float Sparkle(float2 pixel, float chance) {
+                float2 cell = floor(pixel / 1.5);
+                float h = SeaHash(cell);
+                float rate = 2.2 + 2.5 * SeaHash(cell + 7.1);
+                float phase = frac(_SeaTime * rate + h * 13.7);
+                float which = floor(_SeaTime * rate + h * 13.7);
+                float on = step(1.0 - chance, SeaHash(cell + which * 0.123 + 3.3));
+                float s = sin(phase * SEA_PI);
+                return on * s * s * s * s;
+            }
+
+            // 지평선 아래 한 화소의 빛(HDR). rd는 보는 방향(rd.y < 0), pixel은 화면 화소.
+            float3 SeaColor(float3 rd, float2 pixel) {
+                float3 s = normalize(_SunDir.xyz);
+                float3 sun = SunAtSea();
+                float3 amb = SkyAmbient();
+                float t = SEA_EYE / max(-rd.y, 1e-4);
+                float3 p = rd * t;
+                float dist = t * length(rd.xz);
+                // 한 화소가 덮는 물 위 길이(km): 멀수록, 지평선에 가까울수록 커진다.
+                float footprint = dist * dist * 0.0015 / SEA_EYE + dist * 0.0015;
+                float detail = exp(-footprint / 0.012);
+
+                // 물가: 앞(가까운 쪽)이 모래밭, 너머가 바다. 물가는 부드럽게 휘고, 파도가 밀려왔다 빠진다.
+                float shore = SHORE + SHORE_BEND * sin(p.x * 6.0 + 1.3) + 0.01 * (N(float3(p.x * 2.5, 0.31, 0.71)).r - 0.5);
+                float cycle = _SeaTime / SWASH_SECONDS + N(float3(p.x * 1.7, 0.12, 0.23)).r * 0.8;
+                float wash = 0.5 + 0.5 * sin(cycle * 2.0 * SEA_PI);
+                float front = shore - RUNUP * wash * wash;
+                float water = smoothstep(front - 0.0012, front + 0.0012, dist);
+
+                // ---- 바다 ----
+                float e = 0.0015 + footprint * 0.5;
+                float h0 = WaveHeight(p.xz);
+                float2 g = float2(WaveHeight(p.xz + float2(e, 0.0)) - h0, WaveHeight(p.xz + float2(0.0, e)) - h0) / e;
+                float slope = lerp(0.0022, 0.0045, _SeaWind.z) * (1.0 + _Storm);
+                // 물가 가까이는 물이 얕아 결이 잔잔하다.
+                float calm = smoothstep(shore, shore + 0.03, dist);
+                float3 n = normalize(float3(-g.x * slope * detail * calm, 1.0, -g.y * slope * detail * calm));
+                float3 v = -rd;
+                float3 r = reflect(rd, n);
+                float F = Schlick(dot(v, n));
+                // 먼 물은 한 화소에 물결이 여럿이라 거울상이 위아래로 번진다.
+                float smear = sqrt(SlopeVariance()) * (1.0 - detail) * 0.9;
+                float3 mirror = (SkyHdr(r) * 2.0 + SkyHdr(r + float3(0.0, smear, 0.0)) + SkyHdr(r + float3(0.0, smear * 2.2, 0.0))
+                                            + SkyHdr(r - float3(0.0, smear * 0.5, 0.0))) / 5.0;
+                float3 body = DEEP_WATER * (amb * 1.2 + sun * max(s.y, 0.0) * SEA_SUN * 0.5);
+                float3 sea = lerp(body, mirror, F);
+
+                // 윤슬: 결이 보이는 가까운 물은 좁은 반사, 먼 물은 넓게 번진 반사 길. 그 안에서 물결 면이 번쩍인다.
+                float variance = SlopeVariance() * lerp(0.35, 1.0, 1.0 - detail);
+                float3 hN = normalize(v + s);
+                float pdf = GlintPdf(hN, n, variance);
+                float fs = Schlick(dot(v, hN));
+                float cosV = max(dot(v, n), 0.06);
+                float3 glint = sun * SEA_SUN * fs * pdf / (4.0 * cosV);
+                float chance = clamp(pdf * 0.02, 0.0, 0.55) * step(0.0, s.y + 0.01);
+                sea += glint * 0.55 + sun * SEA_SUN * 6.0 * fs * Sparkle(pixel, chance) / cosV;
+
+                // 물가에 부서지는 파도 거품과, 밀려온 물 끝의 거품 띠
+                float breakLine = exp(-abs(dist - shore - 0.006) / 0.005) * smoothstep(0.3, 0.7, N(float3(p.x * 30.0, _SeaTime * 0.03, 0.4)).r);
+                float lip = exp(-max(dist - front, 0.0) / 0.004) * step(front - 0.0015, dist) * (0.4 + 0.6 * wash);
+                float foam = clamp(max(breakLine * 0.8, lip), 0.0, 1.0) * (0.6 + 0.4 * N(float3(p.x * 90.0, dist * 60.0, 0.83)).r);
+                float3 foamLight = sun * max(s.y, 0.0) * SEA_SUN * 0.8 + amb * 1.1;
+                sea = lerp(sea, foamLight, foam * 0.9);
+
+                // ---- 모래밭 ----
+                float grain = N(float3(p.x * 420.0, dist * 900.0, 0.21)).r;
+                float ripples = N(float3(p.x * 60.0, dist * 150.0, 0.66)).r;
+                float patches = N(float3(p.x * 9.0, dist * 25.0, 0.48)).r;
+                float damp = smoothstep(shore - RUNUP - 0.03, shore - RUNUP, dist) * 0.25;
+                float3 albedo = SAND_ALBEDO * (0.8 + 0.14 * grain + 0.1 * ripples + 0.18 * patches) * (1.0 - damp);
+                float3 sandLight = sun * max(s.y, 0.0) * SEA_SUN + amb * 0.9;
+                float3 sand = albedo * sandLight;
+                // 물이 막 빠진 모래는 젖어 짙고, 매끈해 하늘을 비춘다.
+                float wet = smoothstep(shore - RUNUP - 0.004, shore - RUNUP * 0.3, dist) * (1.0 - water);
+                float wetF = Schlick(v.y) * 0.9;
+                float3 wetSand = albedo * 0.55 * sandLight;
+                wetSand = lerp(wetSand, SkyHdr(float3(rd.x, -rd.y, rd.z)), wetF);
+                sand = lerp(sand, wetSand, wet);
+
+                float3 c = lerp(sand, sea, water);
+                // 먼 바다는 대기에 잠겨 지평선 하늘로 이어진다.
+                float3 haze = SkyHdr(float3(rd.x, 0.0, rd.z));
+                return lerp(c, haze, 1.0 - exp(-dist / SEA_HAZE));
+            }
+
+            // 보이는 장의 한 화소: 창 전체 유리면 하늘 장 그대로(구름만), 아니면 지평선 아래를 바다로 채운다.
+            float4 Present(float2 tuv, float2 pixel) {
+                float4 sky = SkySample(tuv);
+                if (_Glass > 0.5) return sky;
+                float3 rd = CameraRay((tuv - 0.5) * float2(_SkySize.x / _SkySize.y, 1.0));
+                // 지평선 한 화소 폭으로 하늘과 바다를 잇는다.
+                float pixelAngle = 0.97 / _SkySize.y;
+                float below = smoothstep(0.0, -pixelAngle, rd.y);
+                if (below <= 0.0) return float4(sky.rgb, 1.0);
+                float3 sea = ToDisplay(SeaColor(float3(rd.x, min(rd.y, -pixelAngle * 0.5), rd.z), pixel));
+                return float4(lerp(sky.rgb, sea, below), 1.0);
             }
 
             float4 Mix(v2f_img input) : SV_Target
             {
-                float4 p = lerp(Gather(_PrevTex, input.uv), Gather(_MainTex, input.uv), _Blend);
-                return float4(p.rgb / max(p.a, 1e-4), p.a);
+                return Present(input.uv, floor(input.uv * _SkySize.xy));
             }
             ENDCG
         }

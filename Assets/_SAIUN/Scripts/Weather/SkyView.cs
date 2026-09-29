@@ -8,7 +8,7 @@ namespace _SAIUN.Scripts.Weather
 {
     /// <summary>
     /// 카드 위쪽의 하늘 (2026-09-28, 사용자: "구름이 이 프로그램의 50%", "가슴이 웅장해지고 노스탤지어를 느껴야").
-    /// 셰이더(Hidden/SAIUN/Sky)가 웅대적운 탑과 채운 갓구름을 부피로 그리고, 지평선 아래로는 투명해져 유리로 이어진다.
+    /// 셰이더(Hidden/SAIUN/Sky)가 웅대적운 탑과 채운 갓구름을 부피로 그리고, 지평선 아래는 하늘을 비추는 바다와 모래밭이다.
     ///  - 세션 진행률(해)이 하루다: 아침 금빛 → 한낮 파랑 → 늦은 오후 금빛 → 해 질 녘 노을.
     ///  - 웅대적운: 드물게, 특별하게. 맑은 날 한낮~오후에 가끔 솟아 몇 분에 걸쳐 자라고, 머물다 스러진다(예보가 정한다).
     ///    솟을 때마다 모양이 다르다. 먹구름이 오면 적란운으로 끝까지 솟고 어두워진다.
@@ -22,8 +22,11 @@ namespace _SAIUN.Scripts.Weather
     ///  - 구름은 층마다 다른 바람을 탄다(2026-09-29 사용자 "모든 구름의 속도가 같은 것도 다르게"). 낮은 구름은 땅 바람
     ///    (풍향계·빗줄기·바람결과 같은 바람)을 타고, 높이 오를수록 바람이 빨라지고 시계 방향으로 비껴 돌며 방향도 한결같다.
     ///    렌즈구름(채운)과 웅대적운 탑은 제자리에 선다(렌즈구름은 산 너머 선 물결이라 바람이 불어도 머문다).
-    ///  - 창 전체 유리(설정)를 켜면 하늘빛을 그리지 않고 구름만 바탕화면 유리 위에 띄운다(2026-09-29 사용자
-    ///    "투명도 토글은 창 전체"). 끄면 위는 하늘, 지평선 아래는 유리다.
+    ///  - 지평선 아래는 바다다(2026-09-29 사용자 "해변은 어떰? 빛에 의해서 난반사가 일어나도록"). 물이 하늘·구름·노을을
+    ///    비추고, 해가 앞바다로 지는 저녁엔 윤슬 길이 선다. 물결은 땅 바람을 따라 흐르고 파도가 모래밭에 밀려왔다 빠진다.
+    ///    바다는 보이는 장을 만들 때 매 프레임 그리므로 윤슬이 반짝인다(하늘은 여전히 1/8씩 그린다).
+    ///  - 창 전체 유리(설정)를 켜면 하늘과 바다 없이 구름만 바탕화면 유리 위에 띄운다(2026-09-29 사용자
+    ///    "투명도 토글은 창 전체"). 바탕화면을 읽는 유리는 이때만 켠다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -35,6 +38,9 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int GlassId = Shader.PropertyToID("_Glass");
         private static readonly int DriftId = Shader.PropertyToID("_Drift");
         private static readonly int DriftHighId = Shader.PropertyToID("_DriftHigh");
+        private static readonly int SeaTimeId = Shader.PropertyToID("_SeaTime");
+        private static readonly int SeaWindId = Shader.PropertyToID("_SeaWind");
+        private static readonly int SunColorId = Shader.PropertyToID("_SunColor");
         private static readonly int GrowthId = Shader.PropertyToID("_Growth");
         private static readonly int StormId = Shader.PropertyToID("_Storm");
         private static readonly int CapId = Shader.PropertyToID("_Cap");
@@ -70,6 +76,14 @@ namespace _SAIUN.Scripts.Weather
         // 구멍구름이 이보다 옅으면 닫힌 것으로 보고, 다음에 뚫릴 때 제자리에서 다시 흐른다.
         private const float HoleClosed = 0.001f;
 
+        // 바다에 닿는 햇빛: 맑은 대기의 연직 광학 두께(레일리 + 미 + 오존, 빨강·초록·파랑). 셰이더의 대기와 같은 값이다.
+        private static readonly Vector3 VerticalOpticalDepth = new Vector3(0.069f, 0.162f, 0.274f);
+
+        // 카스텐-영 공기 질량 식의 계수
+        private const float AirMassA = 0.50572f;
+        private const float AirMassB = 6.07995f;
+        private const float AirMassC = 1.6364f;
+
         // 탑 모양 시드 후보. 0~15를 모두 그려 보고 탑으로 잘 읽히는 것만 골랐다
         // (목이 가늘어 버섯처럼 보이거나 큰 구멍이 뚫리는 모양은 뺐다).
         private static readonly float[] ShapeSeeds = { 1f, 3f, 5f, 6f, 11f, 12f, 13f, 15f };
@@ -81,6 +95,9 @@ namespace _SAIUN.Scripts.Weather
 
         [Tooltip("창 전체 유리 설정을 받을 게임 관리자")]
         [SerializeField] private GameManager gameManager;
+
+        [Tooltip("바탕화면을 읽어 흐리게 까는 유리. 창 전체 유리일 때만 켠다(아니면 하늘과 바다가 창을 다 덮는다).")]
+        [SerializeField] private GameObject desktopGlass;
 
         [Tooltip("하루의 흐름을 읽을 해. 없으면 한낮으로 본다.")]
         [SerializeField] private SunOrbitController sun;
@@ -171,6 +188,9 @@ namespace _SAIUN.Scripts.Weather
 
         /// <summary>높은 구름이 흘러간 거리(km).</summary>
         public Vector2 HighDrift { get; private set; }
+
+        /// <summary>바다의 물결·윤슬·파도 시간(초).</summary>
+        public float SeaTime { get; private set; }
 
         /// <summary>하늘 좌표의 해 방향(+z 앞, +x 오른쪽, +y 위).</summary>
         public Vector3 SunDirection { get; private set; } = Vector3.up;
@@ -268,6 +288,7 @@ namespace _SAIUN.Scripts.Weather
         internal void ApplyGlass(bool on)
         {
             WindowGlass = on;
+            if (desktopGlass != null) desktopGlass.SetActive(on);
             if (_material != null) _material.SetFloat(GlassId, on ? 1f : 0f);
             if (_material != null && _display != null) RenderAll();
         }
@@ -296,6 +317,7 @@ namespace _SAIUN.Scripts.Weather
             if (_material == null) return;
             float storm = Storminess();
             _skyTime += deltaTime * evolveSpeed;
+            SeaTime += deltaTime;
             UpdateWind(deltaTime);
             UpdateClouds(deltaTime);
             UpdateCap(storm);
@@ -357,6 +379,10 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(GlassId, WindowGlass ? 1f : 0f);
             _material.SetVector(DriftId, new Vector4(LowDrift.x, LowDrift.y, MidDrift.x, MidDrift.y));
             _material.SetVector(DriftHighId, new Vector4(HighDrift.x, HighDrift.y, _holeDrift.x, _holeDrift.y));
+            Vector2 wave = Heading(WindAngle());
+            _material.SetVector(SeaWindId, new Vector4(wave.x, wave.y, weather != null ? weather.WindAmount : 0f, 0f));
+            _material.SetFloat(SeaTimeId, SeaTime);
+            _material.SetVector(SunColorId, SunlightAtSea(Mathf.Asin(Mathf.Clamp(SunDirection.y, -1f, 1f)) * Mathf.Rad2Deg));
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
             _material.SetFloat(CapId, CapVisibility);
@@ -473,6 +499,21 @@ namespace _SAIUN.Scripts.Weather
             float el = elevation * Mathf.Deg2Rad;
             float az = azimuth * Mathf.Deg2Rad;
             return new Vector3(Mathf.Sin(az) * Mathf.Cos(el), Mathf.Sin(el), Mathf.Cos(az) * Mathf.Cos(el));
+        }
+
+        /// <summary>
+        /// 대기를 지나 바다에 닿는 햇빛의 빛깔(0~1, 빨강·초록·파랑). 해가 낮을수록 공기를 길게 지나 붉어진다.
+        /// 해가 지평선 아래면 지평선에 걸린 해로 셈한다(셰이더가 해가 진 만큼 끈다).
+        /// </summary>
+        internal static Vector4 SunlightAtSea(float elevationDegrees)
+        {
+            float elevation = Mathf.Max(elevationDegrees, 0f);
+            float airMass = 1f / (Mathf.Sin(elevation * Mathf.Deg2Rad) + AirMassA * Mathf.Pow(elevation + AirMassB, -AirMassC));
+            return new Vector4(
+                Mathf.Exp(-VerticalOpticalDepth.x * airMass),
+                Mathf.Exp(-VerticalOpticalDepth.y * airMass),
+                Mathf.Exp(-VerticalOpticalDepth.z * airMass),
+                0f);
         }
 
         private float Twilight()

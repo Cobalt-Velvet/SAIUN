@@ -183,10 +183,11 @@ namespace _SAIUN.Tests
         {
             OpenSettings();
             var sky = Find<SkyView>();
-            GameObject glass = GameObject.Find("DesktopGlass");
-            Assert.IsFalse(Get<Toggle>(_settings, "windowGlassToggle").isOn, "처음엔 위는 하늘, 아래는 유리다");
+            var glass = Get<GameObject>(sky, "desktopGlass");
+            Assert.IsNotNull(glass, "씬 조립기가 바탕화면 유리를 잇는다");
+            Assert.IsFalse(Get<Toggle>(_settings, "windowGlassToggle").isOn, "처음엔 위는 하늘, 아래는 바다다");
             Assert.IsFalse(sky.WindowGlass);
-            Assert.IsTrue(glass.activeSelf, "지평선 아래로 바탕화면이 비친다");
+            Assert.IsFalse(glass.activeSelf, "하늘과 바다가 창을 덮으므로 바탕화면을 읽지 않는다");
 
             Get<Toggle>(_settings, "windowGlassToggle").isOn = true;
             Assert.IsTrue(SettingsStore.WindowGlass);
@@ -196,6 +197,7 @@ namespace _SAIUN.Tests
             Get<Toggle>(_settings, "windowGlassToggle").isOn = false;
             Assert.IsFalse(SettingsStore.WindowGlass);
             Assert.IsFalse(sky.WindowGlass);
+            Assert.IsFalse(glass.activeSelf);
         }
 
         [Test]

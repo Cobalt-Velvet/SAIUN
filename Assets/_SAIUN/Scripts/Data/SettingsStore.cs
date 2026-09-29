@@ -159,7 +159,7 @@ namespace _SAIUN.Scripts.Data
         // ---- 화면 ----
 
         /// <summary>창 전체 유리: 켜면 하늘빛 없이 바탕화면이 창 전체에 흐리게 비치고 구름만 뜬다.
-        /// 끄면 위는 하늘, 지평선 아래는 유리다.</summary>
+        /// 끄면 위는 하늘, 지평선 아래는 바다다.</summary>
         public static bool WindowGlass
         {
             get => GetBool(Keys.WindowGlass, DefaultWindowGlass);

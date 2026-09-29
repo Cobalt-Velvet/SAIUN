@@ -104,7 +104,7 @@ namespace _SAIUN.Editor
         // ---- 바람 임시값 ----
         private const float WindDepth = 3.6f;             // 비보다 조금 앞. 화단(약 8)보다 앞이다.
         private const float WindStreakWidth = 0.035f;     // 바람결 굵기(유닛)
-        private const float WindStreakAlpha = 0.65f;
+        private const float WindStreakAlpha = 0.45f;
         private const float WindStreakTrail = 0.45f;      // 꼬리 길이(알갱이 수명에 대한 비율). 빠를수록 길다.
         private const float WindStreakVertexSpacing = 0.04f;
         private const float WindStreakWave = 0.25f;       // 바람결이 굽이치는 난류 세기
@@ -117,8 +117,10 @@ namespace _SAIUN.Editor
         private const float WindLeafSpin = 3.5f;          // 잎이 도는 빠르기(라디안/초)
         private const float WindLeafFlutter = 0.35f;      // 잎이 오르내리는 난류 세기
         private const float WindLeafFlutterFrequency = 0.6f;
-        private const float WindBandHeight = 0.7f;        // 카드 높이 중 바람이 지나는 띠의 비율
-        private const float WindBandLift = 0.4f;          // 띠를 카드 가운데보다 올리는 거리(유닛). 시계 쪽에서 흐른다.
+        // 바람이 지나는 띠(창 화소, 위에서부터): 지평선(약 500) 조금 위부터 하단 바 위까지, 모래밭과 바다 위로만 분다.
+        // 하늘에 그으면 사실적인 하늘 위에 긁힌 자국처럼 보인다(2026-09-29).
+        private const float WindBandTopPixels = 470f;
+        private const float WindBandBottomPixels = 610f;
 
         // ---- 풍향계 재질 (모양은 VaneModelBuilder) ----
         private const float VaneSmoothness = 0.55f;
@@ -1010,6 +1012,8 @@ namespace _SAIUN.Editor
             so.FindProperty("noise").objectReferenceValue = SkyArtBuilder.EnsureNoise();
             so.FindProperty("stateMachine").objectReferenceValue = Object.FindFirstObjectByType<PomodoroStateMachine>();
             so.FindProperty("gameManager").objectReferenceValue = Object.FindFirstObjectByType<GameManager>();
+            Transform glass = backdropCanvas.Find("DesktopGlass");
+            so.FindProperty("desktopGlass").objectReferenceValue = glass != null ? glass.gameObject : null;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
@@ -1130,17 +1134,18 @@ namespace _SAIUN.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        // 눈에 보이는 바람: 카메라 자식이라 화면 기준으로 흐른다. 카드 안에서만 지나간다.
+        // 눈에 보이는 바람: 카메라 자식이라 화면 기준으로 흐른다. 모래밭·바다 위 낮은 띠로만 지나간다.
         private static void EnsureWind(Camera camera, WeatherController weather)
         {
             Transform existing = camera.transform.Find("Wind");
             GameObject windGo = existing != null ? existing.gameObject : new GameObject("Wind");
             windGo.transform.SetParent(camera.transform, false);
-            windGo.transform.localPosition = new Vector3(0f, WindBandLift, WindDepth);
+            float bandCenter = SceneMetrics.PixelsToWorld(SceneMetrics.WindowHeight / 2f - (WindBandTopPixels + WindBandBottomPixels) / 2f);
+            windGo.transform.localPosition = new Vector3(0f, bandCenter, WindDepth);
             windGo.transform.localRotation = Quaternion.identity;
 
             float cardWidth = SceneMetrics.PixelsToWorld(SceneMetrics.WindowWidth);
-            float bandHeight = SceneMetrics.PixelsToWorld(SceneMetrics.WindowHeight) * WindBandHeight;
+            float bandHeight = SceneMetrics.PixelsToWorld(WindBandBottomPixels - WindBandTopPixels);
 
             Material windMaterial = WeatherArtBuilder.EnsureWindMaterial();
             ParticleSystem streaks = EnsureParticles(windGo.transform, "Streaks", windMaterial, ps =>
@@ -1180,7 +1185,7 @@ namespace _SAIUN.Editor
                 ParticleSystem.EmissionModule emission = ps.emission;
                 emission.rateOverTime = 0f;
 
-                // 카드 전체에서 생겨 잠깐 흐르다 사라진다.
+                // 띠 안 어디서나 생겨 잠깐 흐르다 사라진다.
                 ParticleSystem.ShapeModule shape = ps.shape;
                 shape.shapeType = ParticleSystemShapeType.Box;
                 shape.position = Vector3.zero;

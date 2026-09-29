@@ -257,19 +257,19 @@ namespace _SAIUN.Tests
             orbit.Apply(0f);
             sky.Tick(0.1f);
             Vector3 morning = sky.SunDirection;
-            Assert.Less(morning.z, 0f, "아침 해는 등 뒤(정원 그림자가 앞으로 진다)");
-            Assert.Less(morning.x, 0f, "왼쪽");
+            Assert.Less(morning.z, -0.9f, "아침 해는 등 뒤(정원 그림자가 앞으로 진다)");
             Assert.AreEqual(Get<float>(sky, "sunriseElevation"), Mathf.Asin(morning.y) * Mathf.Rad2Deg, 0.01f, "아침 해는 낮게 떠 있다");
 
             orbit.Apply(0.5f);
             sky.Tick(0.1f);
             Assert.AreEqual(Get<float>(sky, "noonSunElevation"), Mathf.Asin(sky.SunDirection.y) * Mathf.Rad2Deg, 0.01f, "한낮엔 높다");
+            Assert.Less(sky.SunDirection.x, 0f, "한낮 해는 왼쪽");
 
             orbit.Apply(1f);
             sky.Tick(0.1f);
             Vector3 dusk = sky.SunDirection;
-            Assert.Greater(dusk.z, 0f, "해 질 녘 해는 앞 오른쪽(노을을 바라본다)");
-            Assert.Greater(dusk.x, 0f);
+            Assert.Greater(dusk.z, 0.95f, "해 질 녘 해는 앞바다로 진다(물에 윤슬 길이 선다)");
+            Assert.Less(dusk.x, 0f, "화분에 가리지 않게 조금 왼쪽");
             Assert.AreEqual(Get<float>(sky, "sunsetElevation"), Mathf.Asin(dusk.y) * Mathf.Rad2Deg, 0.01f, "해 질 녘엔 지평선에 걸린다");
             Vector4 shader = Material(sky).GetVector("_SunDir");
             Assert.AreEqual(dusk.y, shader.y, 0.0001f, "셰이더로 간다");
@@ -280,13 +280,18 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 창_전체를_유리로_하면_하늘빛_없이_구름만_그린다()
+        public void 창_전체를_유리로_하면_하늘빛_없이_구름만_그리고_그때만_바탕화면_유리를_켠다()
         {
             SkyView sky = MakeSky(null);
-            Assert.IsFalse(sky.WindowGlass, "처음엔 위는 하늘이다");
+            var glass = Own(new GameObject("DesktopGlass"));
+            Set(sky, "desktopGlass", glass);
+            sky.ApplyGlass(false);
+            Assert.IsFalse(sky.WindowGlass, "처음엔 하늘과 바다가 창을 채운다");
+            Assert.IsFalse(glass.activeSelf, "바탕화면을 읽지 않는다");
             Assert.AreEqual(0f, Material(sky).GetFloat("_Glass"), 0.0001f);
 
             sky.ApplyGlass(true);
+            Assert.IsTrue(glass.activeSelf);
             Assert.AreEqual(1f, Material(sky).GetFloat("_Glass"), 0.0001f);
             sky.Tick(0.1f);
             Assert.AreEqual(1f, Material(sky).GetFloat("_Glass"), 0.0001f, "매 프레임 다시 넘겨도 유지된다");
@@ -321,6 +326,26 @@ namespace _SAIUN.Tests
             Assert.AreEqual(low.x, drift.x, 0.0001f, "셰이더로 간다");
             Assert.AreEqual(mid.y, drift.w, 0.0001f);
             Assert.AreEqual(high.x, Material(sky).GetVector("_DriftHigh").x, 0.0001f);
+        }
+
+        [Test]
+        public void 바다는_매_프레임_흐르고_물결은_땅_바람을_따르며_낮은_해는_붉게_비친다()
+        {
+            SetWind(Vector3.right, WeatherController.MaxWindStrength);
+            SkyView sky = MakeSky(null);
+            sky.Tick(0.5f);
+            sky.Tick(0.5f);
+            Material material = Material(sky);
+            Assert.AreEqual(1f, material.GetFloat("_SeaTime"), 0.0001f, "바다 시간은 실제 초로 흐른다");
+            Vector4 wave = material.GetVector("_SeaWind");
+            Assert.AreEqual(1f, wave.z, 0.0001f, "바람 세기");
+            Assert.Less(Vector2.Angle(new Vector2(wave.x, wave.y), sky.LowDrift), 1f, "물결은 낮은 구름과 같은 바람을 탄다");
+
+            Vector4 noon = SkyView.SunlightAtSea(60f);
+            Vector4 sunset = SkyView.SunlightAtSea(1f);
+            Assert.Greater(noon.z, 0.6f, "한낮 햇빛은 희다");
+            Assert.Greater(sunset.x, sunset.y * 3f, "지는 해는 붉다");
+            Assert.Greater(sunset.y, sunset.z);
         }
 
         [Test]
