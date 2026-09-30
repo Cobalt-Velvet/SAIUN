@@ -585,29 +585,40 @@ Shader "Hidden/SAIUN/Sky"
             float PlaneFootprint(float h, float rdy) { return (h - EYE.y) * SKY_PIXEL_ANGLE / max(rdy * rdy, 1e-4); }
 
             // 권적운(조개구름): 잘고 흰 구름 알갱이가 파란 틈을 두고 조각조각 모인다(알갱이 하나가 하늘에서 1° 남짓).
-            // 알갱이는 바람을 가로지르는 물결 줄을 따라 늘어서고(비늘구름), 줄은 크게 굽이친다.
+            // 알갱이는 바람을 가로지르는 물결 줄을 따라 늘어서지만 고르지 않다. 결이 곳곳에서 휘고 벌어지며,
+            // 알갱이 크기도 자리마다 다르고(잘게 흩뿌린 곳, 굵게 엉긴 곳), 군데군데 알갱이가 빠져 틈이 제멋대로 트인다.
             // blur는 한 화소가 덮는 길이(km). 알갱이가 화소보다 잘아지는 지평선 쪽에서는 알갱이 대신 평균 덮임으로 옅은 너울이 된다.
             float CirrocumulusDensity(float2 xz, float blur, out float iceFall) {
                 iceFall = 0.0;
                 float cov = _High.y;
                 if (cov <= 0.001) return 0.0;
                 float2 w = Rotate(xz - HighDrift() * 0.9, -0.25);
-                // 알갱이: 물결 줄을 따라 조금 긴 송이(가로 0.2 km, 줄 따라 0.3 km). 잔 혹이 가장자리를 깎는다.
-                float cell = N(float3(w.x * 0.3, w.y * 0.2, 0.33)).a;
-                float lump = N(float3(w * 0.75, 0.13)).a;
                 float fine = smoothstep(0.015, 0.05, blur);
-                float coarse = smoothstep(0.04, 0.11, blur);
-                float grain = cell - (1.0 - lerp(lump, CIRROCUMULUS_LUMP_MEAN, fine)) * 0.25;
-                // 물결 줄(0.8 km 간격): 마루에는 알갱이가 굵고 골에는 성기다. 줄은 크게 굽이친다.
+                float coarse = smoothstep(0.04, 0.12, blur);
+                // 결 비틀기: 알갱이 자리를 낮은 주파수로 밀어 줄과 간격이 곳곳에서 휘고 벌어진다.
+                float2 warp = float2(N(float3(w * 0.05, 0.21)).r, N(float3(w * 0.05, 0.47)).r) - 0.5;
+                float2 v = w + warp * 1.7;
+                // 알갱이: 잔 송이(0.2×0.3 km)와 굵은 송이(0.3×0.4 km)를 자리마다 섞는다. 잔 혹이 가장자리를 깎는다.
+                float small = N(float3(v.x * 0.3, v.y * 0.2, 0.33)).a;
+                float large = N(float3(v.x * 0.42, v.y * 0.3, 0.77)).b;
+                float size = N(float3(w * 0.07, 0.83)).r;
+                float cell = lerp(small, large, smoothstep(0.42, 0.62, size));
+                float lump = N(float3(v * 0.75, 0.13)).a;
+                float grain = cell - (1.0 - lerp(lump, CIRROCUMULUS_LUMP_MEAN, fine)) * 0.3;
+                // 물결 줄(0.8 km 안팎): 마루에는 알갱이가 굵고 골에는 성기다. 줄은 크게 굽이치고 곳에 따라 흐려진다.
                 float bend = N(float3(w * 0.03, 0.71)).r;
-                float rows = 0.5 + 0.5 * sin(w.x * 8.0 + bend * 16.0);
+                float rows = 0.5 + 0.5 * sin(v.x * 8.0 + bend * 16.0);
+                float rowsHere = smoothstep(0.45, 0.65, N(float3(w * 0.04, 0.37)).r);
                 // 줄은 평면 위 곧은 결이라 멀리서는 지평선으로 모이는 빗살이 된다. 알갱이와 함께 뭉갠다.
-                rows = lerp(rows, 0.5, coarse);
-                // 무리: 알갱이가 몇 개씩 엉겨 비늘 무더기를 짓고 무더기 사이로 하늘이 트인다.
+                rows = lerp(0.5, rows, rowsHere * (1.0 - coarse));
+                // 무리: 알갱이가 엉겨 비늘 무더기를 짓고 무더기 사이로 하늘이 트인다. 잔 구멍이 알갱이를 군데군데 뺀다.
                 float clump = N(float3(w * 0.1, 0.59)).r;
-                float lo = lerp(0.62, 0.4, cov) - rows * 0.1 - (clump - 0.5) * 0.35;
-                float scales = Remap(grain, lo, lo + 0.28);
-                float sheet = lerp(0.25, 0.55, cov) * lerp(0.7, 1.3, clump);
+                float gaps = lerp(N(float3(v * 0.22, 0.91)).r, 0.5, fine);
+                float lo = lerp(0.58, 0.36, cov) - rows * 0.12 - (clump - 0.5) * 0.6 + (gaps - 0.5) * 0.45;
+                // 가장자리 무름: 어떤 무리는 또렷하고 어떤 무리는 번진다.
+                float soft = lerp(0.16, 0.4, N(float3(w * 0.09, 0.15)).r);
+                float scales = Remap(grain, lo, lo + soft);
+                float sheet = lerp(0.25, 0.55, cov) * lerp(0.6, 1.4, clump);
                 float d = lerp(scales, sheet, coarse);
                 // 조각: 하늘에 드문드문 무리를 짓고, 덮임이 클수록 넓게 퍼진다.
                 float2 m = xz - HighDrift() * 0.9;
