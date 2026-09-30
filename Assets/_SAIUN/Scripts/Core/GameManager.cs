@@ -74,6 +74,9 @@ namespace _SAIUN.Scripts.Core
         /// <summary>시계 화면 하늘을 하루 순환으로 켜거나(참) 실제 시각으로 돌렸다(거짓).</summary>
         public event Action<bool> OnIdleSkyCycleChanged;
 
+        /// <summary>시계 하늘을 셈할 도시를 바꿨다(도시 이름).</summary>
+        public event Action<string> OnSkyPlaceChanged;
+
         private SessionConfig _currentConfig;
         private string _sessionStartTime;
         private bool _hasFocus = true;
@@ -241,6 +244,13 @@ namespace _SAIUN.Scripts.Core
         {
             SettingsStore.WindowGlass = enabled;
             OnWindowGlassChanged?.Invoke(enabled);
+        }
+
+        /// <summary>시계 하늘을 셈할 도시를 정한다. 해 뜨고 지는 시각과 달이 그곳을 따른다.</summary>
+        public void RequestSetSkyPlace(string placeName)
+        {
+            SettingsStore.SkyPlace = placeName;
+            OnSkyPlaceChanged?.Invoke(placeName);
         }
 
         /// <summary>시계 화면 하늘이 하루를 천천히 돌지(참), 실제 시각을 따를지(거짓) 정한다.</summary>

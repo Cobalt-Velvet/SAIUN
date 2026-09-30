@@ -79,12 +79,6 @@ namespace _SAIUN.Scripts.Lighting
         [SerializeField] private SkyArc skyArc = SkyArc.Default;
 
         [Header("시계 화면 하늘 (세션 밖)")]
-        [Tooltip("사는 곳의 위도(도, 북위 +). 해 뜨고 지는 시각을 셈한다. 실측 대기: 기본은 서울.")]
-        [SerializeField, Range(-66f, 66f)] private float latitude = 37.57f;
-
-        [Tooltip("사는 곳의 경도(도, 동경 +). 실측 대기: 기본은 서울.")]
-        [SerializeField, Range(-180f, 180f)] private float longitude = 126.98f;
-
         [Tooltip("하루 순환을 켰을 때 하루가 한 바퀴 도는 시간(분)")]
         [SerializeField, Min(1f)] private float cycleMinutes = 24f;
 
@@ -152,6 +146,9 @@ namespace _SAIUN.Scripts.Lighting
         /// <summary>정원에서 달 쪽을 가리키는 가로 방향(월드).</summary>
         public Vector3 MoonTowardDirection => -(Quaternion.Euler(0f, HorizontalAngleFor(MoonProgress), 0f) * Vector3.forward);
 
+        /// <summary>시계 하늘을 셈하는 곳(설정에서 고른 도시, 고르지 않았으면 컴퓨터 시간대의 도시).</summary>
+        public SkyPlace Place { get; private set; } = SkyPlaces.All[0];
+
         /// <summary>시계(현지 시각). 테스트는 바꿔 끼운다.</summary>
         internal Func<DateTime> Clock { get; set; } = () => DateTime.Now;
 
@@ -181,7 +178,7 @@ namespace _SAIUN.Scripts.Lighting
             if (sun == null) sun = GetComponent<Light>();
             if (timer == null) timer = FindFirstObjectByType<PomodoroTimer>();
             _gameManager = FindFirstObjectByType<GameManager>();
-            _sky = new SkyClock(latitude, longitude, skyArc);
+            SetPlace(SkyPlaces.Resolve(SettingsStore.SkyPlace, TimeZoneInfo.Local.Id));
             IdleCycle = SettingsStore.IdleSkyCycle;
 
             if (sun == null) Debug.LogError("SunOrbitController: Light 참조가 없습니다.");
@@ -190,12 +187,21 @@ namespace _SAIUN.Scripts.Lighting
 
         private void OnEnable()
         {
-            if (_gameManager != null) _gameManager.OnIdleSkyCycleChanged += SetIdleCycle;
+            if (_gameManager == null) return;
+            _gameManager.OnIdleSkyCycleChanged += SetIdleCycle;
+            _gameManager.OnSkyPlaceChanged += HandlePlaceChanged;
         }
 
         private void OnDisable()
         {
-            if (_gameManager != null) _gameManager.OnIdleSkyCycleChanged -= SetIdleCycle;
+            if (_gameManager == null) return;
+            _gameManager.OnIdleSkyCycleChanged -= SetIdleCycle;
+            _gameManager.OnSkyPlaceChanged -= HandlePlaceChanged;
+        }
+
+        private void HandlePlaceChanged(string name)
+        {
+            SetPlace(SkyPlaces.Resolve(name, TimeZoneInfo.Local.Id));
         }
 
 #if UNITY_EDITOR
@@ -241,6 +247,13 @@ namespace _SAIUN.Scripts.Lighting
                 return;
             }
             StepTwilight(TwilightGoal(phase, timer.Progress), deltaTime);
+        }
+
+        /// <summary>시계 하늘을 셈할 곳을 바꾼다. 해 뜨고 지는 시각이 바뀌므로 시계 하늘이 곧바로 그곳의 지금 하늘이 된다.</summary>
+        public void SetPlace(SkyPlace place)
+        {
+            Place = place;
+            if (ClockActive) ApplyClock();
         }
 
         /// <summary>시계 화면 하늘을 하루 순환으로(켜면) 또는 실제 시각으로(끄면) 둔다. 순환은 지금 하늘에서 이어 돈다.</summary>
@@ -329,9 +342,9 @@ namespace _SAIUN.Scripts.Lighting
         // 인스펙터에서 자리·고도를 바꿔도 따라가게 매번 맞춘다.
         private SkyClock SyncSky()
         {
-            if (_sky == null) _sky = new SkyClock(latitude, longitude, skyArc);
-            _sky.Latitude = latitude;
-            _sky.Longitude = longitude;
+            if (_sky == null) _sky = new SkyClock(Place.Latitude, Place.Longitude, skyArc);
+            _sky.Latitude = Place.Latitude;
+            _sky.Longitude = Place.Longitude;
             _sky.Arc = skyArc;
             return _sky;
         }

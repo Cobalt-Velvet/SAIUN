@@ -47,6 +47,7 @@ namespace _SAIUN.Tests
             _orbit.Clock = () => _local;
             _orbit.UtcOffset = _ => Kst;
             _orbit.MoonAge = () => FullMoonAge;
+            _orbit.SetPlace(SkyPlaces.Resolve("서울", string.Empty));
             _orbit.SetIdleCycle(false);
         }
 
@@ -208,6 +209,28 @@ namespace _SAIUN.Tests
             _orbit.SetIdleCycle(false);
             for (int i = 0; i < 400; i++) _orbit.Step(0.1f);
             Assert.AreEqual(12.0, _orbit.ClockHours, 1.0 / 60.0, "끄면 앞으로 돌아 실제 시각에 닿는다");
+        }
+
+        [Test]
+        public void 사는_곳은_고른_도시이고_고르지_않았으면_컴퓨터_시간대의_도시다()
+        {
+            Assert.AreEqual("부산", SkyPlaces.Resolve("부산", "Tokyo Standard Time").Name);
+            Assert.AreEqual("서울", SkyPlaces.Resolve(string.Empty, "Korea Standard Time").Name);
+            Assert.AreEqual("도쿄", SkyPlaces.Resolve(string.Empty, "Asia/Tokyo").Name);
+            Assert.AreEqual("서울", SkyPlaces.Resolve("없는 곳", "Mars Standard Time").Name, "모르면 서울");
+        }
+
+        [Test]
+        public void 사는_곳을_바꾸면_그곳의_지금_하늘이_된다()
+        {
+            _local = Day.AddHours(18 + 40 / 60.0);
+            _orbit.Step(0f);
+            Assert.Greater(_orbit.Twilight, 0f, "서울은 해가 막 졌다");
+
+            // 같은 순간 런던은 오전 10시 40분이다.
+            _orbit.SetPlace(SkyPlaces.Resolve("런던", string.Empty));
+            Assert.AreEqual(0f, _orbit.Twilight);
+            Assert.That(_orbit.Progress, Is.InRange(0.15f, 0.5f));
         }
 
         private static float RealElevation(DateTime local)

@@ -87,15 +87,17 @@ namespace _SAIUN.Scripts.Lighting
             float elevation = SolarCalculator.Elevation(ToUtc(local, utcOffset), Latitude, Longitude);
             var state = new SkyClockState { MoonLit = SolarCalculator.MoonLitFraction(moonAge) };
 
-            if (DayWindow(local.Date, utcOffset, Arc.Sunrise, Arc.Sunset, out double rise, out double set)
-                && hours >= rise && hours <= set)
+            bool haveDay = DayWindow(local.Date, utcOffset, Arc.Sunrise, Arc.Sunset, out double rise, out double set);
+            double sinceRise = SinceRise(hours, rise);
+            if (haveDay && sinceRise <= set - rise)
             {
-                state.Progress = (float)((hours - rise) / Math.Max(set - rise, 1e-6));
+                state.Progress = (float)(sinceRise / Math.Max(set - rise, 1e-6));
             }
             else
             {
-                // 해 진 뒤(저녁 쪽)와 해 뜨기 전(새벽 쪽). 박명·밤을 실제 고도에서 읽어 하늘의 해가 실제 해와 같은 고도가 된다.
-                bool evening = hours > rise;
+                // 해 진 뒤(저녁 쪽)와 해 뜨기 전(새벽 쪽). 밤의 한가운데에서 나눈다.
+                // 박명·밤을 실제 고도에서 읽어 하늘의 해가 실제 해와 같은 고도가 된다.
+                bool evening = haveDay ? sinceRise - (set - rise) < HoursPerDay - sinceRise : hours >= HoursPerDay / 2.0;
                 float low = evening ? Arc.Sunset : Arc.Sunrise;
                 state.Progress = evening ? 1f : 0f;
                 state.Twilight = Mathf.Clamp01((low - elevation) / Mathf.Max(low - Arc.TwilightFloor, 1e-3f));
@@ -105,11 +107,14 @@ namespace _SAIUN.Scripts.Lighting
             // 달: 나이만큼 늦은 시각의 해 길을 따른다.
             double lag = moonAge / SolarCalculator.SynodicMonthDays * HoursPerDay;
             double moonHours = Repeat(hours - lag, HoursPerDay);
-            if (DayWindow(local.Date, utcOffset, 0f, 0f, out double moonRise, out double moonSet)
-                && moonHours >= moonRise && moonHours <= moonSet)
+            if (DayWindow(local.Date, utcOffset, 0f, 0f, out double moonRise, out double moonSet))
             {
-                state.MoonUp = true;
-                state.MoonProgress = (float)((moonHours - moonRise) / Math.Max(moonSet - moonRise, 1e-6));
+                double sinceMoonRise = SinceRise(moonHours, moonRise);
+                if (sinceMoonRise <= moonSet - moonRise)
+                {
+                    state.MoonUp = true;
+                    state.MoonProgress = (float)(sinceMoonRise / Math.Max(moonSet - moonRise, 1e-6));
+                }
             }
             return state;
         }
@@ -128,20 +133,28 @@ namespace _SAIUN.Scripts.Lighting
         {
             bool haveDay = DayWindow(localDate, utcOffset, Arc.Sunrise, Arc.Sunset, out double rise, out double set);
             if (!haveDay) return HoursPerDay / 2.0;
-            if (twilight <= 0f) return rise + Mathf.Clamp01(progress) * (set - rise);
+            if (twilight <= 0f) return Repeat(rise + Mathf.Clamp01(progress) * (set - rise), HoursPerDay);
 
             bool evening = progress >= 0.5f;
             float elevation = Arc.Elevation(evening ? 1f : 0f, twilight, 0f);
-            if (!Crossing(localDate, utcOffset, elevation, out double up, out double down)) return evening ? set : rise;
+            if (!Crossing(localDate, utcOffset, elevation, out double up, out double down)) return Repeat(evening ? set : rise, HoursPerDay);
             return evening ? down : up;
         }
 
-        // 해가 아침에 morning 고도를 지나 저녁에 evening 고도로 내려오는 시각(현지 시).
+        // 해가 아침에 morning 고도를 지나 저녁에 evening 고도로 내려오는 시각(현지 시). rise는 0~24이고 set은 rise 뒤다
+        // (먼 시간대의 도시는 현지 시로 옮기면 해 지는 시각이 자정을 넘어 이튿날이 되므로 24를 넘을 수 있다).
         private bool DayWindow(DateTime localDate, TimeSpan utcOffset, float morning, float evening, out double rise, out double set)
         {
             bool a = Crossing(localDate, utcOffset, morning, out rise, out _);
             bool b = Crossing(localDate, utcOffset, evening, out _, out set);
-            return a && b && set > rise;
+            if (set < rise) set += HoursPerDay;
+            return a && b;
+        }
+
+        // 해 뜬 뒤 흐른 시간(시, 0~24)
+        private static double SinceRise(double hours, double rise)
+        {
+            return Repeat(hours - rise, HoursPerDay);
         }
 
         private bool Crossing(DateTime localDate, TimeSpan utcOffset, float elevation, out double rising, out double setting)

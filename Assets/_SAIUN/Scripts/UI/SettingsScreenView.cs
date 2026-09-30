@@ -5,6 +5,7 @@ using _SAIUN.Scripts.Core;
 using _SAIUN.Scripts.Crop;
 using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Distraction;
+using _SAIUN.Scripts.Lighting;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -59,6 +60,9 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private Toggle windowSidebarToggle;
         [SerializeField] private Toggle windowGlassToggle;
         [SerializeField] private Toggle idleSkyCycleToggle;
+
+        [Tooltip("시계 하늘을 셈할 도시(해 뜨고 지는 시각)")]
+        [SerializeField] private TMP_Dropdown placeDropdown;
         [SerializeField] private Button resetPositionButton;
 
         [Header("사운드")]
@@ -164,6 +168,7 @@ namespace _SAIUN.Scripts.UI
             if (windowGlassToggle != null) windowGlassToggle.SetIsOnWithoutNotify(SettingsStore.WindowGlass);
             if (idleSkyCycleToggle != null) idleSkyCycleToggle.SetIsOnWithoutNotify(SettingsStore.IdleSkyCycle);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
+            RefreshPlace();
 
             RefreshLists();
             RefreshRunning();
@@ -253,6 +258,7 @@ namespace _SAIUN.Scripts.UI
             if (windowSidebarToggle != null) windowSidebarToggle.onValueChanged.AddListener(gameManager.RequestSetWindowSidebar);
             if (windowGlassToggle != null) windowGlassToggle.onValueChanged.AddListener(gameManager.RequestSetWindowGlass);
             if (idleSkyCycleToggle != null) idleSkyCycleToggle.onValueChanged.AddListener(gameManager.RequestSetIdleSkyCycle);
+            if (placeDropdown != null) placeDropdown.onValueChanged.AddListener(index => gameManager.RequestSetSkyPlace(SkyPlaces.All[index].Name));
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);
             if (resetPositionButton != null) resetPositionButton.onClick.AddListener(gameManager.RequestResetWindowPosition);
 
@@ -285,6 +291,18 @@ namespace _SAIUN.Scripts.UI
             string trimmed = processName?.Trim() ?? string.Empty;
             if (BlacklistStore.Normalize(trimmed).Length == 0) return string.Empty;
             return trimmed.EndsWith(ExecutableSuffix, StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + ExecutableSuffix;
+        }
+
+        // 도시 목록을 채우고 지금 쓰는 곳(고르지 않았으면 컴퓨터 시간대의 도시)을 고른다.
+        private void RefreshPlace()
+        {
+            if (placeDropdown == null) return;
+            var names = new List<string>();
+            foreach (SkyPlace place in SkyPlaces.All) names.Add(place.Name);
+            placeDropdown.ClearOptions();
+            placeDropdown.AddOptions(names);
+            SkyPlace current = SkyPlaces.Resolve(SettingsStore.SkyPlace, TimeZoneInfo.Local.Id);
+            placeDropdown.SetValueWithoutNotify(Math.Max(0, SkyPlaces.IndexOf(current.Name)));
         }
 
         private void RefreshLists()

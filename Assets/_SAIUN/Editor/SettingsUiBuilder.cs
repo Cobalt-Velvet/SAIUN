@@ -263,7 +263,12 @@ namespace _SAIUN.Editor
             Section(content, "날씨");
             Toggle weatherRandom = ToggleRow(content, "WeatherRandom", "랜덤 날씨 (세트마다)");
             Toggle weatherFocus = ToggleRow(content, "WeatherFocus", "집중 상태 연동 (방해 앱이면 먹구름)");
+
+            // 세션 밖 시계 화면의 하늘(2026-09-30): 실제 시각·하루 순환, 해 뜨고 지는 시각을 셈할 곳
+            Section(content, "하늘");
             Toggle idleSkyCycle = ToggleRow(content, "IdleSkyCycle", "시계 하늘이 하루를 천천히 돌기 (끄면 실제 시각)");
+            Sub(content, "사는 곳 (해 뜨고 지는 시각)");
+            TMP_Dropdown place = DropdownRow(content, "Place");
 
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
@@ -307,6 +312,7 @@ namespace _SAIUN.Editor
             so.FindProperty("weatherRandomToggle").objectReferenceValue = weatherRandom;
             so.FindProperty("weatherFocusToggle").objectReferenceValue = weatherFocus;
             so.FindProperty("idleSkyCycleToggle").objectReferenceValue = idleSkyCycle;
+            so.FindProperty("placeDropdown").objectReferenceValue = place;
             so.FindProperty("alwaysOnTopToggle").objectReferenceValue = alwaysOnTop;
             so.FindProperty("windowSidebarToggle").objectReferenceValue = windowSidebar;
             so.FindProperty("windowGlassToggle").objectReferenceValue = windowGlass;
@@ -628,6 +634,15 @@ namespace _SAIUN.Editor
 
         private static (TMP_Dropdown, Button) DropdownWithButton(Transform parent, string name)
         {
+            TMP_Dropdown dropdown = DropdownRow(parent, name);
+            Button add = ColoredButton(dropdown.transform.parent, "Add", "추가", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
+            Size(add, width: SmallButtonWidth, height: InputHeight);
+            return (dropdown, add);
+        }
+
+        // 한 줄을 채우는 목록 상자
+        private static TMP_Dropdown DropdownRow(Transform parent, string name)
+        {
             RectTransform row = NewUi(name, parent);
             HorizontalStack(row, new RectOffset(0, 0, 0, 0));
             Size(row, height: RowHeight);
@@ -645,10 +660,7 @@ namespace _SAIUN.Editor
             dropdownGo.GetComponent<Image>().color = SaiunPalette.InputBackground;
             dropdown.colors = PaletteColors();
             Size(dropdown, flexibleWidth: 1f, height: InputHeight);
-
-            Button add = ColoredButton(row, "Add", "추가", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
-            Size(add, width: SmallButtonWidth, height: InputHeight);
-            return (dropdown, add);
+            return dropdown;
         }
 
         private static Toggle ToggleRow(Transform parent, string name, string label)

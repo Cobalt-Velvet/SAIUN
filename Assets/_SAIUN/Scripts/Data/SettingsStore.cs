@@ -29,6 +29,7 @@ namespace _SAIUN.Scripts.Data
             public const string WeatherFocusLinked = "weather.focusLinked";
             public const string WindowGlass = "display.windowGlass";
             public const string IdleSkyCycle = "display.idleSkyCycle";
+            public const string SkyPlace = "display.skyPlace";
         }
 
         // ---- 기본값 (사양서 7장·8장) ----
@@ -177,6 +178,17 @@ namespace _SAIUN.Scripts.Data
             set => SetBool(Keys.WindowGlass, value);
         }
 
+        /// <summary>시계 하늘을 셈할 도시 이름(SkyPlaces). 비어 있으면 컴퓨터의 시간대를 쓰는 도시로 본다.</summary>
+        public static string SkyPlace
+        {
+            get => PlayerPrefs.GetString(Keys.SkyPlace, string.Empty);
+            set
+            {
+                PlayerPrefs.SetString(Keys.SkyPlace, value ?? string.Empty);
+                PlayerPrefs.Save();
+            }
+        }
+
         /// <summary>시계 화면 하늘: 켜면 하루를 천천히 돌고, 끄면 실제 시각(해 뜨고 지는 시각)을 따른다.</summary>
         public static bool IdleSkyCycle
         {
@@ -206,6 +218,7 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.WeatherFocusLinked);
             PlayerPrefs.DeleteKey(Keys.WindowGlass);
             PlayerPrefs.DeleteKey(Keys.IdleSkyCycle);
+            PlayerPrefs.DeleteKey(Keys.SkyPlace);
             PlayerPrefs.Save();
         }
 
