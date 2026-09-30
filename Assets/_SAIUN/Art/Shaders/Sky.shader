@@ -121,6 +121,8 @@ Shader "Hidden/SAIUN/Sky"
             // 구름층 고도(km)
             STATIC const float CIRRUS_ALTITUDE = 9.0;
             STATIC const float CIRROCUMULUS_ALTITUDE = 7.6;
+            // 권적운 잔 혹(뒤집은 워리)의 평균. 혹이 화소보다 잘면 이 값으로 둔다.
+            STATIC const float CIRROCUMULUS_LUMP_MEAN = 0.5;
             STATIC const float CIRROSTRATUS_ALTITUDE = 8.4;
             STATIC const float ALTOCUMULUS_ALTITUDE = 4.2;
             STATIC const float ALTOSTRATUS_ALTITUDE = 4.8;
@@ -575,20 +577,43 @@ Shader "Hidden/SAIUN/Sky"
                 return pow(fib, 1.5) * mask;
             }
 
-            // 권적운(조개구름): 아주 잘고 흰 알갱이가 조각조각 모인다. 알갱이가 옅은 물결 줄을 짓기도 한다.
-            float CirrocumulusDensity(float2 xz, out float iceFall) {
+            // 하늘 장 한 화소가 차지하는 각(라디안). ViewRig가 어느 창에서나 화소당 각을 카드와 같게 둔다: 1 / (0.95 × 680).
+            STATIC const float SKY_PIXEL_ANGLE = 0.00155;
+
+            // 높이 h 평면에서 이 방향 한 화소가 덮는 길이(km, 지평선 쪽으로 늘어나는 세로 방향).
+            // 평면 위 무늬가 이보다 잘면 화소마다 제멋대로 집혀 지평선으로 모이는 빗살이 되므로, 그만큼 무늬를 뭉갠다.
+            float PlaneFootprint(float h, float rdy) { return (h - EYE.y) * SKY_PIXEL_ANGLE / max(rdy * rdy, 1e-4); }
+
+            // 권적운(조개구름): 잘고 흰 구름 알갱이가 파란 틈을 두고 조각조각 모인다(알갱이 하나가 하늘에서 1° 남짓).
+            // 알갱이는 바람을 가로지르는 물결 줄을 따라 늘어서고(비늘구름), 줄은 크게 굽이친다.
+            // blur는 한 화소가 덮는 길이(km). 알갱이가 화소보다 잘아지는 지평선 쪽에서는 알갱이 대신 평균 덮임으로 옅은 너울이 된다.
+            float CirrocumulusDensity(float2 xz, float blur, out float iceFall) {
                 iceFall = 0.0;
                 float cov = _High.y;
                 if (cov <= 0.001) return 0.0;
                 float2 w = Rotate(xz - HighDrift() * 0.9, -0.25);
-                float grain = Dome(N(float3(w * 0.32, 0.33)).a);
-                float grain2 = Dome(N(float3(w * 0.7, 0.13)).a);
-                float ripple = 0.5 + 0.5 * sin(w.x * 7.0 + N(float3(w * 0.05, 0.71)).r * 9.0);
+                // 알갱이: 물결 줄을 따라 조금 긴 송이(가로 0.2 km, 줄 따라 0.3 km). 잔 혹이 가장자리를 깎는다.
+                float cell = N(float3(w.x * 0.3, w.y * 0.2, 0.33)).a;
+                float lump = N(float3(w * 0.75, 0.13)).a;
+                float fine = smoothstep(0.015, 0.05, blur);
+                float coarse = smoothstep(0.04, 0.11, blur);
+                float grain = cell - (1.0 - lerp(lump, CIRROCUMULUS_LUMP_MEAN, fine)) * 0.25;
+                // 물결 줄(0.8 km 간격): 마루에는 알갱이가 굵고 골에는 성기다. 줄은 크게 굽이친다.
+                float bend = N(float3(w * 0.03, 0.71)).r;
+                float rows = 0.5 + 0.5 * sin(w.x * 8.0 + bend * 16.0);
+                // 줄은 평면 위 곧은 결이라 멀리서는 지평선으로 모이는 빗살이 된다. 알갱이와 함께 뭉갠다.
+                rows = lerp(rows, 0.5, coarse);
+                // 무리: 알갱이가 몇 개씩 엉겨 비늘 무더기를 짓고 무더기 사이로 하늘이 트인다.
+                float clump = N(float3(w * 0.1, 0.59)).r;
+                float lo = lerp(0.62, 0.4, cov) - rows * 0.1 - (clump - 0.5) * 0.35;
+                float scales = Remap(grain, lo, lo + 0.28);
+                float sheet = lerp(0.25, 0.55, cov) * lerp(0.7, 1.3, clump);
+                float d = lerp(scales, sheet, coarse);
+                // 조각: 하늘에 드문드문 무리를 짓고, 덮임이 클수록 넓게 퍼진다.
                 float2 m = xz - HighDrift() * 0.9;
                 float where = N(float3(m * 0.03, 0.43)).r * 0.7 + N(float3(m * 0.1, 0.53)).r * 0.3;
                 float mask = Remap(where, 0.62 - 0.4 * cov, 0.82 - 0.3 * cov);
-                float d = mask * Remap(grain * 0.7 + grain2 * 0.3 + (ripple - 0.5) * 0.12, 0.55, 0.9);
-                return d * FallstreakHole(xz, CIRROCUMULUS_ALTITUDE, 3.4, iceFall);
+                return d * mask * FallstreakHole(xz, CIRROCUMULUS_ALTITUDE, 3.4, iceFall);
             }
 
             // 창 전체가 유리일 때 너울 구름(권층운·고층운)을 얼마나 남길지. 결 없이 고르게 덮는 너울은 유리 위에서
@@ -990,10 +1015,11 @@ Shader "Hidden/SAIUN/Sky"
                     t = PlaneHit(ro, rd, CIRROCUMULUS_ALTITUDE);
                     float2 xz = (ro + rd * t).xz;
                     float ice;
-                    d = CirrocumulusDensity(xz, ice);
+                    float ccBlur = PlaneFootprint(CIRROCUMULUS_ALTITUDE, rd.y);
+                    d = CirrocumulusDensity(xz, ccBlur, ice);
                     if (d > 0.001 || ice > 0.001) {
                         float iceNear;
-                        float toward = CirrocumulusDensity(xz + sunXZ * 0.12, iceNear) * 0.5;
+                        float toward = CirrocumulusDensity(xz + sunXZ * 0.12, ccBlur, iceNear) * 0.5;
                         float3 c = LayerLight(d, toward, forward, sc * SunLit(CIRROCUMULUS_ALTITUDE), ambMid, 1.05, 0.35);
                         float3 iceCol = sc * SunLit(CIRROCUMULUS_ALTITUDE) * (0.95 + 0.4 * forward) + ambMid * 1.15;
                         float a = max(d * 0.75, ice * 0.55);
