@@ -18,6 +18,11 @@ namespace _SAIUN.Editor
     /// 단계 모델마다 재질별 서브메시를 가진 메시 에셋 하나와 그것을 그리는 프리팹 하나다(부품 수와 무관하게 렌더러 1개).
     /// 같은 작물·단계는 늘 같은 난수로 빚어 다시 만들어도 모양이 같다. 치수는 칸 간격 0.4 기준이고 ModelScale로 키운다.
     /// 앞뒤 칸과 겹쳐 보여도 되지만 옆 칸을 넘지 않게(반경 0.095 × 2 &lt; 칸 절반 0.2) 한다.
+    ///
+    /// 눈높이 시점(2026-09-30): 흙을 약 5°로 거의 옆에서 보므로 흙 위에 누운 것은 2화소 남짓으로 사라진다.
+    /// 그래서 단계마다 흙 위로 선 윤곽으로 알아보게 한다. 앞줄 포기 기준(1유닛 ≈ 120화소)
+    ///  - 씨앗: 부푼 씨앗에서 싹 끝이 막 올라온 모습(10화소 안팎). 흙 속 씨앗만으로는 보이지 않는다.
+    ///  - 새싹: 20화소 남짓, 자람: 30화소 이상, 결실: 50화소 남짓. 단계마다 눈에 띄게 커진다.
     /// </summary>
     public static class CropModelBuilder
     {
@@ -42,6 +47,15 @@ namespace _SAIUN.Editor
 
         // 포기 안에서 잎·가지를 돌려 놓는 각. 황금각이라 개수와 무관하게 고르게 퍼진다.
         private const float GoldenAngleDegrees = 137.50776f;
+
+        // 감자 포기에서 맨 위 잎이 맨 아래 잎보다 더 서는 각
+        private const float UpperLeafLift = 25f;
+
+        // 꽃 피는 감자 포기의 줄기 키. 꽃대가 그 8할 높이에서 갈라진다.
+        private const float FruitingPotatoStem = 0.065f;
+
+        // 떡잎줄기 갈고리가 굽는 각. 끝이 거의 아래를 본다.
+        private const float HookArcDegrees = 160f;
 
         // 재질 이름
         private const string LeafLight = "Crop_LeafLight";
@@ -185,10 +199,11 @@ namespace _SAIUN.Editor
             switch (stage)
             {
                 case CropStage.Seed:
-                    Seeds(plant, rng, 3, new Vector3(0.0042f, 0.011f, 0.0035f), spread: 0.02f);
+                    Shoots(plant, rng, Seeds(plant, rng, 3, new Vector3(0.0042f, 0.011f, 0.0035f), spread: 0.02f), 3,
+                        length: (0.042f, 0.052f), width: 0.013f);
                     break;
                 case CropStage.Sprout:
-                    Tuft(plant, rng, i => LeafLight, 3, length: (0.05f, 0.075f), width: 0.016f, tilt: (8f, 20f), bend: (15f, 35f));
+                    Tuft(plant, rng, i => i == 0 ? Leaf : LeafLight, 4, length: (0.085f, 0.11f), width: 0.019f, tilt: (8f, 20f), bend: (15f, 35f));
                     break;
                 case CropStage.Growing:
                     Tuft(plant, rng, i => i % 3 == 0 ? LeafDark : Leaf, 8, length: (0.12f, 0.18f), width: 0.02f, tilt: (5f, 16f), bend: (30f, 70f));
@@ -258,13 +273,14 @@ namespace _SAIUN.Editor
             switch (stage)
             {
                 case CropStage.Seed:
-                    Seeds(plant, rng, 2, new Vector3(0.0058f, 0.0095f, 0.005f), spread: 0.015f);
+                    Shoots(plant, rng, Seeds(plant, rng, 2, new Vector3(0.0058f, 0.0095f, 0.005f), spread: 0.015f), 2,
+                        length: (0.042f, 0.05f), width: 0.014f);
                     break;
                 case CropStage.Sprout:
-                    Tuft(plant, rng, i => LeafLight, 2, length: (0.06f, 0.08f), width: 0.018f, tilt: (6f, 16f), bend: (20f, 35f));
+                    Tuft(plant, rng, i => i == 0 ? Leaf : LeafLight, 3, length: (0.09f, 0.11f), width: 0.021f, tilt: (6f, 16f), bend: (20f, 35f));
                     break;
                 case CropStage.Growing:
-                    Tuft(plant, rng, i => i % 3 == 0 ? LeafDark : Leaf, 7, length: (0.11f, 0.16f), width: 0.022f, tilt: (8f, 20f), bend: (40f, 75f));
+                    Tuft(plant, rng, i => i % 3 == 0 ? LeafDark : Leaf, 7, length: (0.14f, 0.19f), width: 0.022f, tilt: (6f, 16f), bend: (30f, 60f));
                     break;
                 case CropStage.Fruiting:
                     Tuft(plant, rng, i => i % 3 == 0 ? LeafDark : Leaf, 6, length: (0.09f, 0.13f), width: 0.022f, tilt: (10f, 22f), bend: (45f, 80f));
@@ -319,17 +335,21 @@ namespace _SAIUN.Editor
             switch (stage)
             {
                 case CropStage.Seed:
-                    Seeds(plant, rng, 3, new Vector3(0.0055f, 0.0065f, 0.0016f), spread: 0.018f);
+                    Seeds(plant, rng, 2, new Vector3(0.0055f, 0.0065f, 0.0016f), spread: 0.018f);
+                    Hook(plant, height: 0.04f, yaw: rng.Range(0f, 360f));
                     break;
                 case CropStage.Sprout:
                 {
-                    List<Vector3> stem = Stem(0.045f, 0.006f);
-                    plant.Tube(Leaf, Matrix4x4.identity, stem, 0.0036f, 0.0026f, 5);
+                    List<Vector3> stem = Stem(0.075f, 0.008f);
+                    plant.Tube(Leaf, Matrix4x4.identity, stem, 0.0045f, 0.0032f, 5);
                     Vector3 top = stem[stem.Count - 1];
+                    // 떡잎 한 쌍이 옆으로 펼쳐지고, 그 사이로 첫 본잎 한 쌍이 선다.
                     for (int s = -1; s <= 1; s += 2)
                     {
                         Vector3 direction = Vector3.right * s + Vector3.up * 0.45f;
-                        plant.Leaf(LeafLight, Frame(top, direction, Vector3.up), 0.032f, 0.016f, 0.2f, -12f);
+                        plant.Leaf(LeafLight, Frame(top, direction, Vector3.up), 0.046f, 0.02f, 0.2f, -12f);
+                        Vector3 upright = Vector3.forward * (s * 0.5f) + Vector3.up;
+                        plant.Leaf(Leaf, Frame(top, upright, Vector3.right), 0.03f, 0.02f, 0.3f, -18f);
                     }
                     break;
                 }
@@ -401,21 +421,34 @@ namespace _SAIUN.Editor
             switch (stage)
             {
                 case CropStage.Seed:
+                {
+                    // 씨감자: 반쯤 묻힌 덩이줄기의 눈에서 굵고 짧은 싹이 오른다.
                     plant.Ellipsoid(Grain, Frame(new Vector3(0f, -0.004f, 0f), Vector3.up, Vector3.forward),
                         new Vector3(0.03f, 0.021f, 0.024f), lobes: 0.06f, lobeCount: 3);
+                    for (int i = 0; i < 3; i++)
+                    {
+                        Vector3 outward = Direction(i * 120f + rng.Range(-25f, 25f));
+                        Vector3 eye = outward * 0.012f + Vector3.up * 0.014f;
+                        Vector3 growth = (Vector3.up + outward * 0.35f).normalized;
+                        float length = rng.Range(0.018f, 0.026f);
+                        var sprout = new List<Vector3> { eye, eye + growth * (length * 0.5f), eye + growth * length + outward * 0.003f };
+                        plant.Tube(LeafLight, Matrix4x4.identity, sprout, 0.0042f, 0.0032f, 5);
+                        plant.Ellipsoid(LeafLight, Frame(sprout[2], growth, outward), new Vector3(0.0045f, 0.006f, 0.0045f), rings: 4, segments: 6);
+                    }
                     break;
+                }
                 case CropStage.Sprout:
-                    PotatoLeaves(plant, rng, 3, i => LeafLight, length: (0.022f, 0.03f), up: 55f, pairs: 0, leaflet: (0.022f, 0.028f));
+                    PotatoLeaves(plant, rng, 4, i => i == 3 ? Leaf : LeafLight, length: (0.045f, 0.055f), up: 55f, pairs: 1, leaflet: (0.022f, 0.028f), rise: 0.02f);
                     break;
                 case CropStage.Growing:
-                    PotatoLeaves(plant, rng, 6, i => i % 3 == 0 ? LeafDark : Leaf, length: (0.05f, 0.065f), up: 45f, pairs: 2, leaflet: (0.024f, 0.031f));
+                    PotatoLeaves(plant, rng, 6, i => i % 3 == 0 ? LeafDark : Leaf, length: (0.06f, 0.075f), up: 40f, pairs: 2, leaflet: (0.024f, 0.031f), rise: 0.055f);
                     break;
                 case CropStage.Fruiting:
-                    PotatoLeaves(plant, rng, 7, i => i % 3 == 0 ? LeafDark : Leaf, length: (0.055f, 0.07f), up: 42f, pairs: 2, leaflet: (0.026f, 0.033f));
-                    for (int i = 0; i < 3; i++) FlowerStalk(plant, rng, i * 120f + rng.Range(-20f, 20f));
+                    PotatoLeaves(plant, rng, 7, i => i % 3 == 0 ? LeafDark : Leaf, length: (0.065f, 0.08f), up: 38f, pairs: 2, leaflet: (0.026f, 0.033f), rise: FruitingPotatoStem);
+                    for (int i = 0; i < 3; i++) FlowerStalk(plant, rng, i * 120f + rng.Range(-20f, 20f), FruitingPotatoStem * 0.8f);
                     break;
                 case CropStage.Harvestable:
-                    PotatoLeaves(plant, rng, 7, i => i % 2 == 0 ? LeafLight : Leaf, length: (0.05f, 0.065f), up: 34f, pairs: 2, leaflet: (0.024f, 0.031f));
+                    PotatoLeaves(plant, rng, 7, i => i % 2 == 0 ? LeafLight : Leaf, length: (0.06f, 0.075f), up: 25f, pairs: 2, leaflet: (0.024f, 0.031f), rise: 0.03f);
                     for (int i = 0; i < 3; i++)
                     {
                         Vector3 outward = Direction(i * 120f + 30f + rng.Range(-20f, 20f));
@@ -426,25 +459,31 @@ namespace _SAIUN.Editor
             }
         }
 
+        // 키 rise인 짧은 줄기를 따라 겹잎이 층층이 달린 포기. 아래 잎은 옆으로 눕고 위 잎일수록 선다.
+        // 흙 위에 낮게 깔리면 눈높이에서 테두리 선과 겹쳐 보이지 않으므로 줄기로 무더기를 들어 올린다.
         private static void PotatoLeaves(SculptMesh plant, Rng rng, int count, System.Func<int, string> material,
-            (float Min, float Max) length, float up, int pairs, (float Min, float Max) leaflet)
+            (float Min, float Max) length, float up, int pairs, (float Min, float Max) leaflet, float rise)
         {
+            List<Vector3> stem = Stem(rise, 0.004f);
+            plant.Tube(Leaf, Matrix4x4.identity, stem, 0.0042f, 0.003f, 5);
             for (int i = 0; i < count; i++)
             {
+                float t = count > 1 ? i / (float)(count - 1) : 0f;
                 Vector3 outward = Direction(i * GoldenAngleDegrees + rng.Range(-12f, 12f));
-                float rise = (up + rng.Range(-8f, 8f)) * Mathf.Deg2Rad;
-                Vector3 direction = outward * Mathf.Cos(rise) + Vector3.up * Mathf.Sin(rise);
-                CompoundLeaf(plant, rng, Leaf, material(i), outward * 0.006f, direction, rng.Range(length.Min, length.Max), pairs,
-                    leaflet, leafletWidth: 0.028f);
+                float lift = (up + UpperLeafLift * t + rng.Range(-8f, 8f)) * Mathf.Deg2Rad;
+                Vector3 direction = outward * Mathf.Cos(lift) + Vector3.up * Mathf.Sin(lift);
+                CompoundLeaf(plant, rng, Leaf, material(i), PointOnPath(stem, t) + outward * 0.006f, direction,
+                    rng.Range(length.Min, length.Max), pairs, leaflet, leafletWidth: 0.028f);
             }
         }
 
-        // 잎 무더기 위로 오른 꽃대 끝의 별 모양 꽃 두세 송이
-        private static void FlowerStalk(SculptMesh plant, Rng rng, float yaw)
+        // 잎 무더기 위로 오른 꽃대 끝의 별 모양 꽃 두세 송이. 줄기 baseHeight 높이에서 갈라져 나온다.
+        private static void FlowerStalk(SculptMesh plant, Rng rng, float yaw, float baseHeight)
         {
             Vector3 outward = Direction(yaw);
-            float height = rng.Range(0.11f, 0.13f);
-            var stalk = new List<Vector3> { Vector3.zero, outward * 0.015f + Vector3.up * height * 0.6f, outward * 0.03f + Vector3.up * height };
+            float height = rng.Range(0.075f, 0.09f);
+            Vector3 root = Vector3.up * baseHeight;
+            var stalk = new List<Vector3> { root, root + outward * 0.015f + Vector3.up * height * 0.6f, root + outward * 0.03f + Vector3.up * height };
             plant.Tube(Leaf, Matrix4x4.identity, stalk, 0.003f, 0.0022f, 4);
             Vector3 top = stalk[stalk.Count - 1];
             Vector3 side = Vector3.Cross(Vector3.up, outward).normalized;
@@ -460,15 +499,56 @@ namespace _SAIUN.Editor
 
         // ---- 공통 부품 ----
 
-        // 흙 위에 누운 씨앗들
-        private static void Seeds(SculptMesh plant, Rng rng, int count, Vector3 radii, float spread)
+        // 흙 위에 누운 씨앗들. 싹을 올릴 자리로 씨앗 위치를 돌려준다.
+        private static List<Vector3> Seeds(SculptMesh plant, Rng rng, int count, Vector3 radii, float spread)
         {
+            var positions = new List<Vector3>();
             for (int i = 0; i < count; i++)
             {
                 Vector3 position = Direction(i * GoldenAngleDegrees + rng.Range(0f, 40f)) * (spread * rng.Range(0.3f, 1f));
                 Vector3 lying = Direction(rng.Range(0f, 360f));
                 plant.Ellipsoid(Grain, Frame(position + Vector3.up * radii.z * 0.6f, lying, Vector3.up), radii, rings: 6, segments: 8);
+                positions.Add(position);
             }
+            return positions;
+        }
+
+        // 씨앗에서 막 올라온 곧은 싹 끝(볏과의 싹집과 첫 잎). 거의 곧게 서서 흙 위로 윤곽이 드러난다.
+        // 한낮의 밝은 바다를 등지므로 연한 잎색이 아니라 짙은 잎색이라야 윤곽이 보인다.
+        private static void Shoots(SculptMesh plant, Rng rng, List<Vector3> seeds, int count,
+            (float Min, float Max) length, float width)
+        {
+            for (int i = 0; i < Mathf.Min(count, seeds.Count); i++)
+            {
+                Vector3 outward = seeds[i].sqrMagnitude > 1e-8f ? seeds[i].normalized : Direction(rng.Range(0f, 360f));
+                float lean = rng.Range(2f, 10f) * Mathf.Deg2Rad;
+                Vector3 growth = Vector3.up * Mathf.Cos(lean) + outward * Mathf.Sin(lean);
+                plant.Blade(Leaf, Frame(seeds[i], growth, outward), rng.Range(length.Min, length.Max),
+                    width * rng.Range(0.9f, 1.1f), rng.Range(4f, 14f), 0.35f);
+            }
+        }
+
+        // 흙을 뚫고 고개 숙인 채 올라오는 떡잎줄기(쌍떡잎 싹의 갈고리). 끝에 씨껍질을 쓴 접힌 떡잎이 매달린다.
+        private static void Hook(SculptMesh plant, float height, float yaw)
+        {
+            Vector3 outward = Direction(yaw);
+            const float arc = 0.009f;
+            const int arcPoints = 6;
+            var path = new List<Vector3> { Vector3.zero, Vector3.up * ((height - arc) * 0.5f) };
+            Vector3 center = outward * arc + Vector3.up * (height - arc);
+            Vector3 tangent = Vector3.up;
+            for (int i = 0; i < arcPoints; i++)
+            {
+                float angle = HookArcDegrees * i / (arcPoints - 1) * Mathf.Deg2Rad;
+                path.Add(center - outward * (arc * Mathf.Cos(angle)) + Vector3.up * (arc * Mathf.Sin(angle)));
+                tangent = outward * Mathf.Sin(angle) + Vector3.up * Mathf.Cos(angle);
+            }
+            plant.Tube(LeafLight, Matrix4x4.identity, path, 0.0048f, 0.004f, 6);
+
+            Vector3 tip = path[path.Count - 1] + tangent * 0.006f;
+            plant.Ellipsoid(LeafLight, Frame(tip, tangent, outward), new Vector3(0.0055f, 0.0085f, 0.004f), rings: 5, segments: 6);
+            plant.Ellipsoid(Grain, Frame(tip + tangent * 0.006f, tangent, outward), new Vector3(0.005f, 0.0045f, 0.0032f),
+                rings: 4, segments: 6);
         }
 
         // 뿌리 둘레에서 바깥으로 기울어 휘는 풀잎 포기
