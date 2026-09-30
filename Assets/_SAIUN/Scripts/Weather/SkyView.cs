@@ -75,6 +75,12 @@ namespace _SAIUN.Scripts.Weather
         // 바람 빠르기(km/분)를 한 프레임 거리로 옮길 때
         private const float SecondsPerMinute = 60f;
 
+        // 잔물결 빠르기(m/s)를 km로
+        private const float MetersPerKilometer = 1000f;
+
+        // 셰이더의 잔물결 무늬가 되풀이되는 거리(km). 잔물결 주파수가 이 거리에서 정수 번 돈다(sea_common.glsl WaveHeight).
+        private const float SeaDriftPeriod = 25f;
+
         // 구멍구름이 이보다 옅으면 닫힌 것으로 보고, 다음에 뚫릴 때 제자리에서 다시 흐른다.
         private const float HoleClosed = 0.001f;
 
@@ -142,6 +148,9 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("높은 층 바람이 따라가는 데 걸리는 시간(초). 높은 바람은 땅 바람보다 한결같다.")]
         [SerializeField, Min(0.01f)] private float highWindLag = 480f;
 
+        [Tooltip("바다의 잔물결이 땅 바람을 따라 흐르는 빠르기(m/s): x 바람이 없을 때, y 가장 셀 때. 물가로 오는 너울은 바람과 따로다.")]
+        [SerializeField] private Vector2 seaChopSpeed = new Vector2(0.6f, 2.4f);
+
         [Header("웅대적운")]
         [Tooltip("탑의 자람·보이는 정도가 예보를 따라가는 데 걸리는 시간(초). 예보가 이미 천천히 바꾸므로 짧게 둔다.")]
         [SerializeField, Min(0.01f)] private float growthResponse = 4f;
@@ -180,6 +189,12 @@ namespace _SAIUN.Scripts.Weather
 
         /// <summary>바다의 물결·윤슬·파도 시간(초).</summary>
         public float SeaTime { get; private set; }
+
+        /// <summary>
+        /// 바다의 잔물결이 바람을 따라 흘러간 거리(하늘 좌표 x·z, km). 셰이더의 잔물결 무늬가 되풀이되는 거리로 되감는다.
+        /// 무늬를 바람 방향으로 돌리지 않고 이 거리만큼만 밀어, 바람이 바뀌어도 물결이 튀지 않는다.
+        /// </summary>
+        public Vector2 SeaDrift { get; private set; }
 
         /// <summary>하늘 좌표의 해 방향(+z 앞, +x 오른쪽, +y 위).</summary>
         public Vector3 SunDirection { get; private set; } = Vector3.up;
@@ -409,8 +424,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(GlassId, WindowGlass ? 1f : 0f);
             _material.SetVector(DriftId, new Vector4(LowDrift.x, LowDrift.y, MidDrift.x, MidDrift.y));
             _material.SetVector(DriftHighId, new Vector4(HighDrift.x, HighDrift.y, _holeDrift.x, _holeDrift.y));
-            Vector2 wave = Heading(WindAngle());
-            _material.SetVector(SeaWindId, new Vector4(wave.x, wave.y, weather != null ? weather.WindAmount : 0f, 0f));
+            _material.SetVector(SeaWindId, new Vector4(SeaDrift.x, SeaDrift.y, weather != null ? weather.WindAmount : 0f, 0f));
             _material.SetFloat(SeaTimeId, SeaTime);
             // 물을 비추는 빛(깊은 밤이면 달)이 대기를 지나 남은 빛깔
             Vector3 light = MoonLights ? MoonDirection : SunDirection;
@@ -447,6 +461,9 @@ namespace _SAIUN.Scripts.Weather
             MidDrift += mid;
             HighDrift += Heading(_highWindAngle) * (Mathf.Lerp(highWindSpeed.x, highWindSpeed.y, amount) * minutes);
             _holeDrift = Coverage(CloudKind.FallstreakHole) > HoleClosed ? _holeDrift + mid : Vector2.zero;
+
+            Vector2 sea = SeaDrift + Heading(surface) * (Mathf.Lerp(seaChopSpeed.x, seaChopSpeed.y, amount) / MetersPerKilometer * deltaTime);
+            SeaDrift = new Vector2(Mathf.Repeat(sea.x, SeaDriftPeriod), Mathf.Repeat(sea.y, SeaDriftPeriod));
         }
 
         // 땅 바람이 불어 가는 방향을 하늘 좌표의 방위(도, +z에서 +x 쪽으로)로 옮긴다. 바람이 없으면 앞(+z)으로 본다.

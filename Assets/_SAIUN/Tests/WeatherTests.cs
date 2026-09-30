@@ -341,6 +341,13 @@ namespace _SAIUN.Tests
             Vector4 wave = material.GetVector("_SeaWind");
             Assert.AreEqual(1f, wave.z, 0.0001f, "바람 세기");
             Assert.Less(Vector2.Angle(new Vector2(wave.x, wave.y), sky.LowDrift), 1f, "물결은 낮은 구름과 같은 바람을 탄다");
+            Assert.AreEqual(sky.SeaDrift.x, wave.x, 0.0001f, "물결은 흘러간 거리만큼 밀린다(무늬를 돌리지 않는다)");
+
+            // 바람이 확 바뀌어도 물결은 한 프레임에 흐른 만큼만 움직인다(2026-09-30 사용자 "수면이 너무 빨리 움직인다").
+            Vector2 before = sky.SeaDrift;
+            SetWind(Vector3.forward, WeatherController.MaxWindStrength);
+            sky.Tick(0.1f);
+            Assert.Less((sky.SeaDrift - before).magnitude, 0.001f);
 
             Vector4 noon = SkyView.SunlightAtSea(60f);
             Vector4 sunset = SkyView.SunlightAtSea(1f);
