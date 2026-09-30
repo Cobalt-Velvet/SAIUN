@@ -35,6 +35,7 @@ namespace _SAIUN.Scripts.Weather
     {
         private static readonly int ProgressId = Shader.PropertyToID("_Progress");
         private static readonly int SunDirId = Shader.PropertyToID("_SunDir");
+        private static readonly int MoonId = Shader.PropertyToID("_Moon");
         private static readonly int GlassId = Shader.PropertyToID("_Glass");
         private static readonly int DriftId = Shader.PropertyToID("_Drift");
         private static readonly int DriftHighId = Shader.PropertyToID("_DriftHigh");
@@ -65,8 +66,8 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>한 바퀴(화소 전체)를 나눠 그리는 횟수. 셰이더의 4×2 격자와 같다.</summary>
         public const int Interleave = 8;
 
-        // 한낮의 진행률(아침·저녁 해 고도를 가르는 곳)
-        private const float Noon = 0.5f;
+        // 밤이 이만큼 깊으면 하늘을 비추는 빛이 해에서 달로 넘어간다(셰이더의 MoonLights와 같다).
+        private const float MoonLightNight = 0.5f;
 
         // 셰이더에 "전부 그려라"를 알리는 칸 번호
         private const float AllPhases = -1f;
@@ -108,19 +109,6 @@ namespace _SAIUN.Scripts.Weather
 
         [Tooltip("구름 결 노이즈(3D). SAIUN/Rebuild Sky Noise가 만든다.")]
         [SerializeField] private Texture3D noise;
-
-        [Header("해")]
-        [Tooltip("하루가 시작할 때(진행률 0) 하늘의 해 고도(도). 앱을 켜면 보이는 시계 화면이라 금빛이 도는 맑은 아침 해로 둔다.")]
-        [SerializeField] private float sunriseElevation = 6f;
-
-        [Tooltip("하루가 끝날 때(진행률 1) 하늘의 해 고도(도). 정원 빛은 그림자가 읽히게 높게 두지만, 하늘은 지평선에 닿아야 노을이 진다.")]
-        [SerializeField] private float sunsetElevation = 0.8f;
-
-        [Tooltip("한낮 하늘의 해 고도(도)")]
-        [SerializeField] private float noonSunElevation = 62f;
-
-        [Tooltip("박명이 가장 깊을 때 해가 지평선 아래로 내려가는 각(도)")]
-        [SerializeField, Min(0f)] private float twilightDepth = 8.3f;
 
         [Header("그리기")]
         [Tooltip("창 크기 대비 하늘 텍스처 해상도")]
@@ -195,6 +183,12 @@ namespace _SAIUN.Scripts.Weather
 
         /// <summary>하늘 좌표의 해 방향(+z 앞, +x 오른쪽, +y 위).</summary>
         public Vector3 SunDirection { get; private set; } = Vector3.up;
+
+        /// <summary>하늘 좌표의 달 방향. 달이 없으면 바로 아래(지평선 밑)다.</summary>
+        public Vector3 MoonDirection { get; private set; } = Vector3.down;
+
+        /// <summary>하늘·구름·바다를 비추는 빛이 달인지(깊은 밤). 셰이더와 같은 기준이다.</summary>
+        public bool MoonLights => Night() > MoonLightNight;
 
         /// <summary>구름 예보.</summary>
         public CloudForecast Forecast => forecast;
@@ -409,14 +403,18 @@ namespace _SAIUN.Scripts.Weather
         {
             _material.SetFloat(ProgressId, sun != null ? sun.Progress : 0.5f);
             SunDirection = SkySunDirection();
+            MoonDirection = SkyMoonDirection();
             _material.SetVector(SunDirId, SunDirection);
+            _material.SetVector(MoonId, new Vector4(MoonDirection.x, MoonDirection.y, MoonDirection.z, sun != null ? sun.MoonLit : 0f));
             _material.SetFloat(GlassId, WindowGlass ? 1f : 0f);
             _material.SetVector(DriftId, new Vector4(LowDrift.x, LowDrift.y, MidDrift.x, MidDrift.y));
             _material.SetVector(DriftHighId, new Vector4(HighDrift.x, HighDrift.y, _holeDrift.x, _holeDrift.y));
             Vector2 wave = Heading(WindAngle());
             _material.SetVector(SeaWindId, new Vector4(wave.x, wave.y, weather != null ? weather.WindAmount : 0f, 0f));
             _material.SetFloat(SeaTimeId, SeaTime);
-            _material.SetVector(SunColorId, SunlightAtSea(Mathf.Asin(Mathf.Clamp(SunDirection.y, -1f, 1f)) * Mathf.Rad2Deg));
+            // 물을 비추는 빛(깊은 밤이면 달)이 대기를 지나 남은 빛깔
+            Vector3 light = MoonLights ? MoonDirection : SunDirection;
+            _material.SetVector(SunColorId, SunlightAtSea(Mathf.Asin(Mathf.Clamp(light.y, -1f, 1f)) * Mathf.Rad2Deg));
             _material.SetVector(ViewId, new Vector4(View.x, View.y, View.z, 0f));
             _material.SetFloat(GrowthId, TowerGrowth);
             _material.SetFloat(StormId, Storminess());
@@ -426,7 +424,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetVector(MidId, Pack(CloudKind.Altocumulus, CloudKind.Altostratus, CloudKind.Lenticular, CloudKind.Virga));
             _material.SetVector(LowId, Pack(CloudKind.Stratocumulus, CloudKind.Stratus, CloudKind.Cumulus, CloudKind.Nimbostratus));
             _material.SetVector(SpecialId, Pack(CloudKind.Anvil, CloudKind.Mammatus, CloudKind.Arcus, CloudKind.FallstreakHole));
-            _material.SetVector(ExtraId, new Vector4(Coverage(CloudKind.KelvinHelmholtz), Twilight(), TowerPresence, 0f));
+            _material.SetVector(ExtraId, new Vector4(Coverage(CloudKind.KelvinHelmholtz), Twilight(), TowerPresence, Night()));
         }
 
         private Vector4 Pack(CloudKind x, CloudKind y, CloudKind z, CloudKind w)
@@ -504,6 +502,7 @@ namespace _SAIUN.Scripts.Weather
                 Rain = weather != null ? weather.RainIntensity : 0f,
                 Wind = weather != null ? weather.WindAmount : 0f,
                 Resting = Resting(),
+                Idle = stateMachine == null || stateMachine.CurrentState == PomodoroState.Idle,
             };
         }
 
@@ -516,23 +515,29 @@ namespace _SAIUN.Scripts.Weather
         }
 
         /// <summary>
-        /// 하늘 좌표의 해 방향. 방위는 정원의 해를 카메라가 보는 가로 방향 기준으로 옮기고, 고도는 진행률에 따라
-        /// 아침 sunriseElevation → 한낮 noonSunElevation → 저녁 sunsetElevation, 박명이면 twilightDepth만큼 지평선 아래다.
+        /// 하늘 좌표의 해 방향. 방위는 정원의 해를 카메라가 보는 가로 방향 기준으로 옮기고, 고도는 해의 하늘 고도
+        /// (SunOrbitController.SkyElevation: 아침 → 한낮 → 저녁, 박명·밤이면 지평선 아래)다. 해가 없으면 한낮으로 본다.
         /// </summary>
         internal Vector3 SkySunDirection()
         {
-            float progress = sun != null ? sun.Progress : 0.5f;
-            float low = progress < Noon ? sunriseElevation : sunsetElevation;
-            float elevation = Mathf.Lerp(low, noonSunElevation, Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI))
-                              - twilightDepth * Twilight();
-            float azimuth = 0f;
-            if (sun != null)
-            {
-                Vector2 toSun = ToSky(-sun.LightDirection);
-                azimuth = Mathf.Atan2(toSun.x, toSun.y) * Mathf.Rad2Deg;
-            }
-            float el = elevation * Mathf.Deg2Rad;
-            float az = azimuth * Mathf.Deg2Rad;
+            if (sun == null) return Direction(0f, SkyArc.Default.Noon);
+            Vector2 toSun = ToSky(-sun.LightDirection);
+            return Direction(Mathf.Atan2(toSun.x, toSun.y) * Mathf.Rad2Deg, sun.SkyElevation);
+        }
+
+        /// <summary>하늘 좌표의 달 방향. 달은 시계 하늘에서 해와 같은 길을 늦게 따라간다. 지고 없으면 바로 아래다.</summary>
+        internal Vector3 SkyMoonDirection()
+        {
+            if (sun == null || !sun.MoonUp) return Vector3.down;
+            Vector2 toMoon = ToSky(sun.MoonTowardDirection);
+            return Direction(Mathf.Atan2(toMoon.x, toMoon.y) * Mathf.Rad2Deg, sun.MoonSkyElevation);
+        }
+
+        // 방위(도, 앞 0°·오른쪽 +)와 고도(도)의 하늘 좌표 방향
+        private static Vector3 Direction(float azimuthDegrees, float elevationDegrees)
+        {
+            float el = elevationDegrees * Mathf.Deg2Rad;
+            float az = azimuthDegrees * Mathf.Deg2Rad;
             return new Vector3(Mathf.Sin(az) * Mathf.Cos(el), Mathf.Sin(el), Mathf.Cos(az) * Mathf.Cos(el));
         }
 
@@ -554,6 +559,11 @@ namespace _SAIUN.Scripts.Weather
         private float Twilight()
         {
             return sun != null ? sun.Twilight : 0f;
+        }
+
+        private float Night()
+        {
+            return sun != null ? sun.Night : 0f;
         }
 
         // 다 자라면 꼭대기에 채운 갓구름이 얹힌다. 먹구름이 오면 사라진다.

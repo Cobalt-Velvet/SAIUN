@@ -28,6 +28,7 @@ namespace _SAIUN.Scripts.Data
             public const string WeatherRandom = "weather.random";
             public const string WeatherFocusLinked = "weather.focusLinked";
             public const string WindowGlass = "display.windowGlass";
+            public const string IdleSkyCycle = "display.idleSkyCycle";
         }
 
         // ---- 기본값 (사양서 7장·8장) ----
@@ -42,6 +43,7 @@ namespace _SAIUN.Scripts.Data
         public const bool DefaultWeatherRandom = true;
         public const bool DefaultWeatherFocusLinked = true;
         public const bool DefaultWindowGlass = false;
+        public const bool DefaultIdleSkyCycle = false;
 
         private const int True = 1;
         private const int False = 0;
@@ -175,6 +177,13 @@ namespace _SAIUN.Scripts.Data
             set => SetBool(Keys.WindowGlass, value);
         }
 
+        /// <summary>시계 화면 하늘: 켜면 하루를 천천히 돌고, 끄면 실제 시각(해 뜨고 지는 시각)을 따른다.</summary>
+        public static bool IdleSkyCycle
+        {
+            get => GetBool(Keys.IdleSkyCycle, DefaultIdleSkyCycle);
+            set => SetBool(Keys.IdleSkyCycle, value);
+        }
+
         // ---- 초기화 ----
 
         /// <summary>이 앱이 쓰는 키만 지운다. PlayerPrefs.DeleteAll은 쓰지 않는다.</summary>
@@ -196,6 +205,7 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.WeatherRandom);
             PlayerPrefs.DeleteKey(Keys.WeatherFocusLinked);
             PlayerPrefs.DeleteKey(Keys.WindowGlass);
+            PlayerPrefs.DeleteKey(Keys.IdleSkyCycle);
             PlayerPrefs.Save();
         }
 

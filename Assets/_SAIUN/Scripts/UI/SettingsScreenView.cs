@@ -58,6 +58,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private Toggle alwaysOnTopToggle;
         [SerializeField] private Toggle windowSidebarToggle;
         [SerializeField] private Toggle windowGlassToggle;
+        [SerializeField] private Toggle idleSkyCycleToggle;
         [SerializeField] private Button resetPositionButton;
 
         [Header("사운드")]
@@ -161,6 +162,7 @@ namespace _SAIUN.Scripts.UI
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.SetIsOnWithoutNotify(SettingsStore.AlwaysOnTop);
             if (windowSidebarToggle != null) windowSidebarToggle.SetIsOnWithoutNotify(SettingsStore.WindowSidebar);
             if (windowGlassToggle != null) windowGlassToggle.SetIsOnWithoutNotify(SettingsStore.WindowGlass);
+            if (idleSkyCycleToggle != null) idleSkyCycleToggle.SetIsOnWithoutNotify(SettingsStore.IdleSkyCycle);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
 
             RefreshLists();
@@ -250,6 +252,7 @@ namespace _SAIUN.Scripts.UI
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.onValueChanged.AddListener(gameManager.RequestSetAlwaysOnTop);
             if (windowSidebarToggle != null) windowSidebarToggle.onValueChanged.AddListener(gameManager.RequestSetWindowSidebar);
             if (windowGlassToggle != null) windowGlassToggle.onValueChanged.AddListener(gameManager.RequestSetWindowGlass);
+            if (idleSkyCycleToggle != null) idleSkyCycleToggle.onValueChanged.AddListener(gameManager.RequestSetIdleSkyCycle);
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);
             if (resetPositionButton != null) resetPositionButton.onClick.AddListener(gameManager.RequestResetWindowPosition);
 

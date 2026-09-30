@@ -28,8 +28,9 @@ Shader "Hidden/SAIUN/Sky"
         _Mid ("Altocumulus, Altostratus, Lenticular, Virga", Vector) = (0, 0, 0, 0)
         _Low ("Stratocumulus, Stratus, Cumulus, Nimbostratus", Vector) = (0, 0, 0, 0)
         _Special ("Anvil, Mammatus, Arcus, Fallstreak Hole", Vector) = (0, 0, 0, 0)
-        _Extra ("Kelvin-Helmholtz, Twilight, Tower, Unused", Vector) = (0, 0, 1, 0)
+        _Extra ("Kelvin-Helmholtz, Twilight, Tower, Night", Vector) = (0, 0, 1, 0)
         _SunDir ("Sun Direction (sky space)", Vector) = (0, 0.7, -0.7, 0)
+        _Moon ("Moon Direction (sky space) and lit fraction", Vector) = (0, -1, 0, 0)
         _Glass ("Whole Window Glass (clouds only)", Range(0, 1)) = 0
         _Drift ("Wind Drift km (low xy, mid zw)", Vector) = (0, 0, 0, 0)
         _DriftHigh ("Wind Drift km (high xy, hole zw)", Vector) = (0, 0, 0, 0)
@@ -72,6 +73,7 @@ Shader "Hidden/SAIUN/Sky"
             float4 _Special;
             float4 _Extra;
             float4 _SunDir;
+            float4 _Moon;
             float4 _View;
             float _Glass;
             float4 _Drift;
@@ -108,6 +110,34 @@ Shader "Hidden/SAIUN/Sky"
                 float3 c = float3(r.x, r.y * cos(p) - r.z * sin(p), r.y * sin(p) + r.z * cos(p));
                 return c.xy / max(c.z, 1e-3) * _View.y;
             }
+
+            // ==== 해와 달 (하늘 패스와 바다 패스가 같이 쓴다) ====
+            // _SunDir은 하늘 좌표의 해 방향, _Moon.xyz는 달 방향이고 _Moon.w는 달이 찬 정도(0 그믐 ~ 1 보름)다.
+            // _Extra.w는 밤(0~1): 박명이 끝난 뒤(해가 지평선 7.5° 아래) 해가 18° 아래까지 더 내려가며 하늘빛이 사그라진다.
+            // 밤이 절반을 넘으면 하늘·구름·바다를 비추는 빛이 해에서 달로 넘어간다. 그때는 해가 12° 아래라 해의 빛이 거의 없고
+            // 달빛도 막 오르기 시작하므로 이음매가 보이지 않는다. 달이 없거나 지평선 아래면 별과 밤하늘 빛만 남는다.
+
+            // 보름달이 비추는 세기(햇빛 1 기준). 실제(약 40만분의 1)보다 훨씬 밝게 잡았다: 밤이면 노출을 올려
+            // 눈이 어둠에 익은 것처럼 보이므로, 달빛 아래 하늘이 짙은 파랑으로, 구름이 은빛 가장자리로 읽히는 값이다.
+            STATIC const float MOON_LIGHT = 0.012;
+            // 달빛의 빛깔: 어둠에 익은 눈은 푸른빛에 예민해(푸르킨예 현상) 달빛 풍경이 푸르고 옅게 보인다.
+            STATIC const float3 MOON_TINT = float3(0.72, 0.84, 1.0);
+
+            float3 SunDir() { return normalize(_SunDir.xyz + float3(0.0, 1e-5, 0.0)); }
+
+            float3 MoonDir() { return normalize(_Moon.xyz + float3(0.0, 1e-5, 0.0)); }
+
+            float Night() { return _Extra.w; }
+
+            // 달이 하늘을 비추는 정도(0~1): 밤이 깊고, 달이 떠 있고, 차 있을수록 밝다.
+            float MoonShine() {
+                return smoothstep(0.5, 1.0, Night()) * smoothstep(-0.01, 0.08, MoonDir().y) * pow(clamp(_Moon.w, 0.0, 1.0), 1.5);
+            }
+
+            // 하늘·구름·바다를 비추는 빛의 방향과 세기·빛깔(햇빛 1 기준)
+            bool MoonLights() { return Night() > 0.5; }
+            float3 LightDir() { return MoonLights() ? MoonDir() : SunDir(); }
+            float3 LightScale() { return MoonLights() ? MOON_TINT * (MOON_LIGHT * MoonShine()) : float3(1.0, 1.0, 1.0); }
 
             STATIC const float PI = 3.14159265;
             // 탑 밑면 가운데(km): 오른쪽에서 솟아 화면 가장자리에서 잘린다(시계는 파란 하늘 위에 남는다).
@@ -186,6 +216,12 @@ Shader "Hidden/SAIUN/Sky"
             STATIC const float GROUND_SUN = 3.0;
             // 해 진 뒤 남는 푸른 빛(블루아워). 높은 하늘이 받은 빛이 여러 번 흩어져 한동안 하늘을 파랗게 채운다.
             STATIC const float3 BLUE_HOUR = float3(0.3, 0.5, 1.0) * 0.014;
+            // 깊은 밤에도 남는 하늘빛(대기광과 별빛). 달이 없어도 하늘이 먹빛이 아니라 아주 짙은 남색으로 남는다.
+            STATIC const float3 NIGHT_GLOW = float3(0.16, 0.24, 0.55) * 0.0034;
+            // 달: 실제(지름 0.5°)보다 크게 그린다(지름 약 1°). 달 원반의 밝기(톤매핑 전)와 어두운 쪽을 비추는 지구빛.
+            STATIC const float MOON_RADIUS = 0.0085;
+            STATIC const float MOON_BRIGHT = 1.1;
+            STATIC const float EARTHSHINE = 0.015;
             STATIC const int SUN_STEPS = 8;
             // 땅(배경 유리를 껐을 때): 먼 들판과 숲의 반사율
             STATIC const float3 GROUND_ALBEDO = float3(0.09, 0.105, 0.07);
@@ -197,8 +233,6 @@ Shader "Hidden/SAIUN/Sky"
             // 고도별 햇빛(대기를 지나 남은 비율): 0, 2, 5, 9, 14 km
             STATIC float3 gSunAt[5];
             STATIC float3 gMulti;
-
-            float3 SunDir() { return normalize(_SunDir.xyz + float3(0.0, 1e-5, 0.0)); }
 
             float SunElevationDeg() { return degrees(asin(clamp(SunDir().y, -1.0, 1.0))); }
 
@@ -257,9 +291,12 @@ Shader "Hidden/SAIUN/Sky"
                 gSunAt[4] = SunTransmittance(EYE + float3(0.0, 14.0, 0.0), sd);
                 // 여러 번 흩어진 빛은 하늘 전체가 받은 햇빛에 비례한다. 해가 져도 높은 하늘이 받은 빛이 한동안 남는다.
                 float3 high = SunTransmittance(EYE + float3(0.0, 30.0, 0.0), sd);
-                gMulti = (gSunAt[1] * 0.6 + gSunAt[3] * 0.25 + high * 0.15) * MULTI_SCATTER * (0.25 + 0.75 * smoothstep(-0.1, 0.3, sd.y));
-                float el = degrees(asin(clamp(sd.y, -1.0, 1.0)));
+                gMulti = (gSunAt[1] * 0.6 + gSunAt[3] * 0.25 + high * 0.15) * MULTI_SCATTER * (0.25 + 0.75 * smoothstep(-0.1, 0.3, sd.y))
+                                * LightScale();
+                // 블루아워와 밤하늘 빛은 해가 진 정도를 따른다(달빛과 따로).
+                float el = SunElevationDeg();
                 gMulti += BLUE_HOUR * smoothstep(-15.0, -1.0, el) * smoothstep(3.0, -1.0, el);
+                gMulti += NIGHT_GLOW * smoothstep(0.2, 0.8, Night());
             }
 
             // 고도 h(km)의 햇빛(대기를 지나 남은 비율). 해가 지면 땅 그림자보다 낮은 곳은 0이다.
@@ -303,7 +340,7 @@ Shader "Hidden/SAIUN/Sky"
                     float3 scatR = RAYLEIGH_SCATTER * rho.x;
                     float scatM = MIE_SCATTER * rho.y;
                     float3 sunT = SunTransmittance(p, sd);
-                    float3 source = (scatR * pr + v3(scatM * pm)) * sunT + (scatR + v3(scatM)) * gMulti;
+                    float3 source = (scatR * pr + v3(scatM * pm)) * sunT * LightScale() + (scatR + v3(scatM)) * gMulti;
                     float3 stepT = exp(-ext * dt);
                     // 한 걸음 안에서 감쇠를 고려해 쌓는다(걸음이 커도 에너지가 넘치지 않는다).
                     L += T * source * SKY_SUN * (v3(1.0) - stepT) / max(ext, v3(1e-6));
@@ -366,7 +403,31 @@ Shader "Hidden/SAIUN/Sky"
                 float2 cell = floor(float2(atan2(rd.x, rd.z), asin(clamp(rd.y, -1.0, 1.0))) * 300.0);
                 float star = smoothstep(0.9978, 1.0, Hash2(cell)) * smoothstep(0.5, 1.0, tw) * smoothstep(0.05, 0.35, rd.y);
                 // 보이는 장을 만들며 살짝 거르므로(섞기 패스) 그만큼 밝게 찍는다.
-                return star * float3(0.8, 0.88, 1.0) * 0.6 * (1.0 - Overcast());
+                return star * float3(0.8, 0.88, 1.0) * 0.6 * lerp(1.0, 1.5, Night()) * (1.0 - 0.6 * MoonShine()) * (1.0 - Overcast());
+            }
+
+            // 달 원반: 해 쪽이 밝고, 찬 정도만큼 둥글게 찬다. 어두운 쪽은 지구빛으로 아주 옅게 비치고, 바다(어두운 무늬)가 얼룩진다.
+            // 낮에도 떠 있으면 하늘빛에 묻혀 옅게 보인다.
+            float3 MoonDisc(float3 rd) {
+                float3 m = MoonDir();
+                if (m.y < -0.02 || dot(rd, m) < cos(MOON_RADIUS * 1.2)) return v3(0.0);
+                float3 side = abs(m.y) > 0.99 ? float3(1.0, 0.0, 0.0) : normalize(cross(float3(0.0, 1.0, 0.0), m));
+                float3 up = cross(m, side);
+                float2 q = float2(dot(rd, side), dot(rd, up)) / MOON_RADIUS;
+                float r = length(q);
+                if (r >= 1.0) return v3(0.0);
+                // 보는 쪽 반구의 겉면 방향
+                float3 n = side * q.x + up * q.y - m * sqrt(max(1.0 - r * r, 0.0));
+                // 비추는 해: 원반 위에서 해가 있는 쪽으로, 찬 정도(위상)만큼 달 뒤로 돌아간다.
+                float3 s = SunDir();
+                float3 toward = s - m * dot(s, m);
+                float3 u = length(toward) > 1e-4 ? normalize(toward) : up;
+                float cosPhase = 2.0 * clamp(_Moon.w, 0.0, 1.0) - 1.0;
+                float3 light = -m * cosPhase + u * sqrt(max(1.0 - cosPhase * cosPhase, 0.0));
+                float lit = smoothstep(-0.04, 0.12, dot(n, light));
+                float maria = lerp(0.72, 1.0, smoothstep(0.38, 0.62, N(float3(q * 0.23 + 0.5, 0.61)).r));
+                float edge = 1.0 - smoothstep(0.8, 1.0, r);
+                return float3(1.0, 0.97, 0.9) * (lit * maria + EARTHSHINE) * MOON_BRIGHT * edge;
             }
 
             // 채운의 빛깔: 분홍 → 박하 → 연보라 → 옅은 금빛. 실제 채운은 무지개 일곱 빛보다 분홍·초록이 주로 번진다.
@@ -856,7 +917,8 @@ Shader "Hidden/SAIUN/Sky"
                 // 지평선 바로 아래 몇 줄은 남긴다: 보이는 장을 거를 때 지평선 줄이 이웃을 읽는다.
                 if (rd.y < (_Glass > 0.5 ? -0.07 : -0.02)) return float4(0.0, 0.0, 0.0, 0.0);
                 float3 ro = EYE;
-                float3 s = SunDir();
+                // 하늘·구름을 비추는 빛: 낮과 박명에는 해, 깊은 밤에는 달.
+                float3 s = LightDir();
                 float2 dir = Direction(rd);
                 float tw = Twilight();
 
@@ -864,7 +926,7 @@ Shader "Hidden/SAIUN/Sky"
                 PrepareSun(s);
 
                 // 구름을 비추는 햇빛(색은 고도별로 SunLit이 곱한다). 층구름이 덮거나 뇌우면 줄어든다.
-                float3 sc = v3(CLOUD_SUN * (1.0 - 0.8 * _Storm) * SunTransmit());
+                float3 sc = CLOUD_SUN * (1.0 - 0.8 * _Storm) * SunTransmit() * LightScale();
                 float ovc = Overcast();
                 // 그늘을 채우는 하늘빛: 머리 위와 지평선 하늘의 빛에서 가져온다. 밑은 땅에서 튄 빛이다.
                 float3 zenithSky = v3(0.0);
@@ -877,7 +939,7 @@ Shader "Hidden/SAIUN/Sky"
                 // 이 방향의 공기 빛은 마지막에 걷는다(겹칠 때 이 값을 쓴다).
                 float airEnd = IntegrateAir(ro, rd, s, hitGround);
                 float3 ambTop = (zenithSky * 0.55 + horizonSky * 0.45) * 0.55;
-                float3 ambBottom = GROUND_ALBEDO * (gSunAt[0] * max(s.y, 0.0) * GROUND_SUN + ambTop * 1.2) + ambTop * 0.25;
+                float3 ambBottom = GROUND_ALBEDO * (gSunAt[0] * max(s.y, 0.0) * GROUND_SUN * LightScale() + ambTop * 1.2) + ambTop * 0.25;
                 // 해가 지면 구름 밑은 하늘보다 어둡다(위에서 오는 하늘빛만 받는다).
                 ambTop *= lerp(1.0, 0.45, tw);
                 ambTop = lerp(ambTop, v3(dot(ambTop, float3(0.3, 0.5, 0.2))) * 1.1, ovc * 0.7) * lerp(1.0, 0.45, _Storm);
@@ -1237,11 +1299,12 @@ Shader "Hidden/SAIUN/Sky"
                     prevL = airL;
                 }
                 // 마지막 구름 너머의 하늘. 흐리면 잿빛이다.
-                c += T * Overcasted(gAirL[SKY_STEPS] - prevL + PurpleLight(rd, s));
+                c += T * Overcasted(gAirL[SKY_STEPS] - prevL + PurpleLight(rd, SunDir()));
                 if (!hitGround) {
                     // 해: 화면 밖에 있을 때가 많지만 들어오면 눈부신 원반이다.
-                    float disk = smoothstep(0.99996, 0.99999, dot(rd, s));
+                    float disk = smoothstep(0.99996, 0.99999, dot(rd, SunDir()));
                     c += T * gAirT[SKY_STEPS] * disk * 40.0 * (1.0 - Overcast());
+                    c += T * gAirT[SKY_STEPS] * MoonDisc(rd) * (1.0 - Overcast());
                     c += T * Stars(rd);
                 }
 
@@ -1279,6 +1342,8 @@ Shader "Hidden/SAIUN/Sky"
             float _Blend;
             sampler3D _Noise;
             float4 _SunDir;
+            float4 _Moon;
+            float4 _Extra;
             float4 _View;
             float4 _SkySize;
             float4 _SeaWind;
@@ -1333,6 +1398,34 @@ Shader "Hidden/SAIUN/Sky"
                 float3 c = float3(r.x, r.y * cos(p) - r.z * sin(p), r.y * sin(p) + r.z * cos(p));
                 return c.xy / max(c.z, 1e-3) * _View.y;
             }
+
+            // ==== 해와 달 (하늘 패스와 바다 패스가 같이 쓴다) ====
+            // _SunDir은 하늘 좌표의 해 방향, _Moon.xyz는 달 방향이고 _Moon.w는 달이 찬 정도(0 그믐 ~ 1 보름)다.
+            // _Extra.w는 밤(0~1): 박명이 끝난 뒤(해가 지평선 7.5° 아래) 해가 18° 아래까지 더 내려가며 하늘빛이 사그라진다.
+            // 밤이 절반을 넘으면 하늘·구름·바다를 비추는 빛이 해에서 달로 넘어간다. 그때는 해가 12° 아래라 해의 빛이 거의 없고
+            // 달빛도 막 오르기 시작하므로 이음매가 보이지 않는다. 달이 없거나 지평선 아래면 별과 밤하늘 빛만 남는다.
+
+            // 보름달이 비추는 세기(햇빛 1 기준). 실제(약 40만분의 1)보다 훨씬 밝게 잡았다: 밤이면 노출을 올려
+            // 눈이 어둠에 익은 것처럼 보이므로, 달빛 아래 하늘이 짙은 파랑으로, 구름이 은빛 가장자리로 읽히는 값이다.
+            STATIC const float MOON_LIGHT = 0.012;
+            // 달빛의 빛깔: 어둠에 익은 눈은 푸른빛에 예민해(푸르킨예 현상) 달빛 풍경이 푸르고 옅게 보인다.
+            STATIC const float3 MOON_TINT = float3(0.72, 0.84, 1.0);
+
+            float3 SunDir() { return normalize(_SunDir.xyz + float3(0.0, 1e-5, 0.0)); }
+
+            float3 MoonDir() { return normalize(_Moon.xyz + float3(0.0, 1e-5, 0.0)); }
+
+            float Night() { return _Extra.w; }
+
+            // 달이 하늘을 비추는 정도(0~1): 밤이 깊고, 달이 떠 있고, 차 있을수록 밝다.
+            float MoonShine() {
+                return smoothstep(0.5, 1.0, Night()) * smoothstep(-0.01, 0.08, MoonDir().y) * pow(clamp(_Moon.w, 0.0, 1.0), 1.5);
+            }
+
+            // 하늘·구름·바다를 비추는 빛의 방향과 세기·빛깔(햇빛 1 기준)
+            bool MoonLights() { return Night() > 0.5; }
+            float3 LightDir() { return MoonLights() ? MoonDir() : SunDir(); }
+            float3 LightScale() { return MoonLights() ? MOON_TINT * (MOON_LIGHT * MoonShine()) : float3(1.0, 1.0, 1.0); }
 
             // ==== 바다와 해변 (보이는 장을 만드는 패스, 매 프레임) ====
             // 지평선 아래는 바다다(2026-09-29 사용자 "해변은 어떰? 빛에 의해서 난반사가 일어나도록").
@@ -1401,7 +1494,8 @@ Shader "Hidden/SAIUN/Sky"
             }
 
             // 해가 바다 수면에 닿는 빛(바깥에서 대기를 지난 해 빛깔을 준다). 해가 지면 사라진다.
-            float3 SunAtSea() { return _SunColor.rgb * smoothstep(-0.6, 0.4, SeaSunElevation()); }
+            // 물을 비추는 빛(해 또는 달)의 빛깔과 세기. _SunColor는 그 빛이 대기를 지나 남은 빛깔이다.
+            float3 SunAtSea() { return _SunColor.rgb * LightScale() * smoothstep(-0.6, 0.4, degrees(asin(clamp(LightDir().y, -1.0, 1.0)))); }
 
             // 하늘에서 고르게 내려오는 빛(HDR): 머리 위와 지평선 하늘을 섞는다.
             float3 SkyAmbient() {
@@ -1437,7 +1531,7 @@ Shader "Hidden/SAIUN/Sky"
 
             // 지평선 아래 한 화소의 빛(HDR). rd는 보는 방향(rd.y < 0), pixel은 화면 화소.
             float3 SeaColor(float3 rd, float2 pixel) {
-                float3 s = normalize(_SunDir.xyz);
+                float3 s = LightDir();
                 float3 sun = SunAtSea();
                 float3 amb = SkyAmbient();
                 float t = SEA_EYE / max(-rd.y, 1e-4);

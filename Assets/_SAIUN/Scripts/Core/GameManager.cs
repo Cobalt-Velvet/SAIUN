@@ -71,6 +71,9 @@ namespace _SAIUN.Scripts.Core
         /// <summary>창 전체 유리를 켜거나 껐다. 하늘이 창을 채울지, 구름만 유리 위에 띄울지 바꾼다.</summary>
         public event Action<bool> OnWindowGlassChanged;
 
+        /// <summary>시계 화면 하늘을 하루 순환으로 켜거나(참) 실제 시각으로 돌렸다(거짓).</summary>
+        public event Action<bool> OnIdleSkyCycleChanged;
+
         private SessionConfig _currentConfig;
         private string _sessionStartTime;
         private bool _hasFocus = true;
@@ -238,6 +241,13 @@ namespace _SAIUN.Scripts.Core
         {
             SettingsStore.WindowGlass = enabled;
             OnWindowGlassChanged?.Invoke(enabled);
+        }
+
+        /// <summary>시계 화면 하늘이 하루를 천천히 돌지(참), 실제 시각을 따를지(거짓) 정한다.</summary>
+        public void RequestSetIdleSkyCycle(bool cycle)
+        {
+            SettingsStore.IdleSkyCycle = cycle;
+            OnIdleSkyCycleChanged?.Invoke(cycle);
         }
 
         public void RequestSetSoundEnabled(bool enabled)

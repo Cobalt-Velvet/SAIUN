@@ -47,6 +47,7 @@ namespace _SAIUN.Scripts.Weather
         public float Rain;       // 비 강도 0~1
         public float Wind;       // 바람 세기 0~1
         public bool Resting;     // 쉬는 중(시계·휴식)
+        public bool Idle;        // 시계 화면(세션 밖)
     }
 
     /// <summary>장면 하나가 나올 가능성(아침·한낮·저녁 무게, 바람 1당 더하는 무게)과 주된 구름 양의 범위.</summary>
@@ -172,6 +173,10 @@ namespace _SAIUN.Scripts.Weather
 
         [Tooltip("장면별 무게(아침·한낮·저녁·바람 1당)와 주된 구름 양 범위. SkyScene 순서.")]
         [SerializeField] private SceneWeight[] sceneWeights = DefaultSceneWeights();
+
+        [Tooltip("시계 화면(세션 밖)에서 장면마다 곱하는 무게(SkyScene 순서). 오래 바라보는 화면이라 밋밋한 안개·너울은 줄이고, " +
+                 "탑과 채운이 서기 좋은 뭉게구름·조개구름·양떼구름을 늘린다.")]
+        [SerializeField] private float[] idleSceneBias = DefaultIdleSceneBias();
 
         [Tooltip("장면에 높은 구름(새털·조개구름)이 옅게 곁들여질 확률")]
         [SerializeField, Range(0f, 1f)] private float companionChance = 0.35f;
@@ -384,6 +389,7 @@ namespace _SAIUN.Scripts.Weather
                 // 탑이 솟아 있는 동안은 대류가 이는 장면끼리만 바뀐다(탑이 안개·층구름 속으로 사라지지 않게).
                 bool stable = TowerActive && TowerChance((SkyScene)i) <= 0f;
                 weights[i] = same || stable || i >= sceneWeights.Length ? 0f : sceneWeights[i].Weight(inputs.Progress, inputs.Wind);
+                if (inputs.Idle && i < idleSceneBias.Length) weights[i] *= idleSceneBias[i];
                 total += weights[i];
             }
 
@@ -627,6 +633,12 @@ namespace _SAIUN.Scripts.Weather
         }
 
         // 기본 무게: 아침엔 안개·양떼구름, 한낮엔 뭉게구름 떼, 저녁엔 새털구름. 바람이 세면 새털구름·두루마리구름.
+        // 맑음, 뭉게구름 떼, 새털구름, 조개구름, 양떼구름, 두루마리구름, 아침 안개, 햇무리구름 너울
+        private static float[] DefaultIdleSceneBias()
+        {
+            return new[] { 0.8f, 1.6f, 1.1f, 1.3f, 1.2f, 0.8f, 0.25f, 0.4f };
+        }
+
         private static SceneWeight[] DefaultSceneWeights()
         {
             return new[]

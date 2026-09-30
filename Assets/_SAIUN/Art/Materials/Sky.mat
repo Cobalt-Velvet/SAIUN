@@ -55,6 +55,7 @@ Material:
     - _High: {r: 0, g: 0, b: 0, a: 0}
     - _Low: {r: 0, g: 0, b: 0, a: 0}
     - _Mid: {r: 0, g: 0, b: 0, a: 0}
+    - _Moon: {r: 0, g: -1, b: 0, a: 0}
     - _SeaWind: {r: 0.7, g: 0.7, b: 0.5, a: 0}
     - _SkySize: {r: 480, g: 680, b: 0, a: 0}
     - _Special: {r: 0, g: 0, b: 0, a: 0}

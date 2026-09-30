@@ -253,16 +253,17 @@ namespace _SAIUN.Tests
         {
             SunOrbitController orbit = MakeSun();
             SkyView sky = MakeSky(orbit);
+            SkyArc arc = Get<SkyArc>(orbit, "skyArc");
 
             orbit.Apply(0f);
             sky.Tick(0.1f);
             Vector3 morning = sky.SunDirection;
             Assert.Less(morning.z, -0.9f, "아침 해는 등 뒤(정원 그림자가 앞으로 진다)");
-            Assert.AreEqual(Get<float>(sky, "sunriseElevation"), Mathf.Asin(morning.y) * Mathf.Rad2Deg, 0.01f, "아침 해는 낮게 떠 있다");
+            Assert.AreEqual(arc.Sunrise, Mathf.Asin(morning.y) * Mathf.Rad2Deg, 0.01f, "아침 해는 낮게 떠 있다");
 
             orbit.Apply(0.5f);
             sky.Tick(0.1f);
-            Assert.AreEqual(Get<float>(sky, "noonSunElevation"), Mathf.Asin(sky.SunDirection.y) * Mathf.Rad2Deg, 0.01f, "한낮엔 높다");
+            Assert.AreEqual(arc.Noon, Mathf.Asin(sky.SunDirection.y) * Mathf.Rad2Deg, 0.01f, "한낮엔 높다");
             Assert.Less(sky.SunDirection.x, 0f, "한낮 해는 왼쪽");
 
             orbit.Apply(1f);
@@ -270,7 +271,7 @@ namespace _SAIUN.Tests
             Vector3 dusk = sky.SunDirection;
             Assert.Greater(dusk.z, 0.95f, "해 질 녘 해는 앞바다로 진다(물에 윤슬 길이 선다)");
             Assert.Less(dusk.x, 0f, "화분에 가리지 않게 조금 왼쪽");
-            Assert.AreEqual(Get<float>(sky, "sunsetElevation"), Mathf.Asin(dusk.y) * Mathf.Rad2Deg, 0.01f, "해 질 녘엔 지평선에 걸린다");
+            Assert.AreEqual(arc.Sunset, Mathf.Asin(dusk.y) * Mathf.Rad2Deg, 0.01f, "해 질 녘엔 지평선에 걸린다");
             Vector4 shader = Material(sky).GetVector("_SunDir");
             Assert.AreEqual(dusk.y, shader.y, 0.0001f, "셰이더로 간다");
 

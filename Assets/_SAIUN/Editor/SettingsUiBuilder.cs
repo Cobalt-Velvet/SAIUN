@@ -263,6 +263,7 @@ namespace _SAIUN.Editor
             Section(content, "날씨");
             Toggle weatherRandom = ToggleRow(content, "WeatherRandom", "랜덤 날씨 (세트마다)");
             Toggle weatherFocus = ToggleRow(content, "WeatherFocus", "집중 상태 연동 (방해 앱이면 먹구름)");
+            Toggle idleSkyCycle = ToggleRow(content, "IdleSkyCycle", "시계 하늘이 하루를 천천히 돌기 (끄면 실제 시각)");
 
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
@@ -305,6 +306,7 @@ namespace _SAIUN.Editor
             so.FindProperty("graceField").objectReferenceValue = grace;
             so.FindProperty("weatherRandomToggle").objectReferenceValue = weatherRandom;
             so.FindProperty("weatherFocusToggle").objectReferenceValue = weatherFocus;
+            so.FindProperty("idleSkyCycleToggle").objectReferenceValue = idleSkyCycle;
             so.FindProperty("alwaysOnTopToggle").objectReferenceValue = alwaysOnTop;
             so.FindProperty("windowSidebarToggle").objectReferenceValue = windowSidebar;
             so.FindProperty("windowGlassToggle").objectReferenceValue = windowGlass;
