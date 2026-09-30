@@ -56,15 +56,15 @@ namespace _SAIUN.Editor
         private const float TutorialCardOffsetY = 40f;
         private const float TutorialBodyHeight = 92f;
         private const float TutorialButtonWidth = 120f;
-        private static readonly Color TutorialDimColor = SaiunPalette.WithAlpha(SaiunPalette.DeepJungle, 0.6f);
+        private static readonly Color TutorialDimColor = SaiunPalette.WithAlpha(SaiunPalette.Charcoal, 0.6f);
         private static readonly Vector2 DialogCardSize = new Vector2(400f, 200f);
         private const float DialogBodyHeight = 70f;
 
         private static readonly Color PanelColor = SaiunPalette.BottomBarBackground;
         // 설정 글자 뒤로 시계·화단이 비치면 읽기 어려워 불투명하게 둔다.
-        private static readonly Color ScreenColor = SaiunPalette.DeepJungle;
-        private static readonly Color SubtleColor = SaiunPalette.WithAlpha(SaiunPalette.TeaGreen, 0.35f);
-        private static readonly Color RowColor = SaiunPalette.WithAlpha(SaiunPalette.JungleTeal, 0.35f);
+        private static readonly Color ScreenColor = SaiunPalette.Charcoal;
+        private static readonly Color SubtleColor = SaiunPalette.WithAlpha(SaiunPalette.SubtleText, 0.35f);
+        private static readonly Color RowColor = SaiunPalette.WithAlpha(SaiunPalette.Driftwood, 0.35f);
 
         private static TMP_FontAsset s_font;
 
@@ -155,7 +155,7 @@ namespace _SAIUN.Editor
             SliderField longBreak = SliderRow(panel, "LongBreak");
             SliderField sets = SliderRow(panel, "Sets");
 
-            Size(Text(panel, "CropLabel", "작물", SmallFontSize + 1f, SaiunPalette.TeaGreen), height: 18f);
+            Size(Text(panel, "CropLabel", "작물", SmallFontSize + 1f, SaiunPalette.SubtleText), height: 18f);
             RectTransform grid = NewUi("CropGrid", panel);
             var gridLayout = grid.gameObject.AddComponent<GridLayoutGroup>();
             float cropWidth = (SceneMetrics.WindowWidth - Padding * 2 - Spacing * (CropColumns - 1)) / CropColumns;
@@ -167,7 +167,7 @@ namespace _SAIUN.Editor
             Size(grid, height: CropButtonHeight);
             Button cropTemplate = CropButtonTemplate(grid);
 
-            TMP_Text hint = Size(Text(panel, "Hint", string.Empty, SmallFontSize, SaiunPalette.TeaGreen), height: 18f);
+            TMP_Text hint = Size(Text(panel, "Hint", string.Empty, SmallFontSize, SaiunPalette.SubtleText), height: 18f);
 
             var so = new SerializedObject(view);
             so.FindProperty("gameManager").objectReferenceValue = gameManager;
@@ -188,13 +188,13 @@ namespace _SAIUN.Editor
 
         private static Button CropButtonTemplate(Transform grid)
         {
-            Button button = ColoredButton(grid, "CropTemplate", string.Empty, BodyFontSize, RowColor, SaiunPalette.Eggshell);
+            Button button = ColoredButton(grid, "CropTemplate", string.Empty, BodyFontSize, RowColor, SaiunPalette.Sand);
             // 기본 버튼의 글자 하나를 이름·조건 두 줄로 바꾼다.
             Object.DestroyImmediate(button.GetComponentInChildren<TMP_Text>().gameObject);
 
-            TMP_Text name = Text(button.transform, "Name", string.Empty, BodyFontSize, SaiunPalette.Eggshell, TextAlignmentOptions.Center);
+            TMP_Text name = Text(button.transform, "Name", string.Empty, BodyFontSize, SaiunPalette.Sand, TextAlignmentOptions.Center);
             Anchor(name.rectTransform, new Vector2(0f, 0.45f), new Vector2(1f, 1f));
-            TMP_Text detail = Text(button.transform, "Detail", string.Empty, SmallFontSize - 1f, SaiunPalette.Eggshell, TextAlignmentOptions.Center);
+            TMP_Text detail = Text(button.transform, "Detail", string.Empty, SmallFontSize - 1f, SaiunPalette.Sand, TextAlignmentOptions.Center);
             Anchor(detail.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.48f));
 
             button.gameObject.SetActive(false);
@@ -226,7 +226,7 @@ namespace _SAIUN.Editor
             // 기어 아이콘: 창 오른쪽 위. 설정 화면을 열면 같은 자리에 닫기 버튼이 온다.
             RectTransform gear = NewUi("Gear", root);
             TopRight(gear);
-            Image gearImage = AddImage(gear, SaiunPalette.WithAlpha(SaiunPalette.Eggshell, 0.85f), raycast: true);
+            Image gearImage = AddImage(gear, SaiunPalette.WithAlpha(SaiunPalette.Sand, 0.85f), raycast: true);
             gearImage.sprite = EnsureGearIcon();
             gearImage.preserveAspect = true;
             var gearButton = gear.gameObject.AddComponent<Button>();
@@ -282,7 +282,7 @@ namespace _SAIUN.Editor
             Button resetData = WideButton(content, "ResetData", "전체 데이터 초기화", SaiunPalette.Warning, SaiunPalette.OnMainPoint);
 
             Section(content, "앱");
-            Button quit = WideButton(content, "Quit", "SAIUN 종료", RowColor, SaiunPalette.Eggshell);
+            Button quit = WideButton(content, "Quit", "SAIUN 종료", RowColor, SaiunPalette.Sand);
 
             GameObject rowTemplate = ListRowTemplate(screen);
             MessageDialogView dialog = EnsureDialog(canvas, rebuild);
@@ -348,7 +348,7 @@ namespace _SAIUN.Editor
             card.anchorMin = card.anchorMax = new Vector2(0.5f, 0.5f);
             card.pivot = new Vector2(0.5f, 0.5f);
             card.sizeDelta = DialogCardSize;
-            Image cardImage = AddImage(card, SaiunPalette.DeepJungle, raycast: true);
+            Image cardImage = AddImage(card, SaiunPalette.Charcoal, raycast: true);
             cardImage.sprite = BuiltinSprite("UI/Skin/UISprite.psd");
             cardImage.type = Image.Type.Sliced;
             VerticalStack(card, new RectOffset(20, 20, 16, 16), 8f);
@@ -363,7 +363,7 @@ namespace _SAIUN.Editor
             HorizontalStack(buttons, new RectOffset(0, 0, 0, 0));
             Size(buttons, height: RowHeight);
             Size(NewUi("Spacer", buttons), flexibleWidth: 1f);
-            Button cancel = ColoredButton(buttons, "Cancel", "취소", BodyFontSize, Color.clear, SaiunPalette.TeaGreen);
+            Button cancel = ColoredButton(buttons, "Cancel", "취소", BodyFontSize, Color.clear, SaiunPalette.SubtleText);
             Size(cancel, width: TutorialButtonWidth - 20f, height: RowHeight);
             Button confirm = ColoredButton(buttons, "Confirm", "확인", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
             Size(confirm, width: TutorialButtonWidth, height: RowHeight);
@@ -410,7 +410,7 @@ namespace _SAIUN.Editor
             AddImage(overlay, TutorialDimColor, raycast: true);
 
             RectTransform highlight = NewUi("Highlight", overlay);
-            Image ring = AddImage(highlight, SaiunPalette.Eggshell, raycast: false);
+            Image ring = AddImage(highlight, SaiunPalette.Sand, raycast: false);
             ring.sprite = EnsureRingSprite();
             ring.type = Image.Type.Sliced;
 
@@ -419,12 +419,12 @@ namespace _SAIUN.Editor
             card.pivot = new Vector2(0.5f, 0.5f);
             card.anchoredPosition = new Vector2(0f, TutorialCardOffsetY);
             card.sizeDelta = TutorialCardSize;
-            Image cardImage = AddImage(card, SaiunPalette.DeepJungle, raycast: true);
+            Image cardImage = AddImage(card, SaiunPalette.Charcoal, raycast: true);
             cardImage.sprite = BuiltinSprite("UI/Skin/UISprite.psd");
             cardImage.type = Image.Type.Sliced;
             VerticalStack(card, new RectOffset(20, 20, 16, 16), 6f);
 
-            TMP_Text step = Size(Text(card, "Step", string.Empty, SmallFontSize, SaiunPalette.TeaGreen), height: 18f);
+            TMP_Text step = Size(Text(card, "Step", string.Empty, SmallFontSize, SaiunPalette.SubtleText), height: 18f);
             TMP_Text title = Size(Text(card, "Title", string.Empty, TitleFontSize + 2f, SaiunPalette.HudText), height: 30f);
             TMP_Text body = Size(Text(card, "Body", string.Empty, BodyFontSize, SaiunPalette.HudText, TextAlignmentOptions.TopLeft),
                 height: TutorialBodyHeight);
@@ -434,7 +434,7 @@ namespace _SAIUN.Editor
             RectTransform buttons = NewUi("Buttons", card);
             HorizontalStack(buttons, new RectOffset(0, 0, 0, 0));
             Size(buttons, height: RowHeight);
-            Button skip = ColoredButton(buttons, "Skip", "건너뛰기", BodyFontSize, Color.clear, SaiunPalette.TeaGreen);
+            Button skip = ColoredButton(buttons, "Skip", "건너뛰기", BodyFontSize, Color.clear, SaiunPalette.SubtleText);
             Size(skip, width: TutorialButtonWidth - 20f, height: RowHeight);
             Size(NewUi("Spacer", buttons), flexibleWidth: 1f);
             Button next = ColoredButton(buttons, "Next", "다음", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
@@ -584,7 +584,7 @@ namespace _SAIUN.Editor
 
         private static void Sub(Transform parent, string text)
         {
-            Size(Text(parent, $"Sub_{text}", text, SmallFontSize + 1f, SaiunPalette.TeaGreen), height: 20f);
+            Size(Text(parent, $"Sub_{text}", text, SmallFontSize + 1f, SaiunPalette.SubtleText), height: 20f);
         }
 
         private static RectTransform List(Transform parent, string name)
@@ -604,7 +604,7 @@ namespace _SAIUN.Editor
 
             TMP_Text name = Text(row, "Name", string.Empty, BodyFontSize, SaiunPalette.HudText);
             Size(name, flexibleWidth: 1f);
-            Button remove = ColoredButton(row, "Remove", "삭제", SmallFontSize + 1f, Color.clear, SaiunPalette.TeaGreen);
+            Button remove = ColoredButton(row, "Remove", "삭제", SmallFontSize + 1f, Color.clear, SaiunPalette.SubtleText);
             Size(remove, width: 52f, height: ListRowHeight - 4f);
 
             row.gameObject.SetActive(false);
@@ -665,7 +665,7 @@ namespace _SAIUN.Editor
 
             RectTransform check = NewUi("Check", box);
             Stretch(check);
-            Image checkImage = AddImage(check, SaiunPalette.DeepJungle, raycast: false);
+            Image checkImage = AddImage(check, SaiunPalette.Charcoal, raycast: false);
             checkImage.sprite = BuiltinSprite("UI/Skin/Checkmark.psd");
 
             TMP_Text text = Text(row, "Label", label, BodyFontSize, SaiunPalette.HudText);
@@ -694,7 +694,7 @@ namespace _SAIUN.Editor
             var slider = sliderGo.GetComponent<Slider>();
             sliderGo.transform.Find("Background").GetComponent<Image>().color = SubtleColor;
             slider.fillRect.GetComponent<Image>().color = SaiunPalette.MainPoint;
-            slider.handleRect.GetComponent<Image>().color = SaiunPalette.Eggshell;
+            slider.handleRect.GetComponent<Image>().color = SaiunPalette.Sand;
             slider.colors = PaletteColors();
             Size(slider, flexibleWidth: 1f, height: SliderHeight);
 
@@ -766,7 +766,7 @@ namespace _SAIUN.Editor
         // 오른쪽 위 모서리의 글자 아이콘 버튼(닫기). 레이아웃에 끼지 않는다.
         private static Button IconButton(Transform parent, string name, string glyph)
         {
-            Button button = ColoredButton(parent, name, glyph, IconFontSize, Color.clear, SaiunPalette.Eggshell);
+            Button button = ColoredButton(parent, name, glyph, IconFontSize, Color.clear, SaiunPalette.Sand);
             button.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
             TopRight((RectTransform)button.transform);
             return button;

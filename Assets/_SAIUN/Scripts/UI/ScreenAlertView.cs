@@ -89,7 +89,7 @@ namespace _SAIUN.Scripts.UI
         [SerializeField, Min(0f)] private float blinkFadeOut = 0.35f;
 
         [Header("작물 사망: 화면 어둡게")]
-        [SerializeField] private Color dimColor = SaiunPalette.DeepJungle;
+        [SerializeField] private Color dimColor = SaiunPalette.Charcoal;
         [SerializeField] private AlertPulse dimPulse = new AlertPulse(0.35f, 0.9f, 1.4f, 0.6f);
 
         /// <summary>지금 가장자리 빛을 차지한 알림. 사망 어둡게 하기는 따로 겹칠 수 있다.</summary>

@@ -212,7 +212,7 @@ namespace _SAIUN.Scripts.Lighting
             return Mathf.Sin(Mathf.Clamp01(progress) * Mathf.PI);
         }
 
-        // 아침·저녁은 복숭아빛, 한낮은 흰빛. 팔레트의 Eggshell 쪽으로 기운 따뜻한 색이다.
+        // 아침·저녁은 복숭아빛, 한낮은 흰빛. 모래빛 쪽으로 기운 따뜻한 색이다.
         private static Gradient DefaultSunColor()
         {
             var warm = new Color(1f, 0.84f, 0.7f);

@@ -151,7 +151,7 @@ namespace _SAIUN.Scripts.Core
         [SerializeField] private GlassMode glass = GlassMode.DesktopBlur;
 
         [Tooltip("유리에 섞을 틴트 색. 팔레트의 어두운 톤을 기본으로 쓴다.")]
-        [SerializeField] private Color glassTint = SaiunPalette.DeepJungle;
+        [SerializeField] private Color glassTint = SaiunPalette.Charcoal;
 
         [Tooltip("틴트 농도. 낮출수록 뒷배경 색이 그대로 배어 나온다.")]
         [Range(0f, 1f)]
@@ -161,7 +161,7 @@ namespace _SAIUN.Scripts.Core
         [SerializeField] private bool roundedCorners = true;
 
         [Tooltip("DWM이 그리는 1픽셀 테두리 색. 유리 가장자리를 또렷하게 만든다.")]
-        [SerializeField] private Color borderColor = SaiunPalette.Eggshell;
+        [SerializeField] private Color borderColor = SaiunPalette.Sand;
 
         [Tooltip("테두리를 그릴지 여부. 끄면 DWM 기본 테두리를 쓴다.")]
         [SerializeField] private bool customBorder = true;

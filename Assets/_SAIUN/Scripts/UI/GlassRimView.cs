@@ -16,7 +16,7 @@ namespace _SAIUN.Scripts.UI
 
         [Header("테두리")]
         [Tooltip("하이라이트 색. 알파는 전체 세기로 쓰인다.")]
-        [SerializeField] private Color rimColor = SaiunPalette.Eggshell;
+        [SerializeField] private Color rimColor = SaiunPalette.Sand;
 
         [Tooltip("테두리 굵기(픽셀).")]
         [Range(0.5f, 8f)]

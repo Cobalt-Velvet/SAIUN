@@ -45,7 +45,7 @@ namespace _SAIUN.Scripts.UI
 
         [Header("틴트")]
         [Tooltip("유리에 얹을 색.")]
-        [SerializeField] private Color tint = SaiunPalette.DeepJungle;
+        [SerializeField] private Color tint = SaiunPalette.Charcoal;
 
         [Tooltip("틴트 농도. 낮출수록 뒷배경이 그대로 보인다.")]
         [Range(0f, 1f)]

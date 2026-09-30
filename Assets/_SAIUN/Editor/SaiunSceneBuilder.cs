@@ -182,7 +182,9 @@ namespace _SAIUN.Editor
                 ("inputBackgroundColor", SaiunPalette.InputBackground),
                 ("inputTextColor", SaiunPalette.InputText),
                 ("buttonColor", SaiunPalette.MainPoint),
-                ("buttonTextColor", SaiunPalette.OnMainPoint));
+                ("buttonTextColor", SaiunPalette.OnMainPoint),
+                ("harvestButtonColor", SaiunPalette.Harvestable),
+                ("harvestButtonTextColor", SaiunPalette.OnMainPoint));
 
             SetColors(TimerHudPrefabPath, typeof(TimerHudView),
                 ("textColor", SaiunPalette.HudText),
@@ -191,6 +193,43 @@ namespace _SAIUN.Editor
 
             AssetDatabase.SaveAssets();
             Debug.Log("SaiunSceneBuilder: 팔레트를 프리팹에 적용했습니다.");
+        }
+
+        // 씬에 직접 놓인 컴포넌트도 직렬화된 색을 들고 있어 C# 기본값을 바꿔도 따라오지 않는다. 조립할 때마다 다시 입힌다.
+        private static void ApplyPaletteToScene()
+        {
+            SetSceneColors<WindowController>(("glassTint", SaiunPalette.Charcoal), ("borderColor", SaiunPalette.Sand));
+            SetSceneColors<DesktopGlassView>(("tint", SaiunPalette.Charcoal));
+            SetSceneColors<GlassRimView>(("rimColor", SaiunPalette.Sand));
+            SetSceneColors<ScreenAlertView>(
+                ("breakColor", SaiunPalette.BreakAccent),
+                ("completeColor", SaiunPalette.Harvestable),
+                ("warningColor", SaiunPalette.Warning),
+                ("dimColor", SaiunPalette.Charcoal));
+            SetSceneColors<SessionPanelView>(
+                ("cropColor", SaiunPalette.PanelChip),
+                ("cropTextColor", SaiunPalette.Sand),
+                ("selectedCropColor", SaiunPalette.MainPoint),
+                ("selectedCropTextColor", SaiunPalette.OnMainPoint));
+        }
+
+        private static void SetSceneColors<T>(params (string Field, Color Color)[] values) where T : Component
+        {
+            foreach (T component in Object.FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                var so = new SerializedObject(component);
+                foreach ((string field, Color color) in values)
+                {
+                    SerializedProperty property = so.FindProperty(field);
+                    if (property == null)
+                    {
+                        Debug.LogWarning($"SaiunSceneBuilder: {typeof(T).Name}에 {field} 필드가 없습니다.");
+                        continue;
+                    }
+                    property.colorValue = color;
+                }
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
         }
 
         private static void SetColors(string prefabPath, System.Type componentType, params (string Field, Color Color)[] values)
@@ -474,6 +513,10 @@ namespace _SAIUN.Editor
 
             // 창 모양(카드·사이드바)에 맞춰 카메라·하늘과 UI를 맞춘다.
             EnsureWindowLayout(camera, canvasGo, backdropCard, uiCard, windowController);
+
+            // 팔레트를 프리팹과 씬 컴포넌트에 다시 입힌다(직렬화된 옛 색이 남지 않게).
+            ApplyPalette();
+            ApplyPaletteToScene();
 
             // 앱 글꼴(Sarasa Gothic K)을 프리팹과 씬의 모든 글자에 입히고, 시계 글자 그림자를 새 글꼴로 다시 입힌다.
             FontBuilder.Apply(new[] { BottomBarPrefabPath, TimerHudPrefabPath });
@@ -906,9 +949,9 @@ namespace _SAIUN.Editor
             Material glow = EnsureGlowMaterial();
 
             ParticleSystem sprout = EnsureParticles(bed.transform, "SproutBurst", glow,
-                ps => ConfigureBurst(ps, SaiunPalette.TeaGreen, minSpeed: 0.15f, maxSpeed: 0.4f));
+                ps => ConfigureBurst(ps, SaiunPalette.CropLeafLight, minSpeed: 0.15f, maxSpeed: 0.4f));
             ParticleSystem harvest = EnsureParticles(bed.transform, "HarvestBurst", glow,
-                ps => ConfigureBurst(ps, SaiunPalette.Eggshell, minSpeed: 0.3f, maxSpeed: 0.7f));
+                ps => ConfigureBurst(ps, SaiunPalette.Harvestable, minSpeed: 0.3f, maxSpeed: 0.7f));
             ParticleSystem harvestGlow = EnsureParticles(bed.transform, "HarvestGlow", glow,
                 ps => ConfigureGlow(ps, bed));
 
@@ -1295,7 +1338,7 @@ namespace _SAIUN.Editor
                 main.startSpeed = 0f;
                 main.startSize = new ParticleSystem.MinMaxCurve(WindLeafSizeMin, WindLeafSizeMax);
                 main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
-                main.startColor = new ParticleSystem.MinMaxGradient(SaiunPalette.JungleTeal, SaiunPalette.TeaGreen);
+                main.startColor = new ParticleSystem.MinMaxGradient(SaiunPalette.CropLeafDark, SaiunPalette.CropLeafLight);
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
 
                 ParticleSystem.EmissionModule emission = ps.emission;
@@ -1349,10 +1392,13 @@ namespace _SAIUN.Editor
         {
             Shader lit = Shader.Find(LitShaderName);
             if (lit == null) return;
-            Material metal = EnsureMaterial(VaneMaterialPath, lit, m => m.SetColor("_BaseColor", SaiunPalette.DeepJungle));
+            // 재질은 없을 때만 만들므로 색은 매번 다시 입혀 팔레트를 따르게 한다.
+            Material metal = EnsureMaterial(VaneMaterialPath, lit, m => { });
+            metal.SetColor("_BaseColor", SaiunPalette.Charcoal);
             metal.SetFloat("_Smoothness", VaneSmoothness);
             metal.SetFloat("_Metallic", VaneMetallic);
-            Material accent = EnsureMaterial(VaneAccentMaterialPath, lit, m => m.SetColor("_BaseColor", SaiunPalette.TropicalTeal));
+            Material accent = EnsureMaterial(VaneAccentMaterialPath, lit, m => { });
+            accent.SetColor("_BaseColor", SaiunPalette.SeaGlass);
             accent.SetFloat("_Smoothness", VaneAccentSmoothness);
             EditorUtility.SetDirty(metal);
             EditorUtility.SetDirty(accent);
@@ -1538,7 +1584,7 @@ namespace _SAIUN.Editor
             main.startLifetime = new ParticleSystem.MinMaxCurve(1.4f, 2.2f);
             main.startSpeed = 0f;
             main.startSize = new ParticleSystem.MinMaxCurve(0.06f, 0.11f);
-            main.startColor = SaiunPalette.Eggshell;
+            main.startColor = SaiunPalette.Harvestable;
             main.simulationSpace = ParticleSystemSimulationSpace.World;
 
             ParticleSystem.EmissionModule emission = system.emission;

@@ -66,11 +66,11 @@ namespace _SAIUN.Editor
 
         private static readonly (string Name, Color Color, float Smoothness, bool Gradient)[] MaterialLooks =
         {
-            (LeafLight, SaiunPalette.TeaGreen, 0.3f, true),
-            (Leaf, SaiunPalette.MutedTeal, 0.32f, true),
-            (LeafDark, SaiunPalette.JungleTeal, 0.34f, true),
-            (Grain, SaiunPalette.Eggshell, 0.22f, false),
-            (Fruit, SaiunPalette.Warning, 0.72f, false),
+            (LeafLight, SaiunPalette.CropLeafLight, 0.3f, true),
+            (Leaf, SaiunPalette.CropLeaf, 0.32f, true),
+            (LeafDark, SaiunPalette.CropLeafDark, 0.34f, true),
+            (Grain, SaiunPalette.CropGrain, 0.22f, false),
+            (Fruit, SaiunPalette.CropFruit, 0.72f, false),
         };
 
         private static readonly CropStage[] ModelStages =

@@ -48,8 +48,8 @@ namespace _SAIUN.Scripts.UI
         [SerializeField] private string[] gradeNames = { "일반", "고급", "희귀", "전설" };
 
         [Header("색상")]
-        [SerializeField] private Color cropColor = SaiunPalette.WithAlpha(SaiunPalette.JungleTeal, 0.55f);
-        [SerializeField] private Color cropTextColor = SaiunPalette.Eggshell;
+        [SerializeField] private Color cropColor = SaiunPalette.PanelChip;
+        [SerializeField] private Color cropTextColor = SaiunPalette.Sand;
         [SerializeField] private Color selectedCropColor = SaiunPalette.MainPoint;
         [SerializeField] private Color selectedCropTextColor = SaiunPalette.OnMainPoint;
 
