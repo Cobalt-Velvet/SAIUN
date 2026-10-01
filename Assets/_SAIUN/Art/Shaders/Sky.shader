@@ -476,16 +476,21 @@ Shader "Hidden/SAIUN/Sky"
                 return float3(1.0, 0.97, 0.9) * (lit * maria + EARTHSHINE) * MOON_BRIGHT * edge;
             }
 
-            // 채운의 빛깔: 분홍 → 박하 → 연보라 → 옅은 금빛. 실제 채운은 무지개 일곱 빛보다 분홍·초록이 주로 번진다.
+            // 채운의 빛깔(2026-10-01 다시 만듦, 사용자 "채운이 전혀 매력적이지 않고 셰이더 오류처럼 보인다"):
+            // 작고 고른 물방울이 휘게 한 빛이 겹쳐 생기는 간섭 빛깔이라 차례가 정해져 있다. 높은 차수의 부드러운 파스텔만 쓴다:
+            // 분홍 → 복숭아빛 금색 → 연두 → 물빛 → 연보라 → 분홍…(진주조개 안쪽처럼). 빛깔마다 밝기가 비슷해 구름의 밝기를 바꾸지 않는다.
+            // (빛깔별 간섭 세기를 그대로 쓰면 어두운 차수에서 자홍·청록 가시가 튀어 형광 테두리처럼 보였다.) ph 1이 한 바퀴다.
             float3 Iridescence(float ph) {
-                float t = frac(ph) * 4.0;
-                float3 pink = float3(1.0, 0.5, 0.76);
-                float3 mint = float3(0.45, 1.0, 0.72);
-                float3 lilac = float3(0.66, 0.58, 1.0);
-                float3 gold = float3(1.0, 0.86, 0.45);
-                float3 a = t < 1.0 ? pink : (t < 2.0 ? mint : (t < 3.0 ? lilac : gold));
-                float3 b = t < 1.0 ? mint : (t < 2.0 ? lilac : (t < 3.0 ? gold : pink));
-                return lerp(a, b, smoothstep(0.0, 1.0, frac(t)));
+                float t = frac(ph) * 5.0;
+                float3 pink = float3(1.0, 0.74, 0.88);
+                float3 gold = float3(1.0, 0.92, 0.7);
+                float3 green = float3(0.76, 1.0, 0.8);
+                float3 aqua = float3(0.72, 0.9, 1.0);
+                float3 lilac = float3(0.88, 0.78, 1.0);
+                float3 a = t < 1.0 ? pink : (t < 2.0 ? gold : (t < 3.0 ? green : (t < 4.0 ? aqua : lilac)));
+                float3 b = t < 1.0 ? gold : (t < 2.0 ? green : (t < 3.0 ? aqua : (t < 4.0 ? lilac : pink)));
+                float3 c = lerp(a, b, smoothstep(0.0, 1.0, frac(t)));
+                return c / dot(c, float3(0.2126, 0.7152, 0.0722));
             }
 
             // ---- 웅대적운 탑 · 적란운 모루 · 채운 갓구름 ----
@@ -643,13 +648,20 @@ Shader "Hidden/SAIUN/Sky"
             // 맑은 날 낮게 흩어진 뭉게구름. 밑면이 평평하고 위가 둥글게 부푼다. 탑보다 가까워 크게 보이고, 오후일수록 자란다.
 
             // 송이 꼭대기의 높이(밑면에서 km). 0이면 구름이 없다. 송이는 서로 떨어져 있고 오후일수록 높이 자란다.
+            // 송이 크기는 고르지 않다(2026-10-01 사용자 "뭉게구름의 평균적인 크기가 전부 균일해 보이는"): 실제 뭉게구름 밭은
+            // 작은 송이가 아주 많고 큰 송이는 드물며, 작은 것은 납작하고(편평운) 큰 것일수록 높이 솟는다(중간운).
+            // 크기가 다른 세 겹의 송이 자리(간격 약 1.2·2.5·5.5 km)를 겹치고, 클수록 드물게(문턱을 높게) 하고 높이 솟게 한다.
             float CumulusHeight(float2 xz) {
                 float cov = _Low.z;
                 float2 w = xz - LowDrift();
-                float cell = Dome(N(float3(w * 0.1, 0.17)).g);
                 float field = N(float3(w * 0.02, 0.29)).r;
+                float region = (field - 0.55) * 1.2 * cov;
+                float small = (Dome(N(float3(w * 0.1, 0.61)).b) - lerp(0.985, 0.85, cov)) * 5.0;
+                float medium = (Dome(N(float3(w * 0.1, 0.17)).g) - lerp(1.0, 0.87, cov)) * 7.0;
+                // 큰 송이는 드물게, 낮은 주파수 자리(field)가 높은 곳에만 선다.
+                float large = (Dome(N(float3(w * 0.045, 0.83)).g) - lerp(1.03, 0.92, cov) - (0.55 - field) * 0.5) * 22.0;
                 float grow = lerp(0.8, 1.5, smoothstep(0.15, 0.75, _Progress));
-                float h = (cell - lerp(0.99, 0.8, cov)) * 7.0 + (field - 0.55) * 1.2 * cov;
+                float h = max(max(small, medium), large) + region;
                 return max(h, 0.0) * grow;
             }
 
@@ -895,34 +907,63 @@ Shader "Hidden/SAIUN/Sky"
             float2 Direction(float3 rd) { return float2(degrees(atan2(rd.x, rd.z)), degrees(asin(clamp(rd.y, -1.0, 1.0)))); }
 
             // 채운 렌즈구름: 산을 넘는 바람의 물결 꼭대기에 생겨 제자리에 머무는 매끈한 렌즈. 막 생긴 작고 고른 물방울이라 채운이 가장 곱다.
-            // 렌즈마다 가운데(방위, 고도)와 반폭(가로, 두께). 탑과 시계를 피해 왼쪽 아래 빈 하늘에 둔다.
-            STATIC const float4 LENS0 = float4(-9.5, 15.0, 10.5, 1.7);
-            STATIC const float4 LENS1 = float4(-12.5, 9.8, 8.0, 1.15);
-            STATIC const float4 LENS2 = float4(-3.5, 20.0, 4.5, 0.7);
+            // 렌즈마다 가운데(방위, 고도)와 반폭(가로, 두께). 탑과 시계를 피해 왼쪽 빈 하늘에 둔다. 큰 렌즈 아래로 작은 렌즈가 접시처럼 포개진다.
+            STATIC const float4 LENS0 = float4(-9.0, 17.0, 17.0, 3.0);
+            STATIC const float4 LENS1 = float4(-12.0, 12.2, 12.0, 1.7);
+            STATIC const float4 LENS2 = float4(-1.5, 23.0, 7.0, 1.1);
+            // 렌즈구름이 떠 있는 높이(km). 뭉게구름보다 높아 가까운 뭉게구름이 앞을 가린다.
+            STATIC const float LENS_ALTITUDE = 5.2;
+            // 채운 빛깔 띠: 가장자리의 차례(µm), 가장자리에서 가운데까지 바뀌는 폭, 해에서 1°마다 바뀌는 양, 해에서 멀 때 남는 세기, 세기
+            STATIC const float IRI_OPD_EDGE = 0.15;
+            STATIC const float IRI_OPD_SPAN = 1.2;
+            STATIC const float IRI_OPD_PER_DEGREE = 0.006;
+            STATIC const float IRI_FAR_SUN = 0.65;
+            // 빛깔을 흰빛에서 떼어 놓는 배율. 밝은 구름 위에서도 파스텔이 보이게 팔레트보다 조금 더 짙게 한다.
+            STATIC const float IRI_SATURATION = 3.0;
+            // 해에서 이 각(도) 안의 구름은 얇은 가장자리가 채운으로 물든다.
+            STATIC const float IRI_SUN_REACH = 38.0;
 
+            // 구름 빛에 곱할 채운 빛깔(sat 0 흰빛 ~ 1 가장 짙음)
+            float3 IridescentTint(float ph, float sat) {
+                return max(v3(1.0) + (Iridescence(ph) - v3(1.0)) * IRI_SATURATION * sat, v3(0.0));
+            }
+
+            // 구름 가장자리의 채운: 해에서 IRI_SUN_REACH° 안에 든 구름의 얇은 가장자리(불투명도 cover가 낮은 곳)가 물든다.
+            // 해에 가까울수록 진하고 띠가 해 둘레로 둥글게 놓인다(빛깔 차례가 해까지의 각을 따라 바뀐다).
+            // resolve는 구름 결이 화면에서 또렷한 정도(1 가까운 송이 ~ 0 지평선 쪽 너울). 뭉개진 너울에는 서지 않는다.
+            float3 EdgeIridescence(float cover, float cosT, float3 rd, float resolve) {
+                float ang = degrees(acos(clamp(cosT, -1.0, 1.0)));
+                float near = 1.0 - smoothstep(IRI_SUN_REACH * 0.4, IRI_SUN_REACH, ang);
+                if (near <= 0.0) return v3(1.0);
+                float thin = smoothstep(0.02, 0.15, cover) * (1.0 - smoothstep(0.35, 0.8, cover));
+                float sat = thin * near * resolve * smoothstep(-1.0, 4.0, SunElevationDeg()) * (1.0 - _Storm) * 0.8;
+                float drift = N(float3(rd.xz * 3.0, rd.y * 5.0) + float3(0.0, 0.0, 0.17)).r - 0.5;
+                return IridescentTint(ang * 0.045 + cover * 0.9 + drift * 0.3, sat);
+            }
+
+            // 렌즈 하나의 두께(0 가장자리 ~ 1 가운데). 윗면은 볼록하고 밑면은 평평하며, 긴 축 끝으로 뾰족하지 않고 둥글게 얇아진다.
             float LensShape(float2 dir, float4 lens, float salt) {
                 float2 q = (dir - lens.xy) / lens.zw;
-                // 결을 따라 윤곽이 조금 일렁인다.
-                float wob = N(float3(dir * float2(0.05, 0.16), salt) + float3(_SkyTime * 0.0012, 0.0, 0.0)).r - 0.5;
-                q.y += wob * 0.9;
-                q.x += wob * 0.25;
-                float halfThickness = pow(max(1.0 - q.x * q.x, 0.0), 0.85);
-                // 윗면은 볼록하고 밑면은 조금 평평하다.
-                float y = q.y > 0.0 ? q.y : q.y * 1.3;
+                // 큰 물결을 따라 윤곽이 천천히 일렁인다(잔 무늬는 넣지 않는다: 매끈한 것이 렌즈구름이다).
+                float wob = N(float3(dir * float2(0.03, 0.08), salt) + float3(_SkyTime * 0.001, 0.0, 0.0)).r - 0.5;
+                q.y += wob * 0.5;
+                float along = 1.0 - q.x * q.x;
+                if (along <= 0.0) return 0.0;
+                float halfThickness = sqrt(along);
+                float y = q.y > 0.0 ? q.y : q.y * 1.5;
                 float t = 1.0 - (y * y) / max(halfThickness * halfThickness, 1e-4);
-                return clamp(t, 0.0, 1.0) * smoothstep(0.0, 0.25, halfThickness);
+                // 접시를 포갠 결: 두께 방향으로 얇은 층이 서너 겹 지고, 층 사이가 조금 옅다.
+                float plates = 0.5 + 0.5 * cos(q.y / max(halfThickness, 0.2) * 7.0 + wob * 3.0);
+                return clamp(t, 0.0, 1.0) * smoothstep(0.0, 0.3, halfThickness) * lerp(0.8, 1.0, plates);
             }
 
             float LensField(float2 dir) {
-                if (_Mid.z <= 0.001 || dir.x > 2.0 || dir.y < 3.0 || dir.y > 26.0) return 0.0;
-                float d = max(LensShape(dir, LENS0, 0.1), max(LensShape(dir, LENS1, 0.4) * 0.9, LensShape(dir, LENS2, 0.7) * 0.8));
+                if (_Mid.z <= 0.001 || dir.x > 9.0 || dir.y < 8.0 || dir.y > 27.0) return 0.0;
+                float d = max(LensShape(dir, LENS0, 0.1), max(LensShape(dir, LENS1, 0.4) * 0.85, LensShape(dir, LENS2, 0.7) * 0.7));
                 if (d <= 0.0) return 0.0;
-                // 비단 결: 긴 축을 따라 늘어난 옅은 무늬로 군데군데 얇아진다.
-                float silk = N(float3(dir * float2(0.08, 0.9), 0.83) + float3(_SkyTime * 0.002, 0.0, 0.0)).r;
-                d *= lerp(0.55, 1.0, silk);
-                // 가장자리는 잔 무늬로 갉혀 실처럼 풀린다.
-                float fray = N(float3(dir * float2(0.35, 1.2), 0.47) + float3(_SkyTime * 0.003, 0.0, 0.0)).r;
-                d -= (1.0 - smoothstep(0.0, 0.35, d)) * (fray - 0.35) * 0.35;
+                // 비단 결: 긴 축을 따라 늘어난 아주 옅은 줄
+                float silk = N(float3(dir * float2(0.05, 0.6), 0.83) + float3(_SkyTime * 0.0015, 0.0, 0.0)).r;
+                d *= lerp(0.8, 1.0, silk);
                 float grow = _Mid.z * (1.0 - _Storm);
                 return clamp(d - (1.0 - grow), 0.0, 1.0);
             }
@@ -959,26 +1000,30 @@ Shader "Hidden/SAIUN/Sky"
                 const float period = 6.5;
                 float along = dir.x + 25.0 - degrees(MidDrift().x / 24.0) + (N(float3(dir.x * 0.03, 0.2, 0.44)).r - 0.5) * 2.0;
                 float cellIndex = floor(along / period);
-                float amp = lerp(0.65, 1.1, H1(cellIndex * 7.1)) * lerp(0.6, 1.0, k);
+                float amp = lerp(0.6, 1.2, H1(cellIndex * 7.1)) * lerp(0.6, 1.0, k);
+                // 물결마다 머리 자리가 조금씩 달라 도장처럼 되풀이되지 않는다.
+                float shift = (H1(cellIndex * 3.7 + 1.3) - 0.5) * 1.2;
                 // 층이 길게 너울거려 바닥 띠가 곧은 줄이 되지 않는다.
                 float swell = (N(float3(dir.x * 0.04, 0.3, 0.2)).r - 0.5) * 1.4;
                 float2 p = float2(frac(along / period) * period, dir.y - 18.8 - swell);
                 // 말린 머리: 눈(가운데)을 도는 나선. 왼쪽 위에서 시작해 위 → 오른쪽 → 아래로 감기며 좁아진다.
-                float2 c = float2(period * 0.6, 0.6 + 2.0 * amp);
+                float2 c = float2(period * 0.6 + shift, 0.6 + 2.0 * amp);
                 float2 d = p - c;
                 float r = length(d);
                 float ang = atan2(d.y, d.x);
                 float u = frac((2.618 - ang) / 6.2832) * 6.2832;
                 float spiralR = 1.5 * amp * exp(-0.16 * u);
-                float stroke = (1.0 - smoothstep(0.15 * amp, 0.85 * amp, abs(r - spiralR))) * (1.0 - smoothstep(3.0, 4.8, u));
+                // 말린 너울은 가는 선이 아니라 두툼한 김이다. 겉은 잔 무늬로 갉혀 거칠다.
+                float rough = N(float3(dir * float2(0.7, 1.2), 0.91)).r - 0.5;
+                float stroke = (1.0 - smoothstep(0.3 * amp, 1.15 * amp, abs(r - spiralR) + rough * 0.6 * amp)) * (1.0 - smoothstep(2.8, 4.6, u));
                 // 머리 속은 말려 든 구름으로 반쯤 차 있다(눈만 조금 비어 있다).
-                float fill = (1.0 - smoothstep(0.35, 1.1, r / (1.5 * amp))) * smoothstep(0.1, 0.45, r / (1.5 * amp)) * 0.55;
+                float fill = (1.0 - smoothstep(0.35, 1.15, r / (1.5 * amp))) * smoothstep(0.1, 0.4, r / (1.5 * amp)) * 0.75;
                 // 비탈: 바닥 너울에서 머리 왼쪽 위까지 비스듬히 오른다.
                 float2 a0 = float2(period * 0.05, 0.45);
                 float2 a1 = c + 1.5 * amp * float2(-0.866, 0.5);
                 float2 ab = a1 - a0;
                 float h = clamp(dot(p - a0, ab) / dot(ab, ab), 0.0, 1.0);
-                float slope = 1.0 - smoothstep(0.2, 0.8, length(p - a0 - ab * h));
+                float slope = 1.0 - smoothstep(0.25, 1.0, length(p - a0 - ab * h) + rough * 0.4);
                 // 바닥에 깔린 얇은 너울
                 float band = 1.0 - smoothstep(0.2, 0.85, abs(p.y - 0.45));
                 curl = smoothstep(2.4, 3.6, u) * stroke;
@@ -1149,11 +1194,13 @@ Shader "Hidden/SAIUN/Sky"
                                 if (cap > 0.003) {
                                     // 채운: 너울은 하얗고 매끈하게 빛나고, 얇은 곳일수록 파스텔 빛깔(분홍·초록·보라)이 번진다.
                                     // 빛깔은 물방울 크기에 따라 조각조각 달라 무지개처럼 반듯한 띠가 되지 않는다.
+                                    // 갓구름의 바깥 가장자리일수록 얇고 물방울이 작아 빛깔 띠가 가장자리를 따라 둘린다(렌즈구름과 같은 빛깔).
                                     float ang = degrees(acos(clamp(cosT, -1.0, 1.0)));
-                                    float speck = N(p * 0.11 + float3(0.0, 0.0, _Seed)).r;
-                                    float ph = speck * 2.2 + thin * 0.7 + across * 0.08 + ang / 60.0 + _SkyTime * 0.002;
-                                    float sat = lerp(0.45, 1.0, smoothstep(0.15, 0.85, thin)) * smoothstep(0.15, 0.5, speck + thin * 0.35);
-                                    float3 iri = lerp(v3(1.0), Iridescence(ph), sat);
+                                    float drift = N(p * 0.05 + float3(0.0, 0.0, _Seed)).r - 0.5;
+                                    float opd = IRI_OPD_EDGE + (1.0 - thin) * IRI_OPD_SPAN + drift * 0.35 + ang * IRI_OPD_PER_DEGREE;
+                                    float sat = smoothstep(0.2, 0.75, thin) * lerp(IRI_FAR_SUN, 1.0, smoothstep(80.0, 25.0, ang))
+                                                            * smoothstep(-1.0, 4.0, SunElevationDeg());
+                                    float3 iri = IridescentTint(opd, sat);
                                     float3 veil = (scHere * 0.8 + amb * 1.2) * iri * 1.2;
                                     light = lerp(light, veil, cap / total);
                                 }
@@ -1205,6 +1252,8 @@ Shader "Hidden/SAIUN/Sky"
                             }
                             t += dt;
                         }
+                        // 해 가까이 있는 송이의 얇은 가장자리는 채운으로 물든다(가장자리에서 안쪽으로 띠가 바뀐다).
+                        if (firstHit > 0.0) col *= EdgeIridescence(1.0 - T, cosT, rd, 1.0 - smoothstep(15.0, 35.0, firstHit));
                         if (firstHit > 0.0) AddLayer(firstHit, col, T);
                     }
                 }
@@ -1262,6 +1311,7 @@ Shader "Hidden/SAIUN/Sky"
                         float3 iceCol = sc * SunLit(ALTOCUMULUS_ALTITUDE) * (0.9 + 0.4 * forward) + ambMid * 1.15;
                         // 덩이 가장자리는 얇아 하늘이 비친다(속은 짙고 가장자리는 부드럽게 풀린다).
                         float a = max(smoothstep(0.0, 0.6, d) * 0.92, ice * 0.5);
+                        c *= EdgeIridescence(a, cosT, rd, 1.0 - smoothstep(0.03, 0.08, acBlur));
                         AddCloud(t, lerp(c, iceCol, clamp(ice * 1.5, 0.0, 1.0) * (1.0 - smoothstep(0.0, 0.3, d))), a);
                     }
                     // 꼬리구름: 고적운 송이 밑에서 비가 떨어지다 마르며 늘어진 흰 꼬리. 바람에 비스듬히 휜다.
@@ -1337,26 +1387,32 @@ Shader "Hidden/SAIUN/Sky"
                 }
 
                 // ---- 방향으로 그리는 구름 ----
-                // 채운 렌즈구름: 탑보다 가까워 앞에 온다.
+                // 채운 렌즈구름: 고도 5.2 km에 떠 있어, 그보다 가까운 뭉게구름이 앞을 가린다.
                 float lens = LensField(dir);
-                if (lens > 0.001) {
+                if (lens > 0.001 && rd.y > 0.01) {
+                    float lensDist = (LENS_ALTITUDE - ro.y) / rd.y;
                     float ang = degrees(acos(clamp(cosT, -1.0, 1.0)));
-                    // 채운은 해에 가까울수록 진하다(아침 해가 왼쪽에 있다). 해가 멀어도 옅게는 남긴다.
-                    float nearSun = lerp(0.45, 1.0, smoothstep(90.0, 40.0, ang));
-                    // 얇아 빛이 거의 그대로 지난다. 두꺼운 가운데는 조금 그늘지고, 결을 따라 밝고 어두운 줄이 옅게 진다.
-                    float streak = N(float3(dir * float2(0.12, 1.4), 0.57)).r;
-                    float3 light = (sc * SunLit(5.0) * (1.0 + 0.3 * forward) + ambMid * 1.1) * lerp(1.04, 0.86, lens) * lerp(0.9, 1.06, streak);
-                    float wob = N(float3(dir * float2(0.06, 0.25), 0.29) + float3(_SkyTime * 0.002, 0.0, 0.0)).r;
-                    float ph = lens * 1.8 + wob * 1.0 + ang / 90.0;
-                    // 빛깔은 몸이 보이기 시작하는 바깥쪽 절반에 번진다(끝은 너무 옅어 안 보이고, 가운데는 두꺼워 하얗다).
-                    // 해가 지평선에 걸리면 빛이 붉고 약해 채운이 서지 않는다.
-                    float sat = smoothstep(0.02, 0.25, lens) * (1.0 - smoothstep(0.55, 0.95, lens)) * nearSun * smoothstep(0.5, 5.0, SunElevationDeg());
-                    // 채운은 휘어 나온 빛이라 색을 곱하기만 하면 밝은 구름에서 톤매핑에 눌려 사라진다. 빛깔을 조금 더한다.
-                    float3 iri = Iridescence(ph);
-                    light = light * lerp(v3(1.0), iri, sat) + (iri - v3(0.78)) * sat * 0.9;
-                    // 가장자리가 넓게 비치도록 두께만큼 천천히 짙어진다.
-                    float a = pow(smoothstep(0.0, 0.85, lens), 0.8) * 0.82;
-                    AddLayer(15.0, light * a, 1.0 - a);
+                    // 얇아 빛이 거의 그대로 지나 진주처럼 희게 빛난다. 두꺼운 가운데는 조금 잿빛, 밑면은 조금 어둡다.
+                    float3 light = (sc * SunLit(LENS_ALTITUDE) * (0.95 + 0.35 * forward) + ambMid * 1.15) * lerp(0.82, 1.0, smoothstep(0.0, 0.6, lens));
+                    // 입체: 해 쪽(화면 위의 해 방향)으로 조금 옮긴 자리보다 두꺼우면 해를 받는 겉이라 밝고, 얇으면 해를 등진 안쪽이라 잿빛이다.
+                    float2 sunward = Direction(s) - dir;
+                    sunward = sunward / max(length(sunward), 1e-3);
+                    float toward = LensField(dir + sunward * 0.7 + float2(0.0, 0.35));
+                    light *= lerp(0.78, 1.08, smoothstep(-0.25, 0.25, lens - toward));
+                    // 채운: 막 생긴 가장자리일수록 물방울이 작고 고르다. 그래서 빛깔 띠가 가장자리를 따라 나란히 둘린다
+                    // (가장자리에서 안쪽으로 차례가 바뀐다). 해에 가까울수록 띠가 넓고 진하다. 아주 큰 물결을 따라 띠가 천천히 흔들린다.
+                    float drift = N(float3(dir * float2(0.025, 0.07), 0.29) + float3(_SkyTime * 0.0015, 0.0, 0.0)).r - 0.5;
+                    // 렌즈를 따라가며 빛깔이 자리마다 다르다(한쪽은 분홍, 다른 쪽은 연두가 넓게 번진다).
+                    float along = N(float3(dir.x * 0.02, 0.5, 0.61) + float3(_SkyTime * 0.001, 0.0, 0.0)).r;
+                    float opd = IRI_OPD_EDGE + lens * IRI_OPD_SPAN + drift * 0.12 + along * 0.5 + ang * IRI_OPD_PER_DEGREE;
+                    float nearSun = lerp(IRI_FAR_SUN, 1.0, smoothstep(80.0, 25.0, ang));
+                    // 빛깔은 몸의 얇은 바깥 2/3에 넓게 번지고 두꺼운 가운데는 진주처럼 희다.
+                    float sat = smoothstep(0.0, 0.1, lens) * (1.0 - smoothstep(0.35, 0.75, lens)) * nearSun
+                                            * smoothstep(-1.0, 4.0, SunElevationDeg()) * (1.0 - _Storm);
+                    light *= IridescentTint(opd, sat);
+                    // 몸은 또렷하고 가장자리만 조금 풀린다.
+                    float a = smoothstep(0.0, 0.4, lens) * 0.9;
+                    AddLayer(lensDist, light * a, 1.0 - a);
                 }
                 // 아치구름
                 float face;
@@ -1792,7 +1848,8 @@ Shader "Hidden/SAIUN/Sky"
                 lSun = max(lSun, 0.05);
                 float lo = lSun * RAY_THRESHOLD;
                 float2 delta = (sunUv - tuv) * (RAY_LENGTH / float(RAY_TAPS));
-                float2 uv = tuv;
+                // 걸음 시작을 화소마다 흩뜨려 걸음 간격의 동심원 줄무늬를 없앤다(남는 잔 얼룩은 빛살이 흐려 보이지 않는다).
+                float2 uv = tuv + delta * SeaHash(floor(tuv * _SkySize.xy) + frac(_SeaTime) * 37.0);
                 float decay = 1.0;
                 float3 sum = v3(0.0);
                 [loop] for (int i = 0; i < RAY_TAPS; i++) {
