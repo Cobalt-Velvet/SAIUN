@@ -185,6 +185,10 @@ Shader "Hidden/SAIUN/Sky"
             #define STRATOCUMULUS_ALTITUDE (_AltLow.z)
             STATIC const float STRATUS_ALTITUDE = 0.75;
             STATIC const float NIMBOSTRATUS_ALTITUDE = 2.4;
+            // 유방운 주머니가 밑면에서 늘어지는 깊이(km)
+            STATIC const float MAMMATUS_DEPTH = 0.5;
+            // 주머니 반지름(셀 간격 대비, 뒤집은 워리 거리 단위)
+            STATIC const float MAMMATUS_RADIUS = 0.6;
             #define CUMULUS_BASE (_AltLow.w)
             STATIC const float CUMULUS_DEPTH = 2.4;
 
@@ -897,6 +901,50 @@ Shader "Hidden/SAIUN/Sky"
                 return w * 0.1 + warp * 0.35;
             }
 
+            // 유방운 주머니(0 주머니 사이 골 ~ 1 주머니 밑자락). 크고 작은 주머니가 섞여 늘어진다.
+            float MammatusPouch(float2 xz) {
+                float2 c = MammatusCoord(xz);
+                // 셀 가운데에서 잰 거리(셀 단위)로 반구를 짓는다. 반지름이 셀 간격의 절반쯤이라 주머니 사이에 깊은 골이 진다.
+                float bigD = (1.0 - N(float3(c, 0.9)).b) / MAMMATUS_RADIUS;
+                float smallD = (1.0 - N(float3(c * 1.7 + 0.37, 0.27)).b) / MAMMATUS_RADIUS;
+                float big = sqrt(max(1.0 - bigD * bigD, 0.0));
+                float small = sqrt(max(1.0 - smallD * smallD, 0.0)) * 0.7;
+                // 겉은 매끈한 풍선이 아니라 김이 엉긴 면이라 잔 혹이 조금 진다.
+                float lumps = N(float3(xz * 0.8 - LowDrift() * 0.96, 0.43)).r - 0.5;
+                return clamp(max(big, small) + lumps * 0.12, 0.0, 1.0);
+            }
+
+            // 광선이 밑면에서 늘어진 유방운 주머니 면과 처음 만나는 거리(2026-10-02, 사용자 "유방운을 손봐야"):
+            // 평평한 판에 음영만 그리면 비늘처럼 보이므로, 주머니가 실제로 MAMMATUS_DEPTH만큼 늘어진 높이 면을 걸어서 찾는다.
+            // 그래서 지평선 쪽에서는 주머니 밑자락이 겹치며 윤곽을 짓는다. 못 만나면 밑면(층)까지. pouchAt은 만난 자리의 주머니 값이다.
+            float MammatusHit(float3 ro, float3 rd, out float pouchAt) {
+                float tTop = PlaneHit(ro, rd, NIMBOSTRATUS_ALTITUDE);
+                float tLow = PlaneHit(ro, rd, NIMBOSTRATUS_ALTITUDE - MAMMATUS_DEPTH);
+                pouchAt = 0.0;
+                if (tTop < 0.0 || tLow < 0.0) return tTop;
+                const int STEPS = 24;
+                float prevT = tLow;
+                [loop] for (int i = 0; i <= STEPS; i++) {
+                    float t = lerp(tLow, tTop, float(i) / float(STEPS));
+                    float3 p = ro + rd * t;
+                    float gap = p.y - (NIMBOSTRATUS_ALTITUDE - MAMMATUS_DEPTH * MammatusPouch(p.xz));
+                    if (gap >= 0.0) {
+                        // 앞 걸음과 이 걸음 사이를 반씩 나눠 면을 정확히 찾는다(걸음 간격이 골에 계단 줄무늬로 남지 않게).
+                        float a = prevT;
+                        float b = t;
+                        [unroll] for (int k = 0; k < 5; k++) {
+                            float m = 0.5 * (a + b);
+                            float3 q = ro + rd * m;
+                            if (q.y - (NIMBOSTRATUS_ALTITUDE - MAMMATUS_DEPTH * MammatusPouch(q.xz)) >= 0.0) b = m; else a = m;
+                        }
+                        pouchAt = MammatusPouch((ro + rd * b).xz);
+                        return b;
+                    }
+                    prevT = t;
+                }
+                return tTop;
+            }
+
             // 난층운(비구름) 밑면의 두께와, 유방운 송이 높이.
             float NimbostratusDensity(float2 xz, out float thick, out float pouch) {
                 float2 w = xz - LowDrift() * 1.2;
@@ -996,48 +1044,60 @@ Shader "Hidden/SAIUN/Sky"
                 return d * a;
             }
 
-            // 켈빈-헬름홀츠 물결구름: 위아래 바람이 어긋나는 얇은 층의 꼭대기가 파도처럼 말려 부서진다. 몇 분이면 사라진다.
-            // 시계 바로 아래 왼쪽 하늘(방위 −24~1°, 고도 18~27°)에 한 줄로 선다. 물결마다 얇은 너울이 비탈을 타고 올라
-            // 머리에서 오른쪽으로 말려 들어간다(나선). curl은 말려 들어간 안쪽(그늘이 지는 곳)이다.
+            // 켈빈-헬름홀츠 물결구름: 위아래 바람이 어긋나는 얇은 층의 윗면이 바다의 부서지는 파도처럼 줄지어 솟아
+            // 앞(오른쪽, 위 바람이 부는 쪽)으로 말려 넘어간다. 몇 분이면 사라진다. 시계 아래 왼쪽 하늘(방위 −29~3°, 고도 15~29°).
+            // 2026-10-02(사용자 "물결구름을 손봐야"): 가는 나선이 손글씨·아이콘처럼 보여, 부서지는 파도의 모양으로 다시 빚었다.
+            //  - 등: 층에서 완만하게 솟아 마루로 오르는 꽉 찬 덩어리
+            //  - 입술: 마루에서 앞으로 던져져 아래로 말려 내려오는 두툼한 관(끝으로 갈수록 가늘고 찢긴다)
+            //  - 통: 입술 밑의 빈 속. 하늘이 비친다. 그 안쪽 벽(curl)은 해를 등져 그늘진다.
+            // 물결마다 자란 정도가 달라(막 솟는 것, 다 말린 것) 도장처럼 되풀이되지 않는다. 밑에는 물결을 낳은 층이 두툼하게 깔린다.
             float KelvinHelmholtzDensity(float2 dir, out float curl) {
                 curl = 0.0;
                 float k = _Extra.x;
-                if (k <= 0.001 || dir.x > 2.0 || dir.x < -25.0 || dir.y < 17.0 || dir.y > 28.0) return 0.0;
-                const float period = 6.5;
-                float along = dir.x + 25.0 - degrees(MidDrift().x / 24.0) + (N(float3(dir.x * 0.03, 0.2, 0.44)).r - 0.5) * 2.0;
+                if (k <= 0.001 || dir.x > 3.0 || dir.x < -29.0 || dir.y < 15.0 || dir.y > 29.5) return 0.0;
+                const float period = 9.5;
+                float along = dir.x + 29.0 - degrees(MidDrift().x / 24.0) + (N(float3(dir.x * 0.03, 0.2, 0.44)).r - 0.5) * 2.0;
                 float cellIndex = floor(along / period);
-                float amp = lerp(0.6, 1.2, H1(cellIndex * 7.1)) * lerp(0.6, 1.0, k);
-                // 물결마다 머리 자리가 조금씩 달라 도장처럼 되풀이되지 않는다.
-                float shift = (H1(cellIndex * 3.7 + 1.3) - 0.5) * 1.2;
-                // 층이 길게 너울거려 바닥 띠가 곧은 줄이 되지 않는다.
-                float swell = (N(float3(dir.x * 0.04, 0.3, 0.2)).r - 0.5) * 1.4;
-                float2 p = float2(frac(along / period) * period, dir.y - 18.8 - swell);
-                // 말린 머리: 눈(가운데)을 도는 나선. 왼쪽 위에서 시작해 위 → 오른쪽 → 아래로 감기며 좁아진다.
-                float2 c = float2(period * 0.6 + shift, 0.6 + 2.0 * amp);
-                float2 d = p - c;
+                float grown = lerp(0.55, 1.2, H1(cellIndex * 7.1)) * lerp(0.6, 1.0, k);
+                float swell = (N(float3(dir.x * 0.04, 0.3, 0.2)).r - 0.5) * 1.2;
+                float2 p = float2(frac(along / period) * period, dir.y - 18.2 - swell);
+                float ragged = N(float3(dir * float2(0.9, 1.3), 0.91)).r - 0.5;
+                float fine = N(float3(dir * float2(2.4, 3.0), 0.37)).r - 0.5;
+
+                float h = 4.6 * grown;
+                float R = 0.5 * h;
+                float Rin = 0.3 * R;
+                float xc = period * 0.62 + (H1(cellIndex * 3.7 + 1.3) - 0.5) * 0.8;
+                float2 C = float2(xc, h - R);
+                float2 d = p - C;
                 float r = length(d);
-                float ang = atan2(d.y, d.x);
-                float u = frac((2.618 - ang) / 6.2832) * 6.2832;
-                float spiralR = 1.5 * amp * exp(-0.16 * u);
-                // 말린 너울은 가는 선이 아니라 두툼한 김이다. 겉은 잔 무늬로 갉혀 거칠다.
-                float rough = N(float3(dir * float2(0.7, 1.2), 0.91)).r - 0.5;
-                float stroke = (1.0 - smoothstep(0.3 * amp, 1.15 * amp, abs(r - spiralR) + rough * 0.6 * amp)) * (1.0 - smoothstep(2.8, 4.6, u));
-                // 머리 속은 말려 든 구름으로 반쯤 차 있다(눈만 조금 비어 있다).
-                float fill = (1.0 - smoothstep(0.35, 1.15, r / (1.5 * amp))) * smoothstep(0.1, 0.4, r / (1.5 * amp)) * 0.75;
-                // 비탈: 바닥 너울에서 머리 왼쪽 위까지 비스듬히 오른다.
-                float2 a0 = float2(period * 0.05, 0.45);
-                float2 a1 = c + 1.5 * amp * float2(-0.866, 0.5);
-                float2 ab = a1 - a0;
-                float h = clamp(dot(p - a0, ab) / dot(ab, ab), 0.0, 1.0);
-                float slope = 1.0 - smoothstep(0.25, 1.0, length(p - a0 - ab * h) + rough * 0.4);
-                // 바닥에 깔린 얇은 너울
-                float band = 1.0 - smoothstep(0.2, 0.85, abs(p.y - 0.45));
-                curl = smoothstep(2.4, 3.6, u) * stroke;
+                float ang = degrees(atan2(d.y, d.x));
+                // 입술: 마루 뒤(180°)에서 위(90°)를 지나 앞으로 넘어가 아래(끝 각)까지. 끝으로 갈수록 바깥 반지름이 줄어 가늘다.
+                float endAng = lerp(-20.0, -70.0, smoothstep(0.6, 1.1, grown));
+                float sPath = (180.0 - ang) / (180.0 - endAng);
+                float outer = lerp(R, Rin + 0.3 * R, smoothstep(0.55, 1.0, sPath)) * (1.0 + ragged * 0.22);
+                float lip = 0.0;
+                if (ang >= endAng - 15.0) {
+                    lip = smoothstep(outer, outer - 0.25 * R, r) * smoothstep(Rin - 0.1 * R, Rin + 0.12 * R, r + fine * 0.2 * R);
+                    lip *= 1.0 - smoothstep(0.85, 1.05, sPath + ragged * 0.2);
+                }
+                // 등: 마루 뒤로 층까지 완만하게 내려가는 꽉 찬 덩어리. 앞면은 통의 왼쪽 벽을 따라 둥글게 파인다.
+                float x0 = xc - lerp(4.8, 6.0, H1(cellIndex * 1.9));
+                float u = clamp((p.x - x0) / max(xc - 0.3 * R - x0, 0.1), 0.0, 1.0);
+                // 등은 아래가 완만하고 마루로 갈수록 가팔라진다(바람에 밀려 올라선 파도의 등).
+                float backTop = (C.y + 0.6 * R) * u * u;
+                float face = p.y > C.y - Rin ? C.x - sqrt(max(Rin * Rin - (p.y - C.y) * (p.y - C.y), 0.0)) : C.x - Rin * 0.3;
+                float back = smoothstep(0.25, -0.2, p.y - backTop + ragged * 0.5) * smoothstep(0.15, -0.15, p.x - face + ragged * 0.3)
+                                        * smoothstep(-0.9, -0.2, p.y + ragged * 0.4);
+                // 통 안쪽 벽과 입술 밑면은 그늘
+                curl = max(lip * smoothstep(Rin + 0.45 * R, Rin, r) * step(ang, 90.0), back * smoothstep(face - 0.8, face, p.x) * smoothstep(C.y + 0.2 * R, C.y - Rin, p.y) * 0.7);
+                // 물결을 낳은 층: 바닥에 두툼하고 울퉁불퉁하게 깔린다. 밑면은 찢겨 풀린다.
+                float lumpy = N(float3(dir * float2(0.45, 0.9), 0.23)).r - 0.5;
+                float band = smoothstep(-1.4, -0.5, p.y + lumpy * 1.2) * (1.0 - smoothstep(0.3, 0.9, p.y + lumpy * 0.5));
+                float shape = max(max(lip, back), band * 0.8);
                 float fib = N(float3(dir * float2(0.3, 0.8), 0.57)).r;
-                float fib2 = N(float3(dir * float2(1.1, 2.4), 0.77)).r;
-                float edge = smoothstep(0.0, 4.0, dir.x + 25.0) * smoothstep(0.0, 4.0, 2.0 - dir.x);
-                float shape = max(max(band * 0.65, slope * 0.85), max(stroke, fill));
-                return clamp(Remap(shape * lerp(0.45, 1.0, fib) + (fib2 - 0.5) * 0.35, 0.12, 0.9), 0.0, 1.0) * edge * k;
+                float edge = smoothstep(0.0, 5.0, dir.x + 29.0) * smoothstep(0.0, 5.0, 3.0 - dir.x);
+                return clamp(Remap(shape * lerp(0.7, 1.0, fib) + fine * 0.18, 0.15, 0.7), 0.0, 1.0) * edge * k;
             }
 
             // 야광운: 해가 진 뒤 80 km 높이의 얼음 구름이 아직 햇빛을 받아 푸른 은빛으로 빛난다. 물결 무늬가 잘게 진다.
@@ -1347,8 +1407,9 @@ Shader "Hidden/SAIUN/Sky"
                     }
                     // 난층운·먹구름(유방운 포함)
                     if (_Low.w > 0.01 || _Special.y > 0.01) {
-                        t = PlaneHit(ro, rd, NIMBOSTRATUS_ALTITUDE);
-                        if (t < 80.0) {
+                        float pouchAt = 0.0;
+                        t = _Special.y > 0.01 ? MammatusHit(ro, rd, pouchAt) : PlaneHit(ro, rd, NIMBOSTRATUS_ALTITUDE);
+                        if (t > 0.0 && t < 80.0) {
                             xz = (ro + rd * t).xz;
                             float thick;
                             float pouch;
@@ -1356,18 +1417,23 @@ Shader "Hidden/SAIUN/Sky"
                             // 두꺼운 밑면은 짙고, 얇은 곳은 위의 빛이 비쳐 밝다.
                             float3 deck = lerp(ambTop * 1.6 + sc * SunLit(NIMBOSTRATUS_ALTITUDE) * 0.1, ambBottom * 0.5, thick);
                             deck = lerp(deck * 1.25, deck, cover);
-                            if (pouch > 0.001) {
-                                // 유방운: 주머니 송이의 해 쪽 볼은 낮은 해를 받아 금빛으로 밝고, 반대쪽과 사이의 골은 어둡다.
-                                float e = 0.2;
-                                float px = Dome(N(float3(MammatusCoord(xz + float2(e, 0.0)), 0.9)).b);
-                                float pz = Dome(N(float3(MammatusCoord(xz + float2(0.0, e)), 0.9)).b);
-                                float p0 = Dome(N(float3(MammatusCoord(xz), 0.9)).b);
-                                float3 nrm = normalize(float3(-(px - p0) / (e * 0.1), 5.0, -(pz - p0) / (e * 0.1)));
-                                float lit = 0.5 + 0.5 * dot(nrm, normalize(float3(sunXZ.x, 0.25, sunXZ.y)));
-                                lit = smoothstep(0.35, 0.95, lit);
-                                float crease = smoothstep(0.05, 0.55, p0);
-                                float3 pouchCol = lerp(ambBottom * 1.1, sc * 0.9 + ambBottom * 1.3, lit) * lerp(0.45, 1.0, crease);
+                            if (_Special.y > 0.01) {
+                                // 유방운: 늘어진 주머니 면의 기울기로 겉 방향을 셈한다(밑을 향한다). 낮은 해를 받는 볼은 금빛으로 밝고,
+                                // 해를 등진 쪽은 아래 바다·지평선에서 튄 빛만 받아 어둡다. 주머니 사이 골은 깊게 그늘진다.
+                                float e = 0.12;
+                                float fx = (MammatusPouch(xz + float2(e, 0.0)) - pouchAt) / e;
+                                float fz = (MammatusPouch(xz + float2(0.0, e)) - pouchAt) / e;
+                                float3 nrm = normalize(float3(-MAMMATUS_DEPTH * fx, -1.0, -MAMMATUS_DEPTH * fz));
+                                float sunSide = max(dot(nrm, s) + 0.25, 0.0) / 1.25;
+                                float crease = smoothstep(0.0, 0.45, pouchAt);
+                                // 아래에서 오는 빛: 겉이 아래를 볼수록 바다·지평선 빛을 받는다.
+                                float below = 0.6 + 0.4 * max(-nrm.y, 0.0);
+                                float3 pouchCol = (ambBottom * 1.15 * below + ambTop * 0.18) * lerp(0.25, 1.0, crease)
+                                                                + sc * SunLit(NIMBOSTRATUS_ALTITUDE - MAMMATUS_DEPTH * 0.5) * sunSide * lerp(0.4, 1.0, crease) * 1.6;
+                                // 폭풍 속에서는 모루 밑이 어둡다.
+                                pouchCol *= lerp(1.0, 0.55, _Storm);
                                 deck = lerp(deck, pouchCol, _Special.y);
+                                cover = max(cover, _Special.y);
                             }
                             AddCloud(t, deck, cover * max(_Low.w, _Special.y) * smoothstep(0.003, 0.03, rd.y));
                         }
@@ -1441,8 +1507,18 @@ Shader "Hidden/SAIUN/Sky"
                 float curl;
                 float kh = KelvinHelmholtzDensity(dir, curl);
                 if (kh > 0.001) {
-                    float3 c = (sc * SunLit(3.0) * (0.95 + 0.35 * forward) + ambMid * 1.15) * lerp(1.0, 0.72, curl);
-                    AddCloud(24.0, c, clamp(kh * 0.75, 0.0, 0.75));
+                    // 부피 음영: 위가 비고 아래가 찬 곳(물결 윗면·말린 머리 꼭대기)은 해를 받아 밝고, 아래가 빈 곳(밑면·말린 안쪽)은 어둡다.
+                    // 해 쪽 옆면도 조금 밝다. 송이 결을 따라 밝기가 일렁인다.
+                    float tmp;
+                    float up = KelvinHelmholtzDensity(dir + float2(0.0, 0.35), tmp);
+                    float down = KelvinHelmholtzDensity(dir - float2(0.0, 0.35), tmp);
+                    float side = sign(Direction(s).x - dir.x);
+                    float toward = KelvinHelmholtzDensity(dir + float2(0.35 * side, 0.0), tmp);
+                    float lit = clamp(0.45 + (down - up) * 1.3 + (kh - toward) * 0.6, 0.0, 1.0);
+                    float puffs = N(float3(dir * 0.8, 0.53)).r;
+                    float3 c = sc * SunLit(3.0) * (0.9 + 0.35 * forward) * lerp(0.3, 1.25, lit) * lerp(1.0, 0.45, curl) * lerp(0.85, 1.1, puffs)
+                                    + ambMid * lerp(0.75, 1.1, lit) * lerp(1.0, 0.8, curl);
+                    AddCloud(24.0, c, clamp(kh * 0.9, 0.0, 0.9));
                 }
                 // 야광운: 모든 구름 너머 아주 멀리. 땅 그림자 위 80 km에서 햇빛을 받는다.
                 float nlc = NoctilucentDensity(dir);
