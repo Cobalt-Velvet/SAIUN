@@ -164,8 +164,8 @@ Shader "Hidden/SAIUN/Sky"
             // 뭉게구름 떼도 탑처럼(2026-10-01 "강한 명암"): 해 받는 윗면은 밝고 밑면·그늘은 깊다.
             STATIC const float CUMULUS_SIGMA = 2.0;
             STATIC const float CUMULUS_SUN = 1.4;
-            STATIC const float CUMULUS_MULTI = 0.18;
-            STATIC const float CUMULUS_AMBIENT = 0.65;
+            STATIC const float CUMULUS_MULTI = 0.24;
+            STATIC const float CUMULUS_AMBIENT = 0.75;
             STATIC const int MAX_LAYERS = 14;
 
             // 구름층 고도(km). 같은 종류라도 늘 같은 높이에 뜨지 않는다(2026-10-01 사용자 "다양화"): SkyView가 층이 보이지 않는
@@ -653,24 +653,32 @@ Shader "Hidden/SAIUN/Sky"
                 return max(h, 0.0) * grow;
             }
 
+            // 송이 하나는 봉우리 두세 개가 솟은 덩어리다(2026-10-01 사용자 "기본 구름의 모양이 너무 밋밋하다"): 몸통(CumulusHeight)의
+            // 지붕을 봉우리 칸(약 0.8 km)이 군데군데 밀어 올리고, 겉에는 콜리플라워 송이(약 0.3 km)와 잔 혹(약 0.12 km)이 부푼다.
+            // 위쪽일수록 송이가 불룩하고 겉면이 또렷하며(해 받는 윗면), 밑면은 평평하고 조금 흐릿하다.
+            // 바람에 흘러가며 송이가 천천히 끓어오른다.
             float CumulusDensity(float3 p, bool detail) {
                 float y = p.y - CUMULUS_BASE;
                 if (y < -0.05 || y > CUMULUS_DEPTH) return 0.0;
                 float h = CumulusHeight(p.xz);
                 if (h <= 0.0) return 0.0;
-                float f = (h - y) * 1.2;
+                float3 w = p - float3(LowDrift().x, _SkyTime * 0.006, LowDrift().y);
+                float turret = Dome(N(float3(w.xz * 0.16, 0.41)).b);
+                float top = h * (0.55 + 0.75 * turret);
+                float f = (top - y) * 1.3;
+                if (f < -0.9) return 0.0;
+                float upper = clamp(y / max(top, 0.1), 0.0, 1.0);
+                f += (Dome(N(w * 0.4).b) - 0.55) * lerp(0.35, 0.7, upper);
                 if (detail) {
-                    // 겉에 잔 송이가 부풀어 콜리플라워 결이 난다.
-                    // 바람에 흘러가며 송이가 천천히 끓어오른다.
-                    float3 w = p - float3(LowDrift().x, _SkyTime * 0.006, LowDrift().y);
-                    f += (Dome(N(w * 0.25).b) - 0.55) * 0.6;
-                    f += (Dome(N(w * 0.6).a) - 0.6) * 0.22;
+                    // 잔 혹은 멀어질수록 한 화소보다 잘아져 반짝이는 잔점이 되므로 거리에 따라 줄인다.
+                    float far = length(p.xz);
+                    f += (Dome(N(w * 0.9).a) - 0.6) * lerp(0.12, 0.26, upper) * (1.0 - smoothstep(10.0, 28.0, far));
+                    f += (N(w * 1.3).r - 0.5) * 0.05 * (1.0 - smoothstep(5.0, 14.0, far));
                 }
-                // 밑면은 평평하다.
                 f -= smoothstep(0.12, 0.0, y) * 0.5;
                 // 멀리 지평선 쪽 송이는 공기에 잠겨 옅어진다.
                 float distant = 1.0 - smoothstep(30.0, 55.0, length(p.xz));
-                return Remap(f, 0.0, 0.6) * _Low.z * distant;
+                return Remap(f, 0.0, lerp(0.4, 0.12, upper)) * _Low.z * distant;
             }
 
             // ---- 평면 구름층 ----
@@ -1149,14 +1157,14 @@ Shader "Hidden/SAIUN/Sky"
                     float tb = min((CUMULUS_BASE + CUMULUS_DEPTH - ro.y) / rd.y, 60.0);
                     if (tb > ta) {
                         // 가까운 송이는 촘촘히, 먼 송이는 성기게 걷는다(먼 것은 화면에서 작다).
-                        const int CSTEPS = 110;
-                        float t = ta + max(0.06, ta * 0.018) * jitter;
+                        const int CSTEPS = 200;
+                        float t = ta + max(0.05, ta * 0.012) * jitter;
                         float3 col = v3(0.0);
                         float T = 1.0;
                         float firstHit = -1.0;
                         [loop] for (int i = 0; i < CSTEPS; i++) {
                             if (t > tb) break;
-                            float dt = max(0.06, t * 0.018);
+                            float dt = max(0.05, t * 0.012);
                             float3 p = ro + rd * t;
                             float den = CumulusDensity(p, true);
                             if (den > 0.003) {
@@ -1171,6 +1179,7 @@ Shader "Hidden/SAIUN/Sky"
                                 float3 scMulti = lerp(scHere, v3(dot(scHere, float3(0.3, 0.5, 0.2))) * float3(0.92, 0.97, 1.06), 0.55);
                                 float3 light = scHere * single * (0.75 + 0.25 * forward) * lerp(0.75, 1.0, ao) * CUMULUS_SUN + scMulti * multi * CUMULUS_MULTI
                                                     + amb * lerp(0.5, 1.0, ao) * CUMULUS_AMBIENT;
+                                dt *= 0.5;
                                 float ts = exp(-den * SIGMA * dt);
                                 col += T * light * (1.0 - ts);
                                 T *= ts;
