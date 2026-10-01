@@ -31,6 +31,8 @@ Shader "Hidden/SAIUN/Sky"
         _Extra ("Kelvin-Helmholtz, Twilight, Tower, Night", Vector) = (0, 0, 1, 0)
         _SunDir ("Sun Direction (sky space)", Vector) = (0, 0.7, -0.7, 0)
         _Moon ("Moon Direction (sky space) and lit fraction", Vector) = (0, -1, 0, 0)
+        _AltHigh ("Altitude km: Cirrus, Cirrocumulus, Cirrostratus", Vector) = (9, 7.6, 8.4, 0)
+        _AltLow ("Altitude km: Altocumulus, Altostratus, Stratocumulus, Cumulus Base", Vector) = (4.2, 4.8, 1.7, 1.3)
         _Glass ("Whole Window Glass (clouds only)", Range(0, 1)) = 0
         _Drift ("Wind Drift km (low xy, mid zw)", Vector) = (0, 0, 0, 0)
         _DriftHigh ("Wind Drift km (high xy, hole zw)", Vector) = (0, 0, 0, 0)
@@ -74,6 +76,8 @@ Shader "Hidden/SAIUN/Sky"
             float4 _Extra;
             float4 _SunDir;
             float4 _Moon;
+            float4 _AltHigh;
+            float4 _AltLow;
             float4 _View;
             float _Glass;
             float4 _Drift;
@@ -148,18 +152,20 @@ Shader "Hidden/SAIUN/Sky"
             STATIC const float SIGMA = 9.0;
             STATIC const int MAX_LAYERS = 14;
 
-            // 구름층 고도(km)
-            STATIC const float CIRRUS_ALTITUDE = 9.0;
-            STATIC const float CIRROCUMULUS_ALTITUDE = 7.6;
+            // 구름층 고도(km). 같은 종류라도 늘 같은 높이에 뜨지 않는다(2026-10-01 사용자 "다양화"): SkyView가 층이 보이지 않는
+            // 사이에 범위 안에서 새 높이를 골라 _AltHigh(권운·권적운·권층운)·_AltLow(고적운·고층운·층적운·적운 밑면)로 넘긴다.
+            // 적운 밑면은 하루 동안 올라간다(땅이 데워지며 응결 높이가 오른다).
+            #define CIRRUS_ALTITUDE (_AltHigh.x)
+            #define CIRROCUMULUS_ALTITUDE (_AltHigh.y)
             // 권적운 잔 혹(뒤집은 워리)의 평균. 혹이 화소보다 잘면 이 값으로 둔다.
             STATIC const float CIRROCUMULUS_LUMP_MEAN = 0.5;
-            STATIC const float CIRROSTRATUS_ALTITUDE = 8.4;
-            STATIC const float ALTOCUMULUS_ALTITUDE = 4.2;
-            STATIC const float ALTOSTRATUS_ALTITUDE = 4.8;
-            STATIC const float STRATOCUMULUS_ALTITUDE = 1.7;
+            #define CIRROSTRATUS_ALTITUDE (_AltHigh.z)
+            #define ALTOCUMULUS_ALTITUDE (_AltLow.x)
+            #define ALTOSTRATUS_ALTITUDE (_AltLow.y)
+            #define STRATOCUMULUS_ALTITUDE (_AltLow.z)
             STATIC const float STRATUS_ALTITUDE = 0.75;
             STATIC const float NIMBOSTRATUS_ALTITUDE = 2.4;
-            STATIC const float CUMULUS_BASE = 1.3;
+            #define CUMULUS_BASE (_AltLow.w)
             STATIC const float CUMULUS_DEPTH = 2.4;
 
             // 겹쳐 그릴 구름들: 거리, 미리 곱한 빛, 비치는 정도
@@ -597,6 +603,21 @@ Shader "Hidden/SAIUN/Sky"
 
             // 고도 h의 평면과 만나는 거리. 없으면 -1.
             float PlaneHit(float3 ro, float3 rd, float h) { return rd.y > 0.003 ? (h - ro.y) / rd.y : -1.0; }
+
+            // 층의 높이 굴곡(km, 평균 0): 수십 km에 걸친 긴 굽이와 완만한 기울기. 구름층은 반듯한 판이 아니라
+            // 이쪽이 조금 높고 저쪽이 낮게 기울고 너울처럼 굽이친다. salt가 층마다(층 높이가 새로 정해질 때마다) 모양을 바꾼다.
+            float LayerLift(float2 xz, float salt) {
+                float wave = N(float3(xz * 0.011, frac(salt))).r - 0.5;
+                float2 tilt = float2(sin(salt * 12.9898), cos(salt * 78.233));
+                return wave * 1.4 + dot(xz, tilt) * 0.006;
+            }
+
+            // 높이 h(평균)인 굽이친 층과 만나는 거리. 평균 높이에서 만난 자리의 굴곡만큼 한 번 고쳐 잡는다. amp는 굴곡 배율.
+            float LayerHit(float3 ro, float3 rd, float h, float amp) {
+                float t = PlaneHit(ro, rd, h);
+                if (t < 0.0) return t;
+                return PlaneHit(ro, rd, h + LayerLift((ro + rd * t).xz, h * 7.31) * amp);
+            }
 
             // 보는 방향(방위·고도, 도)을 고도 h 평면 위의 점으로 옮긴다. 방향으로 자리를 정하는 구름(구멍 등)에 쓴다.
             float2 DirectionOnPlane(float az, float el, float h) {
@@ -1071,21 +1092,21 @@ Shader "Hidden/SAIUN/Sky"
                 // ---- 평면 구름층 ----
                 if (rd.y > 0.003) {
                     // 권운
-                    float t = PlaneHit(ro, rd, CIRRUS_ALTITUDE);
+                    float t = LayerHit(ro, rd, CIRRUS_ALTITUDE, 1.0);
                     float d = CirrusDensity((ro + rd * t).xz);
                     if (d > 0.001) {
                         float3 c = sc * SunLit(CIRRUS_ALTITUDE) * (0.95 + 0.4 * forward) + ambMid * 1.15;
                         AddCloud(t, c, d * 0.62 * smoothstep(0.003, 0.05, rd.y));
                     }
                     // 권층운
-                    t = PlaneHit(ro, rd, CIRROSTRATUS_ALTITUDE);
+                    t = LayerHit(ro, rd, CIRROSTRATUS_ALTITUDE, 0.8);
                     d = CirrostratusDensity((ro + rd * t).xz);
                     if (d > 0.001) {
                         float3 c = sc * SunLit(CIRROSTRATUS_ALTITUDE) * (0.9 + 0.5 * forward) + ambMid * 1.2;
                         AddCloud(t, c, Veil(d * 0.42));
                     }
                     // 권적운(구멍구름의 얼음 꼬리 포함)
-                    t = PlaneHit(ro, rd, CIRROCUMULUS_ALTITUDE);
+                    t = LayerHit(ro, rd, CIRROCUMULUS_ALTITUDE, 0.8);
                     float2 xz = (ro + rd * t).xz;
                     float ice;
                     float ccBlur = PlaneFootprint(CIRROCUMULUS_ALTITUDE, rd.y);
@@ -1099,14 +1120,14 @@ Shader "Hidden/SAIUN/Sky"
                         AddCloud(t, lerp(c, iceCol, ice / max(a, 1e-3) * 0.55), a * smoothstep(0.003, 0.05, rd.y));
                     }
                     // 고층운
-                    t = PlaneHit(ro, rd, ALTOSTRATUS_ALTITUDE);
+                    t = LayerHit(ro, rd, ALTOSTRATUS_ALTITUDE, 0.6);
                     d = AltostratusDensity((ro + rd * t).xz);
                     if (d > 0.001) {
                         float3 c = lerp(sc * SunLit(ALTOSTRATUS_ALTITUDE) * 0.45 + ambMid * 1.5, ambMid * 1.25 + sc * 0.15, smoothstep(0.3, 1.0, d));
                         AddCloud(t, c, Veil(clamp(d, 0.0, 0.97)));
                     }
                     // 고적운(구멍구름·꼬리구름 포함)
-                    t = PlaneHit(ro, rd, ALTOCUMULUS_ALTITUDE);
+                    t = LayerHit(ro, rd, ALTOCUMULUS_ALTITUDE, 0.6);
                     xz = (ro + rd * t).xz;
                     d = AltocumulusDensity(xz);
                     ice = 0.0;
@@ -1170,7 +1191,7 @@ Shader "Hidden/SAIUN/Sky"
                         }
                     }
                     // 층적운
-                    t = PlaneHit(ro, rd, STRATOCUMULUS_ALTITUDE);
+                    t = LayerHit(ro, rd, STRATOCUMULUS_ALTITUDE, 0.35);
                     if (t < 70.0) {
                         xz = (ro + rd * t).xz;
                         d = StratocumulusDensity(xz);

@@ -36,6 +36,8 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int ProgressId = Shader.PropertyToID("_Progress");
         private static readonly int SunDirId = Shader.PropertyToID("_SunDir");
         private static readonly int MoonId = Shader.PropertyToID("_Moon");
+        private static readonly int AltHighId = Shader.PropertyToID("_AltHigh");
+        private static readonly int AltLowId = Shader.PropertyToID("_AltLow");
         private static readonly int GlassId = Shader.PropertyToID("_Glass");
         private static readonly int DriftId = Shader.PropertyToID("_Drift");
         private static readonly int DriftHighId = Shader.PropertyToID("_DriftHigh");
@@ -151,6 +153,9 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("바다의 잔물결이 땅 바람을 따라 흐르는 빠르기(m/s): x 바람이 없을 때, y 가장 셀 때. 물가로 오는 너울은 바람과 따로다.")]
         [SerializeField] private Vector2 seaChopSpeed = new Vector2(0.6f, 2.4f);
 
+        [Header("구름층 높이")]
+        [SerializeField] private CloudHeights cloudHeights = new CloudHeights();
+
         [Header("웅대적운")]
         [Tooltip("탑의 자람·보이는 정도가 예보를 따라가는 데 걸리는 시간(초). 예보가 이미 천천히 바꾸므로 짧게 둔다.")]
         [SerializeField, Min(0.01f)] private float growthResponse = 4f;
@@ -208,6 +213,9 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>구름 예보.</summary>
         public CloudForecast Forecast => forecast;
 
+        /// <summary>구름층이 뜨는 높이.</summary>
+        public CloudHeights Heights => cloudHeights;
+
         /// <summary>지금 하늘에 뜬 구름의 양(0~1). 예보의 목표로 천천히 옮겨 간다.</summary>
         public float Coverage(CloudKind kind) => _coverage[(int)kind];
 
@@ -233,6 +241,10 @@ namespace _SAIUN.Scripts.Weather
         private Vector2 _holeDrift;
         private float _sinceRefresh;
         private readonly float[] _coverage = new float[CloudForecast.KindCount];
+
+        // 구름층 높이를 고를 때 쓰는 대리자(매 프레임 새로 만들지 않게 담아 둔다)
+        private static readonly System.Func<float> RandomValue = () => Random.value;
+        private System.Func<CloudKind, float> _coverageOf;
 
         private void Awake()
         {
@@ -261,6 +273,8 @@ namespace _SAIUN.Scripts.Weather
             // 처음에는 예보의 목표 그대로 시작한다(켜자마자 구름이 몰려오는 모습이 보이지 않게).
             forecast.Tick(0f, Inputs());
             for (int i = 0; i < _coverage.Length; i++) _coverage[i] = forecast.Target((CloudKind)i);
+            _coverageOf = Coverage;
+            cloudHeights.Reset(sun != null ? sun.Progress : 0.5f, RandomValue);
             TowerPresence = forecast.TowerPresence;
             TowerGrowth = forecast.TowerGrowth;
             _towerEvents = forecast.TowerEvents;
@@ -421,6 +435,10 @@ namespace _SAIUN.Scripts.Weather
             MoonDirection = SkyMoonDirection();
             _material.SetVector(SunDirId, SunDirection);
             _material.SetVector(MoonId, new Vector4(MoonDirection.x, MoonDirection.y, MoonDirection.z, sun != null ? sun.MoonLit : 0f));
+            _material.SetVector(AltHighId, new Vector4(cloudHeights.Altitude(CloudKind.Cirrus),
+                cloudHeights.Altitude(CloudKind.Cirrocumulus), cloudHeights.Altitude(CloudKind.Cirrostratus), 0f));
+            _material.SetVector(AltLowId, new Vector4(cloudHeights.Altitude(CloudKind.Altocumulus),
+                cloudHeights.Altitude(CloudKind.Altostratus), cloudHeights.Altitude(CloudKind.Stratocumulus), cloudHeights.CumulusBase));
             _material.SetFloat(GlassId, WindowGlass ? 1f : 0f);
             _material.SetVector(DriftId, new Vector4(LowDrift.x, LowDrift.y, MidDrift.x, MidDrift.y));
             _material.SetVector(DriftHighId, new Vector4(HighDrift.x, HighDrift.y, _holeDrift.x, _holeDrift.y));
@@ -498,6 +516,7 @@ namespace _SAIUN.Scripts.Weather
                 var kind = (CloudKind)i;
                 _coverage[i] = Mathf.Lerp(_coverage[i], forecast.Target(kind), 1f - Mathf.Exp(-deltaTime / forecast.ResponseSeconds(kind)));
             }
+            cloudHeights.Tick(deltaTime, sun != null ? sun.Progress : 0.5f, _coverageOf ??= Coverage, RandomValue);
             // 탑은 예보가 이미 천천히 키우고 줄이므로 짧게 따라간다. 새로 솟을 때마다 다른 모양을 고른다.
             float follow = 1f - Mathf.Exp(-deltaTime / growthResponse);
             TowerPresence = Mathf.Lerp(TowerPresence, forecast.TowerPresence, follow);
