@@ -161,6 +161,11 @@ Shader "Hidden/SAIUN/Sky"
             STATIC const float TOWER_SUN = 1.8;
             STATIC const float TOWER_MULTI = 0.16;
             STATIC const float TOWER_AMBIENT = 0.6;
+            // 뭉게구름 떼도 탑처럼(2026-10-01 "강한 명암"): 해 받는 윗면은 밝고 밑면·그늘은 깊다.
+            STATIC const float CUMULUS_SIGMA = 2.0;
+            STATIC const float CUMULUS_SUN = 1.4;
+            STATIC const float CUMULUS_MULTI = 0.18;
+            STATIC const float CUMULUS_AMBIENT = 0.65;
             STATIC const int MAX_LAYERS = 14;
 
             // 구름층 고도(km). 같은 종류라도 늘 같은 높이에 뜨지 않는다(2026-10-01 사용자 "다양화"): SkyView가 층이 보이지 않는
@@ -295,6 +300,12 @@ Shader "Hidden/SAIUN/Sky"
 
             float RayleighPhase(float mu) { return 3.0 / (16.0 * PI) * (1.0 + mu * mu); }
 
+            // 편광 하늘(2026-10-01 사용자 "더 극적이었으면" → "강한 명암·짙은 하늘"): 해에서 90° 떨어진 하늘의 한 번 흩어진
+            // 빛은 거의 다 편광돼 있다(레일리 편광도 sin²θ/(1+cos²θ)). 사진가가 편광 필터로 그 빛을 걸러 하늘을 짙게 하듯
+            // POLARIZER만큼 걸러 해 반대편·옆 하늘이 짙은 파랑이 된다. 구름과 여러 번 흩어진 빛은 편광되지 않아 그대로다.
+            STATIC const float POLARIZER = 0.6;
+            float Polarizer(float mu) { return 1.0 - POLARIZER * (1.0 - mu * mu) / (1.0 + mu * mu); }
+
             float MiePhase(float mu) {
                 float g2 = MIE_G * MIE_G;
                 return 3.0 / (8.0 * PI) * ((1.0 - g2) * (1.0 + mu * mu)) / ((2.0 + g2) * pow(1.0 + g2 - 2.0 * MIE_G * mu, 1.5));
@@ -317,8 +328,23 @@ Shader "Hidden/SAIUN/Sky"
                 gMulti += NIGHT_GLOW * smoothstep(0.2, 0.8, Night());
             }
 
+            // 불타는 노을(2026-10-01 사용자 "더 극적이었으면"): 해가 지평선 가까이(위 10°~아래 4°) 있으면 구름이 받는 햇빛이
+            // 더 세고 더 붉다. 실제로도 낮은 해는 긴 공기를 지나 붉어지지만, 노을 사진처럼 구름 밑이 타오르게 빛깔을 한 번 더 짙게 한다.
+            float SunsetFire() {
+                float el = SunElevationDeg();
+                return smoothstep(10.0, 1.0, el) * smoothstep(-4.5, -0.5, el);
+            }
+
+            float3 Fire(float3 c) {
+                float k = SunsetFire();
+                if (k <= 0.0) return c;
+                float m = max(max(c.r, c.g), max(c.b, 1e-4));
+                float3 n = pow(c / m, v3(1.0 + 0.9 * k));
+                return n * m * (1.0 + 0.7 * k);
+            }
+
             // 고도 h(km)의 햇빛(대기를 지나 남은 비율). 해가 지면 땅 그림자보다 낮은 곳은 0이다.
-            float3 SunLit(float h) {
+            float3 SunLitRaw(float h) {
                 if (h < 2.0) return lerp(gSunAt[0], gSunAt[1], h / 2.0);
                 if (h < 5.0) return lerp(gSunAt[1], gSunAt[2], (h - 2.0) / 3.0);
                 if (h < 9.0) return lerp(gSunAt[2], gSunAt[3], (h - 5.0) / 4.0);
@@ -330,6 +356,8 @@ Shader "Hidden/SAIUN/Sky"
                 float closest = sqrt(max(dot(c, c) - b * b, 0.0)) - PLANET_RADIUS;
                 return v3(b > 0.0 ? 1.0 : smoothstep(-2.0, 2.0, closest - 12.0));
             }
+
+            float3 SunLit(float h) { return Fire(SunLitRaw(h)); }
 
             // 보는 방향으로 대기를 걸으며 공기 빛을 쌓는다. 가까운 곳을 촘촘히 걷도록 거리를 지수로 나눈다.
             // 반환: 끝(땅 또는 대기 밖)까지의 거리. 땅에 닿았으면 hitGround가 참이다.
@@ -358,7 +386,7 @@ Shader "Hidden/SAIUN/Sky"
                     float3 scatR = RAYLEIGH_SCATTER * rho.x;
                     float scatM = MIE_SCATTER * rho.y;
                     float3 sunT = SunTransmittance(p, sd);
-                    float3 source = (scatR * pr + v3(scatM * pm)) * sunT * LightScale() + (scatR + v3(scatM)) * gMulti;
+                    float3 source = (scatR * pr * Polarizer(mu) + v3(scatM * pm)) * sunT * LightScale() + (scatR + v3(scatM)) * gMulti;
                     float3 stepT = exp(-ext * dt);
                     // 한 걸음 안에서 감쇠를 고려해 쌓는다(걸음이 커도 에너지가 넘치지 않는다).
                     L += T * source * SKY_SUN * (v3(1.0) - stepT) / max(ext, v3(1e-6));
@@ -978,13 +1006,20 @@ Shader "Hidden/SAIUN/Sky"
 
             // 톤매핑: 빛깔마다 따로 누르면(1 − e^−x) 가장 밝은 파랑이 가장 많이 눌려 맑은 하늘이 옅게 바랜다.
             // 밝기로 누르고 빛깔 비율을 지킨 값을 TONE_HUE만큼 섞어 한낮 하늘이 짙푸르게 남는다(구름의 흰빛은 그대로다).
+            // 그 위에 S자 곡선을 TONE_CONTRAST만큼 입혀 어두운 쪽은 더 어둡고 밝은 쪽은 더 밝게 명암 폭을 넓힌다.
             // 바다 패스는 하늘 장을 빛깔마다 따로 되돌렸다가 다시 누르므로, 비친 하늘은 이 색 그대로다.
-            STATIC const float TONE_HUE = 0.6;
+            STATIC const float TONE_HUE = 0.85;
+            STATIC const float TONE_CONTRAST = 0.35;
+            // 이 높이(광선의 y)부터 하늘 장의 알파가 구름 너머로 트인 정도다(그 아래 지평선 띠는 하늘과 바다를 잇는 알파).
+            STATIC const float SKY_OPEN_FROM = 0.012;
             float3 ToneMap(float3 x) {
+                // 빛은 음수가 될 수 없다(셈의 작은 어긋남이 음수가 되면 빛깔 비율·S자 곡선이 엉뚱한 색을 낸다).
+                x = max(x, v3(0.0));
                 float3 perChannel = v3(1.0) - exp(-x);
                 float l = dot(x, float3(0.2126, 0.7152, 0.0722));
                 float3 hue = min(x * ((1.0 - exp(-l)) / max(l, 1e-4)), v3(1.0));
-                return lerp(perChannel, hue, TONE_HUE);
+                float3 c = lerp(perChannel, hue, TONE_HUE);
+                return lerp(c, c * c * (3.0 - 2.0 * c), TONE_CONTRAST);
             }
 
             // uv: 화면 가운데가 0, 세로 한 칸이 1. pixel: 화소 번호(걸음 흔들기용). 반환: 톤매핑한 빛(선형)과 불투명도.
@@ -1128,13 +1163,14 @@ Shader "Hidden/SAIUN/Sky"
                                 if (firstHit < 0.0) firstHit = t;
                                 float od = CumulusDensity(p + s * 0.12, true) * 0.12 + CumulusDensity(p + s * 0.4, false) * 0.3
                                                 + CumulusDensity(p + s * 0.9, false) * 0.5;
-                                float single = exp(-od * SIGMA);
-                                float multi = exp(-od * SIGMA * 0.18);
+                                float single = exp(-od * SIGMA * CUMULUS_SIGMA);
+                                float multi = exp(-od * SIGMA * CUMULUS_SIGMA * 0.18);
                                 float ao = exp(-(CumulusDensity(p + float3(0.0, 0.25, 0.0), false) + CumulusDensity(p + float3(0.0, 0.6, 0.0), false)) * 1.2);
                                 float3 amb = lerp(ambBottom, ambTop, smoothstep(0.0, 1.2, p.y - CUMULUS_BASE));
                                 float3 scHere = sc * SunLit(p.y);
                                 float3 scMulti = lerp(scHere, v3(dot(scHere, float3(0.3, 0.5, 0.2))) * float3(0.92, 0.97, 1.06), 0.55);
-                                float3 light = scHere * single * (0.75 + 0.25 * forward) * lerp(0.75, 1.0, ao) + scMulti * multi * 0.36 + amb * lerp(0.5, 1.0, ao);
+                                float3 light = scHere * single * (0.75 + 0.25 * forward) * lerp(0.75, 1.0, ao) * CUMULUS_SUN + scMulti * multi * CUMULUS_MULTI
+                                                    + amb * lerp(0.5, 1.0, ao) * CUMULUS_AMBIENT;
                                 float ts = exp(-den * SIGMA * dt);
                                 col += T * light * (1.0 - ts);
                                 T *= ts;
@@ -1388,6 +1424,9 @@ Shader "Hidden/SAIUN/Sky"
 
                 // 지평선 아래: 하늘이 안개처럼 풀려 유리로 이어진다. 지평선에 걸친 구름은 조금 더 남는다.
                 float alpha = max(smoothstep(-0.09, 0.01, rd.y), (1.0 - T) * smoothstep(-0.06, 0.0, rd.y));
+                // 지평선 위에서는 알파에 구름 너머로 트인 정도(0.5 구름에 막힘 ~ 1 트인 하늘)를 담는다. 유리가 아니면 알파는
+                // 덮는 데 쓰지 않으므로, 보이기 패스가 빛살을 셈할 때 구름이 빛을 막는 자리로 읽는다(0이 되면 거르기가 깨지므로 0.5부터).
+                if (rd.y > SKY_OPEN_FROM) alpha = 0.5 + 0.5 * T;
                 return float4(ToneMap(c * exposure), alpha);
             }
 
@@ -1446,6 +1485,12 @@ Shader "Hidden/SAIUN/Sky"
                 float4 c = tex2Dlod(sky, float4(uv + float2(-o.x, o.y), 0.0, 0.0));
                 float4 d = tex2Dlod(sky, float4(uv + float2(o.x, o.y), 0.0, 0.0));
                 return (float4(a.rgb * a.a, a.a) + float4(b.rgb * b.a, b.a) + float4(c.rgb * c.a, c.a) + float4(d.rgb * d.a, d.a)) * 0.25;
+            }
+
+            // 빛살용 빠른 표본: 거르지 않고 한 점씩 읽는다(알파는 구름 너머로 트인 정도).
+            float4 SkyQuick(float2 uv)
+            {
+                return lerp(tex2Dlod(_PrevTex, float4(uv, 0.0, 0.0)), tex2Dlod(_MainTex, float4(uv, 0.0, 0.0)), _Blend);
             }
 
             // 지난 장과 지금 장을 섞은 하늘(곧은 색·알파)
@@ -1687,6 +1732,55 @@ Shader "Hidden/SAIUN/Sky"
             }
 
             // 보이는 장의 한 화소: 창 전체 유리면 하늘 장 그대로(구름만), 아니면 지평선 아래를 바다로 채운다.
+            // ---- 빛내림(화면에서) ----
+            // 해의 화면 자리를 향해 걸으며 해 둘레의 밝은 하늘(구름 틈으로 트인 하늘, 해를 받은 구름 가장자리)을 모은다.
+            // 구름 틈으로 새는 빛이 해에서 부채꼴로 뻗는 빛살이 되고, 구름에 가린 쪽은 빛을 모으지 못해 그림자 줄기가 된다.
+            // 공기 속 빛이라 바다 위로도 내린다. 해가 화면에서 멀거나 지평선 아래로 깊이 가면 사라진다.
+            STATIC const int RAY_TAPS = 28;
+            // 걸음마다 남는 빛(멀리서 온 빛일수록 옅다)
+            STATIC const float RAY_DECAY = 0.94;
+            // 해 둘레 빛무리를 재는 거리(화면 높이 1 기준)
+            STATIC const float RAY_HALO = 0.05;
+            // 빛살이 해 쪽으로 뻗는 길이(해까지의 거리 대비), 빛무리 평균 밝기 대비 빛살이 되는 문턱, 세기
+            STATIC const float RAY_LENGTH = 0.9;
+            STATIC const float RAY_THRESHOLD = 0.8;
+            STATIC const float RAY_STRENGTH = 2.5;
+            float3 SunRays(float2 tuv, float3 rd) {
+                float3 s = SunDir();
+                float facing = dot(rd, s);
+                if (s.y < -0.06 || facing < 0.3 || _Storm > 0.95) return v3(0.0);
+                float2 sunUv = TextureUv(CameraUv(s));
+                // 문턱은 해 자리 밝기에 비례한다: 한낮의 흰 해 둘레도, 노을의 주황 해 둘레도 그 둘레에서 가장 밝은 곳만 빛살이 된다.
+                // 해 원반 한 점은 너무 밝으므로 해 둘레 빛무리의 평균 밝기를 기준으로 삼는다.
+                float lSun = 0.0;
+                [unroll] for (int k = 0; k < 6; k++) {
+                    float ang = float(k) * 1.0472;
+                    float2 at = clamp(sunUv + float2(cos(ang), sin(ang)) * float2(RAY_HALO * _SkySize.y / _SkySize.x, RAY_HALO), float2(0.002, 0.002), float2(0.998, 0.998));
+                    lSun += dot(SkyQuick(at).rgb, float3(0.3, 0.59, 0.11)) / 6.0;
+                }
+                lSun = max(lSun, 0.05);
+                float lo = lSun * RAY_THRESHOLD;
+                float2 delta = (sunUv - tuv) * (RAY_LENGTH / float(RAY_TAPS));
+                float2 uv = tuv;
+                float decay = 1.0;
+                float3 sum = v3(0.0);
+                [loop] for (int i = 0; i < RAY_TAPS; i++) {
+                    uv += delta;
+                    float2 at = clamp(uv, float2(0.002, 0.002), float2(0.998, 0.998));
+                    float4 c = SkyQuick(at);
+                    // 구름이 막은 자리는 빛을 보내지 못한다(하늘 장 알파: 0.5 막힘 ~ 1 트임, 지평선 띠는 트인 것으로 본다).
+                    float open = CameraRay((at - 0.5) * float2(_SkySize.x / _SkySize.y, 1.0)).y > 0.012 ? clamp(c.a * 2.0 - 1.0, 0.0, 1.0) : 1.0;
+                    float l = dot(c.rgb, float3(0.3, 0.59, 0.11));
+                    sum += c.rgb * open * smoothstep(lo, lSun, l) * decay;
+                    decay *= RAY_DECAY;
+                }
+                // 해가 화면 밖으로 멀어지면 옅어진다.
+                float2 off = max(abs(sunUv - 0.5) - 0.5, float2(0.0, 0.0));
+                float onScreen = 1.0 - smoothstep(0.0, 0.35, max(off.x, off.y));
+                float sunUp = smoothstep(-0.06, 0.02, s.y);
+                return sum / float(RAY_TAPS) * smoothstep(0.3, 0.95, facing) * onScreen * sunUp * (1.0 - _Storm) * RAY_STRENGTH;
+            }
+
             float4 Present(float2 tuv, float2 pixel) {
                 float4 sky = SkySample(tuv);
                 if (_Glass > 0.5) return sky;
@@ -1694,9 +1788,11 @@ Shader "Hidden/SAIUN/Sky"
                 // 지평선 한 화소 폭으로 하늘과 바다를 잇는다.
                 float pixelAngle = 0.97 / _SkySize.y;
                 float below = smoothstep(0.0, -pixelAngle, rd.y);
-                if (below <= 0.0) return float4(sky.rgb, 1.0);
+                float3 rays = SunRays(tuv, rd);
+                if (below <= 0.0) return float4(sky.rgb + rays * (v3(1.0) - sky.rgb), 1.0);
                 float3 sea = ToDisplay(SeaColor(float3(rd.x, min(rd.y, -pixelAngle * 0.5), rd.z), pixel));
-                return float4(lerp(sky.rgb, sea, below), 1.0);
+                float3 c = lerp(sky.rgb, sea, below);
+                return float4(c + rays * (v3(1.0) - c), 1.0);
             }
 
             float4 Mix(v2f_img input) : SV_Target
