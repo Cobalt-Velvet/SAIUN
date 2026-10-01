@@ -145,11 +145,22 @@ Shader "Hidden/SAIUN/Sky"
 
             STATIC const float PI = 3.14159265;
             // 탑 밑면 가운데(km): 오른쪽에서 솟아 화면 가장자리에서 잘린다(시계는 파란 하늘 위에 남는다).
-            STATIC const float3 TOWER = float3(5.6, 0.3, 21.0);
+            STATIC const float3 TOWER = float3(6.8, 0.3, 21.0);
+            // 탑(곁 덩어리 포함)이 밑동 가운데에서 옆(x)·앞뒤(z)로 뻗는 거리(km)
+            STATIC const float2 TOWER_REACH = float2(7.6, 6.2);
+            // 너울 선반이 없을 확률: 첫 겹, 둘째 겹
+            STATIC const float VELUM_ABSENT = 0.35;
+            STATIC const float VELUM_SECOND_ABSENT = 0.75;
             STATIC const float3 EYE = float3(0.0, 0.1, 0.0);
             STATIC const float EARTH_RADIUS = 6371.0;
             // 겉껍질이 반투명하게 비치도록 낮춘 소광 계수. 높으면 겉부터 꽉 막혀 석고 덩어리처럼 보인다.
             STATIC const float SIGMA = 9.0;
+            // 웅대적운 탑(2026-10-01 사용자가 준 사진처럼): 송이가 빽빽해 겉이 또렷하고 송이 사이 골에 그늘이 깊다.
+            // 해 받는 면은 하얗게 빛나고 그늘은 하늘빛을 받아 푸르다. 그래서 탑만 더 짙고, 해를 더 받고, 흩어진 빛과 하늘빛은 덜 받는다.
+            STATIC const float TOWER_SIGMA = 2.5;
+            STATIC const float TOWER_SUN = 1.8;
+            STATIC const float TOWER_MULTI = 0.16;
+            STATIC const float TOWER_AMBIENT = 0.6;
             STATIC const int MAX_LAYERS = 14;
 
             // 구름층 고도(km). 같은 종류라도 늘 같은 높이에 뜨지 않는다(2026-10-01 사용자 "다양화"): SkyView가 층이 보이지 않는
@@ -261,6 +272,7 @@ Shader "Hidden/SAIUN/Sky"
             float3 AirDensity(float h) {
                 return float3(exp(-max(h, 0.0) / RAYLEIGH_HEIGHT), exp(-max(h, 0.0) / MIE_HEIGHT), max(0.0, 1.0 - abs(h - OZONE_CENTER) / OZONE_WIDTH));
             }
+
 
             float3 Extinction(float3 rho) { return RAYLEIGH_SCATTER * rho.x + v3(MIE_EXTINCTION * rho.y) + OZONE_ABSORB * rho.z; }
 
@@ -468,13 +480,17 @@ Shader "Hidden/SAIUN/Sky"
                 return d;
             }
 
-            // 몸통의 큰 틀: 가운데 가장 높은 봉우리와 곁 봉우리 셋이 밑동에서 한 덩어리로 이어진다.
+            // 몸통의 큰 틀: 가운데 가장 높은 봉우리 둘레로 높이가 다른 봉우리들이 엉겨 넓은 산을 이룬다.
+            // 위로 갈수록 송이가 굵어져 꼭대기가 부푼다(적란운으로 자라기 직전의 웅대적운). 왼쪽 아래와 오른쪽 아래에는 낮은 곁 덩어리가 붙는다.
             float Envelope(float3 q) {
                 float h = TowerTop();
-                float d = Column(q, float2(0.0, 0.0), h, 2.3, 1.9, 1.0);
-                d = SMin(d, Column(q, float2(-2.2, 0.6), max(h * 0.55, 2.6), 2.0, 1.5, 11.0), 0.7);
-                d = SMin(d, Column(q, float2(2.0, -0.4), max(h * 0.84, 2.8), 1.9, 1.5, 23.0), 0.8);
-                d = SMin(d, Column(q, float2(-1.0, -0.9), max(h * 0.9, 2.8), 1.6, 1.3, 37.0), 0.8);
+                float d = Column(q, float2(0.0, 0.0), h, 2.4, 2.5, 1.0);
+                d = SMin(d, Column(q, float2(-2.3, 0.7), max(h * 0.62, 2.6), 2.1, 1.9, 11.0), 0.7);
+                d = SMin(d, Column(q, float2(2.4, -0.5), max(h * 0.82, 2.8), 2.1, 2.0, 23.0), 0.8);
+                d = SMin(d, Column(q, float2(-1.1, -1.3), max(h * 0.9, 2.8), 1.8, 1.8, 37.0), 0.8);
+                d = SMin(d, Column(q, float2(0.9, 1.9), max(h * 0.72, 2.6), 1.9, 1.7, 41.0), 0.8);
+                d = SMin(d, Column(q, float2(-3.9, -0.2), max(h * 0.36, 2.2), 1.9, 1.5, 53.0), 0.7);
+                d = SMin(d, Column(q, float2(4.3, 0.6), max(h * 0.46, 2.4), 1.8, 1.5, 67.0), 0.7);
                 return max(d, -q.y);
             }
 
@@ -503,39 +519,69 @@ Shader "Hidden/SAIUN/Sky"
                 return Remap(inside + (fib2 - 0.5) * 0.5, 0.0, 0.5) * end * edge * root * a;
             }
 
+            // 너울 선반(벨룸): 탑이 습한 층을 뚫고 솟으면 그 층이 탑 허리에 얇고 매끈한 선반처럼 둘린다(사진의 탑 양옆 날개).
+            // 높이가 다른 선반이 한두 겹 탑에서 바깥으로 넓게 뻗고, 끝으로 갈수록 얇아지며 조금 처진다. 탑이 새로 솟을 때마다(_Seed)
+            // 선반이 있기도 없기도 하고 높이·너비가 다르다. 같은 층에서 생긴 너울이라 결이 옆으로 길게 늘어난다.
+            float VelumDensity(float3 q, float h) {
+                float v = 0.0;
+                [unroll] for (int k = 0; k < 2; k++) {
+                    float salt = _Seed * 1.7 + float(k) * 5.3;
+                    // 첫 겹은 흔하고 둘째 겹은 드물다. 둘째 겹은 첫 겹보다 탑 높이의 1/4쯤 위에 둘린다.
+                    if (H1(salt) < (k == 0 ? VELUM_ABSENT : VELUM_SECOND_ABSENT)) continue;
+                    float yc = h * (lerp(0.36, 0.56, H1(_Seed * 1.7 + 1.1)) + float(k) * 0.24);
+                    if (abs(q.y - yc) > 1.4) continue;
+                    // 옆(바람 방향)으로 길고 앞뒤로 얇다. 바람 부는 쪽(왼쪽)으로 더 길게 뻗는다.
+                    float2 xz = q.xz * float2(q.x < 0.0 ? 0.9 : 1.0, 2.4);
+                    float r = length(xz);
+                    float reach = lerp(4.4, 6.4, H1(salt + 2.3));
+                    if (r > reach) continue;
+                    float u = r / reach;
+                    float wave = (N(float3(xz * 0.1, frac(salt))).r - 0.5) * 0.6;
+                    float across = (q.y - (yc - u * u * 0.7 + wave)) / lerp(0.3, 0.07, u);
+                    float shell = 1.0 - across * across;
+                    if (shell <= 0.0) continue;
+                    float silk = N(float3(xz.x * 0.06, xz.y * 0.3, q.y * 0.5) + float3(_SkyTime * 0.002, 0.0, frac(salt * 0.37))).r;
+                    float edge = 1.0 - smoothstep(0.55, 1.0, u + (silk - 0.5) * 0.35);
+                    // 탑 몸통 둘레에서는 송이에 묻힌다(앞면을 가로지르는 띠가 되지 않게). 몸통 밖으로 나온 날개만 남는다.
+                    float outside = smoothstep(0.3, 0.55, u);
+                    v = max(v, shell * edge * outside * lerp(0.45, 1.0, smoothstep(0.3, 0.7, silk)));
+                }
+                return v * 0.7 * _Extra.z * (1.0 - _Storm);
+            }
+
             // 밀도 0~1. 큰 틀 + 큰·중간·잔 송이를 한 장(場)에 더하고 얇게 문턱을 넘겨 또렷한 겉면을 세운다.
             float TowerDensity(float3 p, bool detail) {
                 float3 q = p - TOWER;
                 float h = TowerTop();
                 float3 drift = float3(_SkyTime * 0.004, -_SkyTime * 0.01, 0.0) + float3(_Seed * 1.37, 0.0, _Seed * 0.71);
-                float anvil = AnvilDensity(q, drift);
-                if (q.y < -0.2 || q.y > h + 1.8 || abs(q.x) > 6.6 || abs(q.z) > 5.6) return anvil;
+                float anvil = max(AnvilDensity(q, drift), VelumDensity(q, h));
+                if (q.y < -0.2 || q.y > h + 2.2 || abs(q.x) > TOWER_REACH.x || abs(q.z) > TOWER_REACH.y) return anvil;
                 float warp = N(q * 0.045 + drift * 0.3).r - 0.5;
                 float env = Envelope(q) + warp * 0.9;
                 if (env > 2.0) return anvil;
                 float f = -env * 0.6;
                 // 송이의 층: 큰 송이 → 중간 송이 → 잔 송이. 워리를 반구꼴로 바꿔 겉으로 불룩하게 더한다.
                 float upper = smoothstep(0.45, 0.95, q.y / h);
-                f += (Dome(N(q * 0.09 + drift).g) - 0.6) * lerp(0.9, 1.15, upper);
+                f += (Dome(N(q * 0.09 + drift).g) - 0.6) * lerp(1.1, 1.45, upper);
                 if (f < -0.7) return anvil;
                 float crisp = smoothstep(0.25, 0.8, q.y / h);
                 if (detail) {
-                    f += (Dome(N(q * 0.09 + drift * 1.3).b) - 0.5) * lerp(0.4, 0.55, upper);
-                    f += (Dome(N(q * 0.09 + drift * 1.8).a) - 0.6) * lerp(0.14, 0.24, crisp);
+                    f += (Dome(N(q * 0.09 + drift * 1.3).b) - 0.5) * lerp(0.55, 0.75, upper);
+                    f += (Dome(N(q * 0.09 + drift * 1.8).a) - 0.6) * lerp(0.2, 0.34, crisp);
                     // 가장 잔 송이(약 0.35 km): 겉이 매끈한 돌처럼 보이지 않게 한다.
                     f += (Dome(N(q * 0.19 + drift * 2.2).a) - 0.6) * lerp(0.06, 0.12, crisp);
-                    f += (N(q * 0.9 + drift * 2.4).r - 0.5) * 0.06;
+                    f += (N(q * 0.9 + drift * 2.4).r - 0.5) * 0.035;
                     // 겉 가장자리: 잔 무늬로 갉아 실오라기처럼 풀린다. 해 받는 봉우리 위쪽은 또렷하고 옆·밑은 흐릿하다.
                     float edge = 1.0 - smoothstep(0.0, 0.3, f);
                     float wisp = N(q * 0.6 + drift * 3.0).r;
-                    f -= edge * (wisp - 0.3) * lerp(0.45, 0.14, crisp);
+                    f -= edge * (wisp - 0.3) * lerp(0.4, 0.08, crisp);
                 } else {
                     f += 0.02;
                 }
                 // 밑면은 평평하고 조금 흐릿하다.
                 f -= smoothstep(0.35, 0.0, q.y) * 0.4;
                 // 겉에서 속으로 천천히 짙어진다. 겉껍질이 반투명해야 덩어리가 아니라 김으로 읽힌다.
-                return max(Remap(f, 0.0, lerp(0.55, 0.11, crisp)) * _Extra.z, anvil);
+                return max(Remap(f, 0.0, lerp(0.4, 0.07, crisp)) * _Extra.z, anvil);
             }
 
             // 채운 갓구름: 꼭대기를 두건처럼 덮는 얇고 매끈한 너울. 탑 꼭대기 송이가 아래에서 밀고 올라와 너울 가운데를 뚫기도 한다.
@@ -930,6 +976,17 @@ Shader "Hidden/SAIUN/Sky"
                 return col * lerp(1.0, 0.72, clamp(toward, 0.0, 1.0)) * bright;
             }
 
+            // 톤매핑: 빛깔마다 따로 누르면(1 − e^−x) 가장 밝은 파랑이 가장 많이 눌려 맑은 하늘이 옅게 바랜다.
+            // 밝기로 누르고 빛깔 비율을 지킨 값을 TONE_HUE만큼 섞어 한낮 하늘이 짙푸르게 남는다(구름의 흰빛은 그대로다).
+            // 바다 패스는 하늘 장을 빛깔마다 따로 되돌렸다가 다시 누르므로, 비친 하늘은 이 색 그대로다.
+            STATIC const float TONE_HUE = 0.6;
+            float3 ToneMap(float3 x) {
+                float3 perChannel = v3(1.0) - exp(-x);
+                float l = dot(x, float3(0.2126, 0.7152, 0.0722));
+                float3 hue = min(x * ((1.0 - exp(-l)) / max(l, 1e-4)), v3(1.0));
+                return lerp(perChannel, hue, TONE_HUE);
+            }
+
             // uv: 화면 가운데가 0, 세로 한 칸이 1. pixel: 화소 번호(걸음 흔들기용). 반환: 톤매핑한 빛(선형)과 불투명도.
             float4 Shade(float2 uv, float2 pixel) {
                 gCount = 0;
@@ -975,8 +1032,8 @@ Shader "Hidden/SAIUN/Sky"
                 if (_Extra.z > 0.01 || _Special.x > 0.01) {
                     float h = TowerTop();
                     float anvilLeft = _Special.x > 0.001 ? AnvilReach() + 1.5 : 0.0;
-                    float3 bmin = TOWER + float3(-6.6 - anvilLeft, -0.2, -5.6);
-                    float3 bmax = TOWER + float3(6.6, h + 3.4, 5.6);
+                    float3 bmin = TOWER + float3(-TOWER_REACH.x - anvilLeft, -0.2, -TOWER_REACH.y);
+                    float3 bmax = TOWER + float3(TOWER_REACH.x, h + 3.4, TOWER_REACH.y);
                     float3 inv = 1.0 / rd;
                     float3 ta = (bmin - ro) * inv;
                     float3 tb = (bmax - ro) * inv;
@@ -1011,11 +1068,11 @@ Shader "Hidden/SAIUN/Sky"
                                     ls *= 1.6;
                                 }
                                 // 직접 산란: 해를 등지고 볼수록 앞쪽으로 쏠린 빛이 가장자리를 은빛으로 태운다.
-                                float single = exp(-od * SIGMA);
+                                float single = exp(-od * SIGMA * TOWER_SIGMA);
                                 // 여러 번 흩어진 빛: 덜 감쇠해 두꺼운 곳도 은은하다.
-                                float multi = exp(-od * SIGMA * 0.18);
+                                float multi = exp(-od * SIGMA * TOWER_SIGMA * 0.18);
                                 float ms = single * (0.75 + 0.25 * forward);
-                                float powder = 1.0 - exp(-total * SIGMA * 0.35);
+                                float powder = 1.0 - exp(-total * SIGMA * TOWER_SIGMA * 0.35);
                                 // 위와 보는 쪽이 막힌 골은 하늘빛을 덜 받는다.
                                 float occ = TowerDensity(p + float3(0.0, 0.3, 0.0), false) + TowerDensity(p + float3(0.0, 0.8, 0.0), false) * 0.8
                                                     + TowerDensity(p - rd * 0.4, false) * 0.6;
@@ -1023,11 +1080,11 @@ Shader "Hidden/SAIUN/Sky"
                                 float hgt = clamp((p.y - TOWER.y) / h, 0.0, 1.0);
                                 float3 amb = lerp(ambBottom, ambTop, smoothstep(0.0, 0.8, hgt));
                                 // 박명: 땅 그림자보다 높은 곳만 붉은 햇빛을 받는다.
-                                float3 scHere = sc * SunLit(p.y);
+                                float3 scHere = sc * SunLit(p.y) * TOWER_SUN;
                                 // 여러 번 흩어진 빛은 하늘빛과 섞여 해 색보다 희고 푸르다(따뜻한 색이 그늘에 들면 흙빛이 된다).
                                 float3 scMulti = lerp(scHere, v3(dot(scHere, float3(0.3, 0.5, 0.2))) * float3(0.92, 0.97, 1.06), 0.55);
-                                float3 light = (scHere * ms * lerp(0.6, 1.0, powder) * lerp(0.75, 1.0, ao) + scMulti * multi * 0.32 * lerp(0.5, 1.0, ao)
-                                                        + amb * lerp(0.35, 1.0, ao)) * lerp(1.0, 0.45, _Storm);
+                                float3 light = (scHere * ms * lerp(0.6, 1.0, powder) * lerp(0.75, 1.0, ao) + scMulti * multi * TOWER_MULTI * lerp(0.5, 1.0, ao)
+                                                        + amb * TOWER_AMBIENT * lerp(0.35, 1.0, ao)) * lerp(1.0, 0.45, _Storm);
                                 if (cap > 0.003) {
                                     // 채운: 너울은 하얗고 매끈하게 빛나고, 얇은 곳일수록 파스텔 빛깔(분홍·초록·보라)이 번진다.
                                     // 빛깔은 물방울 크기에 따라 조각조각 달라 무지개처럼 반듯한 띠가 되지 않는다.
@@ -1039,7 +1096,7 @@ Shader "Hidden/SAIUN/Sky"
                                     float3 veil = (scHere * 0.8 + amb * 1.2) * iri * 1.2;
                                     light = lerp(light, veil, cap / total);
                                 }
-                                float ts = exp(-total * SIGMA * dt);
+                                float ts = exp(-total * SIGMA * TOWER_SIGMA * dt);
                                 col += T * light * (1.0 - ts);
                                 T *= ts;
                                 if (T < 0.01) break;
@@ -1302,7 +1359,7 @@ Shader "Hidden/SAIUN/Sky"
                     }
                     float cover = (1.0 - tg) * smoothstep(-0.06, 0.0, rd.y);
                     float3 cc = cg / max(1.0 - tg, 1e-4);
-                    return float4(1.0 - exp(-cc * exposure), cover);
+                    return float4(ToneMap(cc * exposure), cover);
                 }
 
                 // 가까운 구름부터: 구름 사이 공기가 더하는 빛(앞 구름에 가린 만큼), 공기를 지나 남은 구름 빛을 차례로 쌓는다.
@@ -1331,7 +1388,7 @@ Shader "Hidden/SAIUN/Sky"
 
                 // 지평선 아래: 하늘이 안개처럼 풀려 유리로 이어진다. 지평선에 걸친 구름은 조금 더 남는다.
                 float alpha = max(smoothstep(-0.09, 0.01, rd.y), (1.0 - T) * smoothstep(-0.06, 0.0, rd.y));
-                return float4(1.0 - exp(-c * exposure), alpha);
+                return float4(ToneMap(c * exposure), alpha);
             }
 
             float4 Fragment(v2f_img input) : SV_Target
