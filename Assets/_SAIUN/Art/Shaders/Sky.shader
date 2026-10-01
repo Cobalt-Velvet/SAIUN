@@ -148,6 +148,10 @@ Shader "Hidden/SAIUN/Sky"
             STATIC const float3 TOWER = float3(6.8, 0.3, 21.0);
             // 탑(곁 덩어리 포함)이 밑동 가운데에서 옆(x)·앞뒤(z)로 뻗는 거리(km)
             STATIC const float2 TOWER_REACH = float2(7.6, 6.2);
+            // 모루가 앞뒤로 퍼지는 거리(km): 모루 끝 반폭 6 km × 가장자리 1.3배 + 여유
+            STATIC const float ANVIL_SIDE_REACH = 8.5;
+            // 모루 셈을 끊는 자리(모루 길이의 배수). 실처럼 풀리는 끝이 다 사라진 뒤다.
+            STATIC const float ANVIL_TAIL = 1.4;
             // 너울 선반이 없을 확률: 첫 겹, 둘째 겹
             STATIC const float VELUM_ABSENT = 0.35;
             STATIC const float VELUM_SECOND_ABSENT = 0.75;
@@ -534,8 +538,9 @@ Shader "Hidden/SAIUN/Sky"
                 if (a <= 0.001) return 0.0;
                 float h = TowerTop();
                 float reach = AnvilReach();
-                if (q.x > 3.0 || q.x < -reach - 2.0 || q.y < h - 3.5 || q.y > h + 1.6) return 0.0;
-                float along = clamp(-q.x / reach, 0.0, 1.0);          // 0 탑 위 ~ 1 모루 끝
+                if (q.x > 3.0 || q.x < -reach * ANVIL_TAIL - 2.0 || q.y < h - 3.5 || q.y > h + 1.6) return 0.0;
+                float alongRaw = -q.x / reach;
+                float along = clamp(alongRaw, 0.0, 1.0);          // 0 탑 위 ~ 1 모루 끝
                 float halfWidth = lerp(3.0, 6.0, along);
                 float side = abs(q.z) / halfWidth;
                 if (side > 1.3) return 0.0;
@@ -546,8 +551,9 @@ Shader "Hidden/SAIUN/Sky"
                 float bottom = h - 0.1 + along * 0.2 - pow(1.0 - along, 3.0) * 2.8 + (fib - 0.5) * 0.5;
                 float thick = max(top - bottom, 0.05);
                 float inside = min(q.y - bottom, top - q.y) / thick * 2.0;
-                float end = 1.0 - smoothstep(0.45, 1.05, along + (fib2 - 0.5) * 0.35);
-                float edge = 1.0 - smoothstep(0.55, 1.15, side + (fib2 - 0.5) * 0.4);
+                // 끝은 잘리지 않고 실처럼 풀려 사라진다(셈을 끊는 자리보다 한참 앞에서 0이 된다).
+                float end = 1.0 - smoothstep(0.4, 1.15, alongRaw + (fib2 - 0.5) * 0.45);
+                float edge = 1.0 - smoothstep(0.45, 1.2, side + (fib2 - 0.5) * 0.5);
                 float root = smoothstep(3.0, 0.8, q.x);
                 return Remap(inside + (fib2 - 0.5) * 0.5, 0.0, 0.5) * end * edge * root * a;
             }
@@ -1137,9 +1143,11 @@ Shader "Hidden/SAIUN/Sky"
                 // ---- 웅대적운 탑(모루·갓구름 포함) ----
                 if (_Extra.z > 0.01 || _Special.x > 0.01) {
                     float h = TowerTop();
-                    float anvilLeft = _Special.x > 0.001 ? AnvilReach() + 1.5 : 0.0;
-                    float3 bmin = TOWER + float3(-TOWER_REACH.x - anvilLeft, -0.2, -TOWER_REACH.y);
-                    float3 bmax = TOWER + float3(TOWER_REACH.x, h + 3.4, TOWER_REACH.y);
+                    float anvilLeft = _Special.x > 0.001 ? AnvilReach() * ANVIL_TAIL + 2.5 : 0.0;
+                    // 모루는 끝으로 갈수록 앞뒤로도 넓게 퍼진다(반폭 최대 약 8 km). 걷는 상자가 모루를 자르지 않게 넓힌다.
+                    float anvilSide = _Special.x > 0.001 ? ANVIL_SIDE_REACH : 0.0;
+                    float3 bmin = TOWER + float3(-TOWER_REACH.x - anvilLeft, -0.2, -max(TOWER_REACH.y, anvilSide));
+                    float3 bmax = TOWER + float3(TOWER_REACH.x, h + 3.4, max(TOWER_REACH.y, anvilSide));
                     float3 inv = 1.0 / rd;
                     float3 ta = (bmin - ro) * inv;
                     float3 tb = (bmax - ro) * inv;
