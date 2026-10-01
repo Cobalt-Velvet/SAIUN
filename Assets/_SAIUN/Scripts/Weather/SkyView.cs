@@ -71,6 +71,10 @@ namespace _SAIUN.Scripts.Weather
         // 밤이 이만큼 깊으면 하늘을 비추는 빛이 해에서 달로 넘어간다(셰이더의 MoonLights와 같다).
         private const float MoonLightNight = 0.5f;
 
+        // 한 장을 그리는 동안 이보다 해가 움직이거나(도) 밤이 바뀌면 남은 칸을 한 번에 그린다.
+        private const float SheetLightTolerance = 0.4f;
+        private const float SheetNightTolerance = 0.02f;
+
         // 셰이더에 "전부 그려라"를 알리는 칸 번호
         private const float AllPhases = -1f;
 
@@ -240,6 +244,8 @@ namespace _SAIUN.Scripts.Weather
         private float _highWindAngle;
         private Vector2 _holeDrift;
         private float _sinceRefresh;
+        private Vector3 _sheetSun = Vector3.up;
+        private float _sheetNight;
         private readonly float[] _coverage = new float[CloudForecast.KindCount];
 
         // 구름층 높이를 고를 때 쓰는 대리자(매 프레임 새로 만들지 않게 담아 둔다)
@@ -406,11 +412,20 @@ namespace _SAIUN.Scripts.Weather
 
         // 격자의 한 칸(화소 1/8)만 새로 그리고 다음 칸으로 넘어간다. 한 바퀴를 다 그리면 그 장을 지금 장으로 올리고
         // 지금 장이던 것을 지난 장으로 내려 처음부터 다시 섞는다.
+        // 한 장을 그리는 동안 빛이 크게 바뀌면(세션 시작·끝의 빨리 감기) 칸마다 다른 시각의 하늘이 되어 세로 빗살이 진다.
+        // 그때는 남은 칸을 한 번에 그려 장을 바로 마친다.
         private void RenderPhase()
         {
-            _material.SetFloat(PhaseId, Phase);
+            if (Phase == 0)
+            {
+                _sheetSun = SunDirection;
+                _sheetNight = Night();
+            }
+            bool lightMoved = Vector3.Angle(SunDirection, _sheetSun) > SheetLightTolerance
+                              || Mathf.Abs(Night() - _sheetNight) > SheetNightTolerance;
+            _material.SetFloat(PhaseId, lightMoved ? AllPhases : Phase);
             Graphics.Blit(null, _work, _material, SkyPass);
-            Phase = (Phase + 1) % Interleave;
+            Phase = lightMoved ? 0 : (Phase + 1) % Interleave;
             if (Phase != 0) return;
 
             RenderTexture oldest = _previous;

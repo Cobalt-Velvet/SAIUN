@@ -45,9 +45,10 @@ namespace _SAIUN.Editor
         private const float UIntRange = 4294967295f;
 
         // 시계 글자 그림자: 푸른 기가 도는 짙은 그늘, 아래로 조금, 넓고 부드럽게.
-        private static readonly Color TextShadowColor = new Color(0.03f, 0.07f, 0.16f, 0.5f);
+        // 2026-10-02 검토: 밝은 구름·흐린 하늘 위에서 작은 글자(상태·지금 시각)가 묻혀 조금 짙고 넓게 했다.
+        private static readonly Color TextShadowColor = new Color(0.03f, 0.07f, 0.16f, 0.62f);
         private const float TextShadowOffsetY = -0.35f;
-        private const float TextShadowDilate = 0.3f;
+        private const float TextShadowDilate = 0.4f;
         private const float TextShadowSoftness = 0.75f;
         private const string UnderlayKeyword = "UNDERLAY_ON";
 

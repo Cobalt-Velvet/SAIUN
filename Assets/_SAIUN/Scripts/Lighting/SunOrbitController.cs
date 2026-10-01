@@ -246,6 +246,9 @@ namespace _SAIUN.Scripts.Lighting
                 Apply(timer.Progress);
                 return;
             }
+            // 휴식은 하루가 다 간 저녁에서 시작한다. 집중의 마지막 프레임을 못 보고 휴식으로 넘어오면(컴퓨터가 잠들었다 깸 등)
+            // 해가 한낮에 멈춘 채 노을 없이 저무므로, 저녁 자리로 옮겨 둔다.
+            if ((phase == PomodoroState.ShortBreak || phase == PomodoroState.LongBreak) && Progress < 1f) Apply(1f);
             StepTwilight(TwilightGoal(phase, timer.Progress), deltaTime);
         }
 

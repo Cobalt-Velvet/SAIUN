@@ -325,6 +325,16 @@ MonoBehaviour:
   midWindLag: 180
   highWindLag: 480
   seaChopSpeed: {x: 0.6, y: 2.4}
+  cloudHeights:
+    cirrus: {x: 8, y: 11}
+    cirrocumulus: {x: 6.5, y: 9}
+    cirrostratus: {x: 7.5, y: 10}
+    altocumulus: {x: 3, y: 5.5}
+    altostratus: {x: 3.8, y: 6}
+    stratocumulus: {x: 1.2, y: 2.2}
+    cumulusBase: {x: 0.9, y: 1.6}
+    cumulusBaseSpread: 0.2
+    cumulusBaseLag: 90
   growthResponse: 4
   capGrowth: 0.8
   capFadeRange: 0.1
@@ -25813,7 +25823,7 @@ Light:
   serializedVersion: 12
   m_Type: 1
   m_Color: {r: 1, g: 0.84, b: 0.7, a: 1}
-  m_Intensity: 0.8
+  m_Intensity: 1
   m_Range: 10
   m_SpotAngle: 30
   m_InnerSpotAngle: 21.80208
@@ -30599,8 +30609,8 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1812618469}
-  - {fileID: 1227369194}
   - {fileID: 341622328}
+  - {fileID: 1227369194}
   - {fileID: 1648420493}
   - {fileID: 259773523}
   - {fileID: 173403004}

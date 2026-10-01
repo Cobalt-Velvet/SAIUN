@@ -902,7 +902,16 @@ Shader "Hidden/SAIUN/Sky"
             }
 
             // 유방운 주머니(0 주머니 사이 골 ~ 1 주머니 밑자락). 크고 작은 주머니가 섞여 늘어진다.
+            // 유방운이 매달린 자리(0~1): 적란운 모루 밑에 넓은 조각으로 매달리고, 지평선 쪽으로는 엷어진다(하늘 전체를 덮지 않는다).
+            float MammatusPatch(float2 xz) {
+                float2 w = xz - LowDrift() * 1.2;
+                float patch0 = smoothstep(0.38, 0.62, N(float3(w * 0.012, 0.52)).r * 0.75 + N(float3(w * 0.04, 0.18)).r * 0.25);
+                return patch0 * (1.0 - smoothstep(18.0, 45.0, length(xz)));
+            }
+
             float MammatusPouch(float2 xz) {
+                float area = MammatusPatch(xz);
+                if (area <= 0.0) return 0.0;
                 float2 c = MammatusCoord(xz);
                 // 셀 가운데에서 잰 거리(셀 단위)로 반구를 짓는다. 반지름이 셀 간격의 절반쯤이라 주머니 사이에 깊은 골이 진다.
                 float bigD = (1.0 - N(float3(c, 0.9)).b) / MAMMATUS_RADIUS;
@@ -911,7 +920,7 @@ Shader "Hidden/SAIUN/Sky"
                 float small = sqrt(max(1.0 - smallD * smallD, 0.0)) * 0.7;
                 // 겉은 매끈한 풍선이 아니라 김이 엉긴 면이라 잔 혹이 조금 진다.
                 float lumps = N(float3(xz * 0.8 - LowDrift() * 0.96, 0.43)).r - 0.5;
-                return clamp(max(big, small) + lumps * 0.12, 0.0, 1.0);
+                return clamp(max(big, small) + lumps * 0.12, 0.0, 1.0) * area;
             }
 
             // 광선이 밑면에서 늘어진 유방운 주머니 면과 처음 만나는 거리(2026-10-02, 사용자 "유방운을 손봐야"):
@@ -953,7 +962,8 @@ Shader "Hidden/SAIUN/Sky"
                 thick = smoothstep(0.42, 0.82, n);
                 // 유방운: 밑면에서 주머니처럼 둥글게 늘어진 송이. 폭풍이 지나간 뒤 낮은 해를 받아 도드라진다.
                 pouch = Dome(N(float3(MammatusCoord(xz), 0.9)).b) * _Special.y;
-                return max(smoothstep(0.56 - cov * 0.4, 0.72 - cov * 0.34, n), _Special.y * 0.95);
+                // 유방운이 매달린 조각은 그리는 쪽(MammatusPatch)에서 덮는다.
+                return smoothstep(0.56 - cov * 0.4, 0.72 - cov * 0.34, n);
             }
 
             // ---- 방향으로 그리는 구름(멀리 옆으로 누운 것들) ----
@@ -1432,8 +1442,9 @@ Shader "Hidden/SAIUN/Sky"
                                                                 + sc * SunLit(NIMBOSTRATUS_ALTITUDE - MAMMATUS_DEPTH * 0.5) * sunSide * lerp(0.4, 1.0, crease) * 1.6;
                                 // 폭풍 속에서는 모루 밑이 어둡다.
                                 pouchCol *= lerp(1.0, 0.55, _Storm);
-                                deck = lerp(deck, pouchCol, _Special.y);
-                                cover = max(cover, _Special.y);
+                                float mam = _Special.y * smoothstep(0.0, 0.35, MammatusPatch(xz));
+                                deck = lerp(deck, pouchCol, mam);
+                                cover = max(cover, mam);
                             }
                             AddCloud(t, deck, cover * max(_Low.w, _Special.y) * smoothstep(0.003, 0.03, rd.y));
                         }

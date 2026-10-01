@@ -531,7 +531,8 @@ namespace _SAIUN.Scripts.Core
             if (_hwnd == IntPtr.Zero) return;
             var workArea = new RECT();
             if (!SystemParametersInfo(SPI_GETWORKAREA, 0, ref workArea, 0)) return;
-            MoveTo(workArea.right - Layout.Physical.width, workArea.top);
+            // 사이드바로 붙어 있어도 기억해 둘 자리는 떠 있는 카드의 자리다(사이드바 폭으로 셈하면 카드가 화면 밖으로 삐져나간다).
+            MoveTo(workArea.right - WindowLayout.Card(DpiScale()).Physical.width, workArea.top);
 #endif
         }
 
