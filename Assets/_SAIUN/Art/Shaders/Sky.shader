@@ -810,17 +810,35 @@ Shader "Hidden/SAIUN/Sky"
             // 그래야 이 앱의 주인공인 탑이 층구름에 다 가려지지 않는다. x는 층 위 자리의 가로(km).
             float TowerSideThin(float x) { return 1.0 - 0.55 * smoothstep(-2.0, 9.0, x); }
 
-            // 고적운(양떼구름): 가운데가 잿빛이고 가장자리가 흰 송이가 줄지어 모인다.
-            float AltocumulusDensity(float2 xz) {
+            // 고적운(양떼구름, 2026-10-01 사용자 "기본 구름의 모양이 너무 밋밋하다"): 둥근 구름 덩이(약 0.4~0.8 km)가 파란 틈을
+            // 두고 물결 줄로 늘어선다. 덩이 크기는 자리마다 다르고 결이 곳곳에서 휜다. 덩이 가운데가 두꺼워 둥근 덩이로 읽히고,
+            // 해 쪽 가장자리는 밝고 반대쪽은 잿빛이다(그늘은 겹치는 쪽이 해 쪽 가까운 자리의 두께로 셈한다).
+            // blur는 한 화소가 덮는 길이(km): 덩이가 화소보다 잘아지는 지평선 쪽은 평균 덮임으로 옅은 너울이 된다.
+            float AltocumulusDensity(float2 xz, float blur) {
                 float cov = _Mid.x;
                 if (cov <= 0.001) return 0.0;
                 float2 w = Rotate(xz - MidDrift(), 0.5);
-                float puff = Dome(N(float3(w * 0.15, 0.19)).b);
-                float row = 0.5 + 0.5 * sin(w.y * 2.4 + N(float3(w * 0.04, 0.83)).r * 5.0);
+                float2 warp = float2(N(float3(w * 0.04, 0.29)).r, N(float3(w * 0.04, 0.63)).r) - 0.5;
+                float2 v = w + warp * 1.4;
+                float fine = smoothstep(0.03, 0.09, blur);
+                float coarse = smoothstep(0.08, 0.2, blur);
+                // 덩이: 크고 작은 둥근 덩이가 섞이고, 잔 혹이 가장자리를 깎아 송이 결이 난다.
+                float small = N(float3(v.x * 0.16, v.y * 0.12, 0.19)).a;
+                float large = N(float3(v.x * 0.24, v.y * 0.18, 0.53)).b;
+                float cell = lerp(small, large, smoothstep(0.42, 0.62, N(float3(w * 0.05, 0.71)).r));
+                float lump = lerp(N(float3(v * 0.55, 0.13)).a, 0.5, fine);
+                float grain = cell - (1.0 - lump) * 0.3;
+                float row = 0.5 + 0.5 * sin(v.y * 3.0 + N(float3(w * 0.03, 0.83)).r * 6.0);
+                row = lerp(row, 0.5, coarse);
+                // 무리: 덩이가 엉겨 큰 무더기를 짓는 곳과 성긴 곳이 있다.
+                float clump = N(float3(w * 0.06, 0.37)).r;
+                float lo = lerp(0.44, 0.24, cov) - row * 0.1 - (clump - 0.5) * 0.45;
+                float puffs = Remap(grain, lo, lo + 0.36);
+                float sheet = lerp(0.3, 0.6, cov) * lerp(0.6, 1.4, clump);
+                float d = lerp(puffs, sheet, coarse);
                 float where = N(float3((xz - MidDrift()) * 0.02, 0.57)).r;
-                float mask = Remap(where * TowerSideThin(xz.x), 0.66 - 0.45 * cov, 0.86 - 0.3 * cov);
-                float fine = N(float3(w * 0.8, 0.07)).r;
-                return mask * Remap(puff * lerp(0.6, 1.0, row) + (fine - 0.5) * 0.15, 0.38, 0.8);
+                float mask = Remap(where * TowerSideThin(xz.x), 0.58 - 0.45 * cov, 0.8 - 0.3 * cov);
+                return mask * d;
             }
 
             // 고층운(차일구름): 잿빛으로 하늘을 넓게 덮는 두꺼운 너울. 해가 간유리 너머처럼 흐려진다.
@@ -1231,15 +1249,19 @@ Shader "Hidden/SAIUN/Sky"
                     // 고적운(구멍구름·꼬리구름 포함)
                     t = LayerHit(ro, rd, ALTOCUMULUS_ALTITUDE, 0.6);
                     xz = (ro + rd * t).xz;
-                    d = AltocumulusDensity(xz);
+                    float acBlur = PlaneFootprint(ALTOCUMULUS_ALTITUDE, rd.y);
+                    d = AltocumulusDensity(xz, acBlur);
                     ice = 0.0;
                     float keep = FallstreakHole(xz, ALTOCUMULUS_ALTITUDE, 2.0, ice);
                     d *= keep;
                     if (d > 0.001 || ice > 0.001) {
-                        float toward = AltocumulusDensity(xz + sunXZ * 0.3);
-                        float3 c = LayerLight(d, toward, forward, sc * SunLit(ALTOCUMULUS_ALTITUDE), ambMid, 1.0, 0.8);
+                        // 덩이 반지름의 절반쯤 해 쪽 자리가 두꺼우면 해를 등진 쪽이다.
+                        float toward = AltocumulusDensity(xz + sunXZ * 0.12, acBlur);
+                        float3 c = LayerLight(d, toward, forward, sc * SunLit(ALTOCUMULUS_ALTITUDE), ambMid, 1.0, 0.8)
+                                        * lerp(1.0, 0.78, clamp(toward, 0.0, 1.0));
                         float3 iceCol = sc * SunLit(ALTOCUMULUS_ALTITUDE) * (0.9 + 0.4 * forward) + ambMid * 1.15;
-                        float a = max(smoothstep(0.0, 0.35, d) * 0.92, ice * 0.5);
+                        // 덩이 가장자리는 얇아 하늘이 비친다(속은 짙고 가장자리는 부드럽게 풀린다).
+                        float a = max(smoothstep(0.0, 0.6, d) * 0.92, ice * 0.5);
                         AddCloud(t, lerp(c, iceCol, clamp(ice * 1.5, 0.0, 1.0) * (1.0 - smoothstep(0.0, 0.3, d))), a);
                     }
                     // 꼬리구름: 고적운 송이 밑에서 비가 떨어지다 마르며 늘어진 흰 꼬리. 바람에 비스듬히 휜다.
@@ -1254,7 +1276,7 @@ Shader "Hidden/SAIUN/Sky"
                             [loop] for (int i = 0; i < VSTEPS; i++) {
                                 float3 p = ro + rd * vt;
                                 float fall = (ALTOCUMULUS_ALTITUDE - p.y) / 2.4;
-                                float src = AltocumulusDensity(p.xz + float2(1.2, 0.3) * fall * fall * 2.4);
+                                float src = AltocumulusDensity(p.xz + float2(1.2, 0.3) * fall * fall * 2.4, 0.03);
                                 float streak = Remap(N(float3(p.x * 1.1, 0.13, p.z * 1.1)).r, 0.3, 0.7);
                                 float dv = src * pow(max(1.0 - fall, 0.0), 0.8) * streak * _Mid.w * 1.6;
                                 va += dv * vdt * 0.9 * (1.0 - va);
