@@ -259,7 +259,7 @@ namespace _SAIUN.Editor
             (TMP_InputField whitelistInput, Button whitelistAdd) = InputWithButton(content, "WhitelistAdd", "항상 허용할 프로세스");
             SliderField grace = SliderRow(content, "Grace");
 
-            // 사양서 12-2-3. 실제 날씨 연동은 API 키가 정해지면 붙인다.
+            // 사양서 12-2-3. 실제 날씨 연동(날씨 API)은 2026-10-01 사용자 결정으로 하지 않는다. 하늘은 앱이 스스로 짓는다.
             Section(content, "날씨");
             Toggle weatherRandom = ToggleRow(content, "WeatherRandom", "랜덤 날씨 (세트마다)");
             Toggle weatherFocus = ToggleRow(content, "WeatherFocus", "집중 상태 연동 (방해 앱이면 먹구름)");
