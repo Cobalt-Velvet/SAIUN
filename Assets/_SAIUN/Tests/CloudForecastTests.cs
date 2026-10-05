@@ -125,7 +125,7 @@ namespace _SAIUN.Tests
             forecast.Tick(0.1f, inputs);
             Assert.Greater(forecast.Target(CloudKind.Nimbostratus), 0.85f, "비가 한창이면 비구름이 덮는다");
             Assert.Less(forecast.TowerPresence, 0.3f, "탑이 가려진다");
-            foreach (CloudKind fair in new[] { CloudKind.Cumulus, CloudKind.Cirrus, CloudKind.Cirrocumulus, CloudKind.Stratocumulus, CloudKind.Stratus, CloudKind.Lenticular })
+            foreach (CloudKind fair in new[] { CloudKind.Cumulus, CloudKind.Cirrus, CloudKind.Cirrocumulus, CloudKind.Stratocumulus, CloudKind.Stratus, CloudKind.IridescentVeil })
             {
                 Assert.AreEqual(0f, forecast.Target(fair), 0.0001f, fair + "는 전선 비에 가려진다");
             }
@@ -152,7 +152,7 @@ namespace _SAIUN.Tests
             Assert.AreEqual(0f, forecast.Target(CloudKind.Arcus), 0.0001f, "아치구름은 잠깐이다");
             Assert.AreEqual(Get(forecast, "stormDeck"), forecast.Target(CloudKind.Nimbostratus), 0.001f, "먹구름 층은 틈을 남긴다");
             Assert.AreEqual(1f, forecast.TowerPresence, 0.0001f, "적란운은 뚜렷하다");
-            Assert.AreEqual(0f, forecast.Target(CloudKind.Lenticular), 0.0001f, "폭풍이면 렌즈구름은 숨는다");
+            Assert.AreEqual(0f, forecast.Target(CloudKind.IridescentVeil), 0.0001f, "폭풍이면 채운 너울은 숨는다");
         }
 
         [Test]
@@ -202,7 +202,7 @@ namespace _SAIUN.Tests
             inputs.Twilight = 1f;
             forecast.Tick(0.1f, inputs);
             Assert.AreEqual(0f, forecast.Target(CloudKind.Cumulus), 0.0001f, "해가 지면 뭉게구름이 스러진다");
-            Assert.AreEqual(0f, forecast.Target(CloudKind.Lenticular), 0.0001f, "빛을 잃은 렌즈구름도 스러진다");
+            Assert.AreEqual(0f, forecast.Target(CloudKind.IridescentVeil), 0.0001f, "빛을 잃은 채운 너울도 스러진다");
         }
 
         [Test]
@@ -329,14 +329,14 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 채운_렌즈구름은_주기마다_피었다_사라지고_층구름이_덮으면_숨는다()
+        public void 채운_너울은_주기마다_피었다_사라지고_층구름이_덮으면_숨는다()
         {
-            // 난수 0이면 맑음 장면(렌즈구름을 가리는 층이 없다)
+            // 난수 0이면 맑음 장면(너울을 가리는 층이 없다)
             CloudForecast forecast = Make(() => 0f);
-            Set(forecast, "lensCycleMinutes", 1f);
+            Set(forecast, "veilCycleMinutes", 1f);
             forecast.Tick(0.01f, Day(0.3f));
             Assert.AreEqual(SkyScene.Clear, forecast.Scene);
-            Assert.Greater(forecast.Target(CloudKind.Lenticular), 0.99f, "켜자마자 떠 있다");
+            Assert.Greater(forecast.Target(CloudKind.IridescentVeil), 0.99f, "켜자마자 떠 있다");
 
             int shown = 0;
             float lowest = float.MaxValue;
@@ -344,39 +344,39 @@ namespace _SAIUN.Tests
             for (int i = 0; i < Samples; i++)
             {
                 forecast.Tick(0.5f, Day(0.3f));
-                lowest = Math.Min(lowest, forecast.Target(CloudKind.Lenticular));
-                if (forecast.Target(CloudKind.Lenticular) > 0.5f) shown++;
+                lowest = Math.Min(lowest, forecast.Target(CloudKind.IridescentVeil));
+                if (forecast.Target(CloudKind.IridescentVeil) > 0.5f) shown++;
             }
             Assert.AreEqual(0f, lowest, 0.0001f, "주기마다 한 번은 사라진다");
             // 피어나고 사라지는 시간의 절반씩을 빼면 온전히 떠 있는 비율이다.
-            float expected = Get(forecast, "lensPresence") - Get(forecast, "lensFade");
+            float expected = Get(forecast, "veilPresence") - Get(forecast, "veilFade");
             Assert.AreEqual(expected, shown / (float)Samples, 0.05f);
 
-            Set(forecast, "_lensTime", 0.25f * 60f);
+            Set(forecast, "_veilTime", 0.25f * 60f);
             var rainy = Day(0.3f);
             rainy.Rain = 0.6f;
             forecast.Tick(0.01f, rainy);
-            Assert.AreEqual(0f, forecast.Target(CloudKind.Lenticular), 0.0001f, "비구름이 덮으면 숨는다");
+            Assert.AreEqual(0f, forecast.Target(CloudKind.IridescentVeil), 0.0001f, "비구름이 덮으면 숨는다");
         }
 
         [Test]
-        public void 채운_렌즈구름은_주기마다_새_자리에_뜨고_떠_있는_동안에는_옮기지_않는다()
+        public void 채운_너울은_주기마다_새_자리에_뜨고_떠_있는_동안에는_옮기지_않는다()
         {
             var rng = new Random(11);
             CloudForecast forecast = Make(() => (float)rng.NextDouble());
-            Set(forecast, "lensCycleMinutes", 1f);
+            Set(forecast, "veilCycleMinutes", 1f);
             forecast.Tick(0.01f, Day(0.3f));
 
             var places = new List<UnityEngine.Vector4>();
-            UnityEngine.Vector4 current = forecast.LensPlace;
+            UnityEngine.Vector4 current = forecast.VeilPlace;
             places.Add(current);
             for (int i = 0; i < 240; i++)
             {
-                float before = forecast.Target(CloudKind.Lenticular);
+                float before = forecast.Target(CloudKind.IridescentVeil);
                 forecast.Tick(1f, Day(0.3f));
-                if (forecast.LensPlace == current) continue;
+                if (forecast.VeilPlace == current) continue;
                 Assert.Less(before, 0.0001f, "자리는 사라져 있을 때만 바뀐다");
-                current = forecast.LensPlace;
+                current = forecast.VeilPlace;
                 places.Add(current);
             }
 

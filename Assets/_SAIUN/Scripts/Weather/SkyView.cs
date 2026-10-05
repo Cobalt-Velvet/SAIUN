@@ -12,7 +12,8 @@ namespace _SAIUN.Scripts.Weather
     ///  - 세션 진행률(해)이 하루다: 아침 금빛 → 한낮 파랑 → 늦은 오후 금빛 → 해 질 녘 노을.
     ///  - 웅대적운: 드물게, 특별하게. 맑은 날 한낮~오후에 가끔 솟아 몇 분에 걸쳐 자라고, 머물다 스러진다(예보가 정한다).
     ///    솟을 때마다 모양이 다르다. 먹구름이 오면 적란운으로 끝까지 솟고 어두워진다.
-    ///  - 채운: 탑과 따로, 왼쪽 빈 하늘의 렌즈구름 무리 가장자리에 빛깔 띠가 선다. 몇 분마다 피었다 사라지며, 필 때마다 자리가 달라진다.
+    ///  - 채운: 탑과 따로, 왼쪽 빈 하늘에 무지개 빛이 번지는 얇은 비단 구름(채운 너울)이 뜬다. 몇 분마다 피었다 사라지며,
+    ///    필 때마다 자리가 달라진다.
     ///    탑이 다 자라면 꼭대기의 갓구름에도 채운이 선다(가끔 보는 장면). SAIUN을 만든 이유가 웅대적운과 채운이다.
     ///  - 나머지 구름(권운·권적운·권층운·고적운·고층운·층적운·층운·난층운·적운 떼, 모루·유방운·아치구름·꼬리구름,
     ///    구멍구름·물결구름·야광운)은 예보(CloudForecast)가 때·날씨·바람과 무작위로 정한 양을 향해 천천히 옮겨 간다.
@@ -21,7 +22,7 @@ namespace _SAIUN.Scripts.Weather
     ///  - 쉬는 동안 해가 지면(해의 Twilight) 노을·박명 하늘이 되고, 높은 구름만 붉게 남는다.
     ///  - 구름은 층마다 다른 바람을 탄다. 낮은 구름은 땅 바람
     ///    (풍향계·빗줄기·바람결과 같은 바람)을 타고, 높이 오를수록 바람이 빨라지고 시계 방향으로 비껴 돌며 방향도 한결같다.
-    ///    렌즈구름(채운)과 웅대적운 탑은 제자리에 선다(렌즈구름은 산 너머 선 물결이라 바람이 불어도 머문다).
+    ///    채운 너울과 웅대적운 탑은 바람에 흘러가지 않고 제자리에 선다(눈이 머물 자리가 되게).
     ///  - 지평선 아래는 바다다. 물이 하늘·구름·노을을
     ///    비추고, 해가 앞바다로 지는 저녁엔 윤슬 길이 선다. 물결은 땅 바람을 따라 흐르고 파도가 모래밭에 밀려왔다 빠진다.
     ///    바다는 보이는 장을 만들 때 매 프레임 그리므로 윤슬이 반짝인다(하늘은 여전히 1/8씩 그린다).
@@ -53,7 +54,7 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int LowId = Shader.PropertyToID("_Low");
         private static readonly int SpecialId = Shader.PropertyToID("_Special");
         private static readonly int ExtraId = Shader.PropertyToID("_Extra");
-        private static readonly int LensPlaceId = Shader.PropertyToID("_LensPlace");
+        private static readonly int VeilPlaceId = Shader.PropertyToID("_VeilPlace");
         private static readonly int SkyTimeId = Shader.PropertyToID("_SkyTime");
         private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static readonly int PhaseId = Shader.PropertyToID("_Phase");
@@ -232,6 +233,8 @@ namespace _SAIUN.Scripts.Weather
 
         private RawImage _image;
         private Material _material;
+        // 그리는 중인 장의 하늘 매개변수. 장을 시작할 때 _material에서 한 번 복사해 그 장의 여덟 칸을 모두 같은 순간으로 그린다.
+        private Material _sheetMaterial;
         private RenderTexture _work;      // 1/8씩 그리는 중인 장
         private RenderTexture _current;   // 마지막으로 다 그린 장
         private RenderTexture _previous;  // 그 앞에 다 그린 장
@@ -268,6 +271,7 @@ namespace _SAIUN.Scripts.Weather
 
             // 에셋을 건드리지 않도록 실행 중에는 복사본을 쓴다.
             _material = new Material(skyMaterial) { name = "Sky (runtime)" };
+            _sheetMaterial = new Material(skyMaterial) { name = "Sky (sheet)" };
             if (noise != null) _material.SetTexture(NoiseId, noise);
             _material.SetFloat(SeedId, ShapeSeeds[Random.Range(0, ShapeSeeds.Length)]);
 
@@ -298,6 +302,7 @@ namespace _SAIUN.Scripts.Weather
         {
             ReleaseTargets();
             if (_material != null) Destroy(_material);
+            if (_sheetMaterial != null) Destroy(_sheetMaterial);
             if (gameManager != null) gameManager.OnWindowGlassChanged -= ApplyGlass;
         }
 
@@ -399,8 +404,9 @@ namespace _SAIUN.Scripts.Weather
         internal void RenderAll()
         {
             if (_material == null) return;
-            _material.SetFloat(PhaseId, AllPhases);
-            Graphics.Blit(null, _work, _material, SkyPass);
+            BeginSheet();
+            _sheetMaterial.SetFloat(PhaseId, AllPhases);
+            Graphics.Blit(null, _work, _sheetMaterial, SkyPass);
             Graphics.Blit(_work, _current);
             Graphics.Blit(_work, _previous);
             Phase = 0;
@@ -410,19 +416,18 @@ namespace _SAIUN.Scripts.Weather
 
         // 격자의 한 칸(화소 1/8)만 새로 그리고 다음 칸으로 넘어간다. 한 바퀴를 다 그리면 그 장을 지금 장으로 올리고
         // 지금 장이던 것을 지난 장으로 내려 처음부터 다시 섞는다.
-        // 한 장을 그리는 동안 빛이 크게 바뀌면(세션 시작·끝의 빨리 감기) 칸마다 다른 시각의 하늘이 되어 세로 빗살이 진다.
-        // 그때는 남은 칸을 한 번에 그려 장을 바로 마친다.
+        // 한 장의 여덟 칸은 장을 시작할 때 고정한 매개변수로 그린다. 그동안에도 구름은 바람에 흐르므로, 칸마다 그 순간의
+        // 매개변수로 그리면 구름 가장자리가 칸마다 한두 화소씩 어긋나 4화소 간격 빗살이 되고, 빛내림이 그 빗살을 해 쪽으로
+        // 늘인다. 움직임은 다 그린 장끼리 섞어 넘기며 보인다.
+        // 한 장을 그리는 동안 빛이 크게 바뀌면(세션 시작·끝의 빨리 감기) 고정한 하늘이 금세 낡으므로 지금 값으로 한 번에 그린다.
         private void RenderPhase()
         {
-            if (Phase == 0)
-            {
-                _sheetSun = SunDirection;
-                _sheetNight = Night();
-            }
+            if (Phase == 0) BeginSheet();
             bool lightMoved = Vector3.Angle(SunDirection, _sheetSun) > SheetLightTolerance
                               || Mathf.Abs(Night() - _sheetNight) > SheetNightTolerance;
-            _material.SetFloat(PhaseId, lightMoved ? AllPhases : Phase);
-            Graphics.Blit(null, _work, _material, SkyPass);
+            if (lightMoved) BeginSheet();
+            _sheetMaterial.SetFloat(PhaseId, lightMoved ? AllPhases : Phase);
+            Graphics.Blit(null, _work, _sheetMaterial, SkyPass);
             Phase = lightMoved ? 0 : (Phase + 1) % Interleave;
             if (Phase != 0) return;
 
@@ -431,6 +436,14 @@ namespace _SAIUN.Scripts.Weather
             _current = _work;
             _work = oldest;
             Blend = 0f;
+        }
+
+        // 새 장을 시작한다: 지금 매개변수를 고정하고 그때의 해·밤을 기억한다.
+        private void BeginSheet()
+        {
+            _sheetMaterial.CopyPropertiesFromMaterial(_material);
+            _sheetSun = SunDirection;
+            _sheetNight = Night();
         }
 
         // 지난 장과 지금 장을 섞어 보이는 장에 쓴다.
@@ -466,11 +479,11 @@ namespace _SAIUN.Scripts.Weather
             _material.SetFloat(CapId, CapVisibility);
             _material.SetFloat(SkyTimeId, _skyTime);
             _material.SetVector(HighId, Pack(CloudKind.Cirrus, CloudKind.Cirrocumulus, CloudKind.Cirrostratus, CloudKind.Noctilucent));
-            _material.SetVector(MidId, Pack(CloudKind.Altocumulus, CloudKind.Altostratus, CloudKind.Lenticular, CloudKind.Virga));
+            _material.SetVector(MidId, Pack(CloudKind.Altocumulus, CloudKind.Altostratus, CloudKind.IridescentVeil, CloudKind.Virga));
             _material.SetVector(LowId, Pack(CloudKind.Stratocumulus, CloudKind.Stratus, CloudKind.Cumulus, CloudKind.Nimbostratus));
             _material.SetVector(SpecialId, Pack(CloudKind.Anvil, CloudKind.Mammatus, CloudKind.Arcus, CloudKind.FallstreakHole));
             _material.SetVector(ExtraId, new Vector4(Coverage(CloudKind.KelvinHelmholtz), Twilight(), TowerPresence, Night()));
-            _material.SetVector(LensPlaceId, forecast.LensPlace);
+            _material.SetVector(VeilPlaceId, forecast.VeilPlace);
         }
 
         private Vector4 Pack(CloudKind x, CloudKind y, CloudKind z, CloudKind w)

@@ -12,7 +12,7 @@ namespace _SAIUN.Scripts.Weather
         Noctilucent,      // 야광운
         Altocumulus,      // 고적운(양떼구름)
         Altostratus,      // 고층운(차일구름)
-        Lenticular,       // 렌즈구름(채운)
+        IridescentVeil,   // 채운 너울(무지개 빛이 번지는 얇은 비단 구름)
         Virga,            // 꼬리구름
         Stratocumulus,    // 층적운(두루마리구름)
         Stratus,          // 층운(안개구름)
@@ -94,7 +94,7 @@ namespace _SAIUN.Scripts.Weather
     ///  - 뇌우(집중 상태 연동 먹구름): 탑이 적란운이 되어 모루가 서고, 몰려오는 순간 아치구름이 잠깐 선다.
     ///    폭풍이 지나가면 가끔 유방운이 남는다.
     ///  - 드문 구름: 조개·양떼구름에 구멍구름, 바람 센 날 켈빈-헬름홀츠 물결구름, 해가 진 뒤 야광운.
-    ///  - 채운 렌즈구름: 몇 분 주기로 피었다 사라지며 절반쯤 떠 있다. 필 때마다 자리·크기·모양이 달라진다.
+    ///  - 채운 너울: 몇 분 주기로 피었다 사라지며 절반쯤 떠 있다. 필 때마다 자리·크기·무늬가 달라진다.
     ///    층구름이 덮거나 폭풍이면 숨는다.
     ///  - 웅대적운: 드물게, 특별하게. 맑은 날 한낮~오후, 대류가 이는 장면(뭉게구름 떼·맑음·새털·양떼구름)에서만
     ///    가끔 굴려 솟는다. 몇 분에 걸쳐 자라 오르고, 다 자라 머무는 동안 채운 갓구름이 얹히고, 스러진다.
@@ -148,11 +148,11 @@ namespace _SAIUN.Scripts.Weather
         private const float CompanionCirrusShare = 0.5f;
         private const float AltocumulusHoleShare = 0.5f;
 
-        // 해가 지며 렌즈구름이 스러지기 시작하는 박명
-        private const float LensDuskStart = 0.4f;
+        // 해가 지며 채운 너울이 스러지기 시작하는 박명
+        private const float VeilDuskStart = 0.4f;
 
-        // 렌즈구름을 가리는 층구름의 무게(층적운은 틈이 있어 조금 덜 가린다)
-        private const float LensStratocumulusBlock = 0.8f;
+        // 채운 너울을 가리는 층구름의 무게(층적운은 틈이 있어 조금 덜 가린다)
+        private const float VeilStratocumulusBlock = 0.8f;
 
         // 탑이 보이는 정도: 두루마리구름·안개 장면에서는 층에 가려 흐리다
         private const float TowerUnderStratocumulus = 0.7f;
@@ -269,27 +269,27 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("탑이 솟는 동안 곁에 피는 뭉게구름 양")]
         [SerializeField, Range(0f, 1f)] private float towerCumulus = 0.3f;
 
-        [Header("채운 렌즈구름")]
-        [Tooltip("렌즈구름이 피었다 사라지는 한 주기(분)")]
-        [SerializeField, Min(0.1f)] private float lensCycleMinutes = 13f;
+        [Header("채운 너울")]
+        [Tooltip("채운 너울이 피었다 사라지는 한 주기(분)")]
+        [SerializeField, Min(0.1f)] private float veilCycleMinutes = 13f;
 
-        [Tooltip("한 주기 가운데 렌즈구름이 떠 있는 비율(피어나고 사라지는 시간 포함)")]
-        [SerializeField, Range(0.1f, 1f)] private float lensPresence = 0.5f;
+        [Tooltip("한 주기 가운데 채운 너울이 떠 있는 비율(피어나고 사라지는 시간 포함)")]
+        [SerializeField, Range(0.1f, 1f)] private float veilPresence = 0.5f;
 
         [Tooltip("피어나고 사라지는 데 걸리는 비율(주기 대비)")]
-        [SerializeField, Range(0.01f, 0.3f)] private float lensFade = 0.1f;
+        [SerializeField, Range(0.01f, 0.3f)] private float veilFade = 0.1f;
 
         [Tooltip("처음 켰을 때 주기의 어디서 시작할지(0~1). 켜자마자 떠 있게 한다.")]
-        [SerializeField, Range(0f, 1f)] private float lensStartPhase = 0.25f;
+        [SerializeField, Range(0f, 1f)] private float veilStartPhase = 0.25f;
 
-        [Tooltip("주기마다 렌즈구름 무리를 옮기는 방위 범위(도, 음수가 왼쪽). 오른쪽의 탑을 가리지 않게 왼쪽으로 치우친다.")]
-        [SerializeField] private Vector2 lensAzimuthShift = new Vector2(-6f, 1.5f);
+        [Tooltip("주기마다 채운 너울을 옮기는 방위 범위(도, 음수가 왼쪽). 오른쪽의 탑을 가리지 않게 왼쪽으로 치우친다.")]
+        [SerializeField] private Vector2 veilAzimuthShift = new Vector2(-6f, 1.5f);
 
         [Tooltip("주기마다 옮기는 고도 범위(도). 위로는 지금 시각 글자 아래까지만 오른다.")]
-        [SerializeField] private Vector2 lensElevationShift = new Vector2(-3f, 0.5f);
+        [SerializeField] private Vector2 veilElevationShift = new Vector2(-3f, 0.5f);
 
-        [Tooltip("주기마다 고르는 무리 크기 배율 범위")]
-        [SerializeField] private Vector2 lensScale = new Vector2(0.75f, 1.05f);
+        [Tooltip("주기마다 고르는 너울 크기 배율 범위")]
+        [SerializeField] private Vector2 veilScale = new Vector2(0.75f, 1.05f);
 
         [Header("옮겨 가는 빠르기")]
         [Tooltip("맑은 날 구름이 새 장면으로 옮겨 가는 데 걸리는 시간(초)")]
@@ -320,10 +320,10 @@ namespace _SAIUN.Scripts.Weather
         public bool NoctilucentTonight { get; private set; }
 
         /// <summary>
-        /// 이번 주기의 렌즈구름 무리 자리(방위 이동°, 고도 이동°, 크기 배율, 무늬 0~1). 셰이더 _LensPlace로 간다.
-        /// 주기가 바뀌는 때(렌즈구름이 다 사라져 있을 때)에만 새로 골라, 떠 있는 동안 자리가 튀지 않는다.
+        /// 이번 주기의 채운 너울 자리(방위 이동°, 고도 이동°, 크기 배율, 무늬 0~1). 셰이더 _VeilPlace로 간다.
+        /// 주기가 바뀌는 때(너울이 다 사라져 있을 때)에만 새로 골라, 떠 있는 동안 자리가 튀지 않는다.
         /// </summary>
-        public Vector4 LensPlace { get; private set; } = new Vector4(0f, 0f, 1f, 0f);
+        public Vector4 VeilPlace { get; private set; } = new Vector4(0f, 0f, 1f, 0f);
 
         private readonly float[] _targets = new float[KindCount];
         private Func<float> _random = () => UnityEngine.Random.value;
@@ -339,8 +339,8 @@ namespace _SAIUN.Scripts.Weather
         private float _previousStorm;
         private float _stormPeak;
         private bool _twilightEpisode;
-        private float _lensTime;
-        private int _lensCycle = -1;
+        private float _veilTime;
+        private int _veilCycle = -1;
         private float _towerAge = -1f;
         private float _towerCooldown;
         private float _towerRollLeft;
@@ -376,7 +376,7 @@ namespace _SAIUN.Scripts.Weather
             if (!_started)
             {
                 _started = true;
-                _lensTime = lensStartPhase * lensCycleMinutes * 60f;
+                _veilTime = veilStartPhase * veilCycleMinutes * 60f;
                 _towerRollLeft = towerRollSeconds;
                 _previousStorm = inputs.Storm;
                 ChooseScene(inputs);
@@ -386,8 +386,8 @@ namespace _SAIUN.Scripts.Weather
             if (SecondsUntilChange <= 0f) ChooseScene(inputs);
 
             _kelvinLeft = Mathf.Max(0f, _kelvinLeft - deltaTime);
-            _lensTime += deltaTime;
-            PlaceLens();
+            _veilTime += deltaTime;
+            PlaceVeil();
             TrackStorm(deltaTime, inputs.Storm);
             TrackTwilight(inputs.Twilight);
             TrackTower(deltaTime, inputs);
@@ -613,10 +613,10 @@ namespace _SAIUN.Scripts.Weather
             // 박명의 야광운
             if (NoctilucentTonight) Set(CloudKind.Noctilucent, 1f);
 
-            // 채운 렌즈구름: 층구름이 덮거나 폭풍이면 숨는다. 해가 다 지면 빛을 잃은 검은 원반이 되므로 스러진다.
-            float blocking = Mathf.Max(Mathf.Max(Target(CloudKind.Stratus), Target(CloudKind.Stratocumulus) * LensStratocumulusBlock),
+            // 채운 너울: 층구름이 덮거나 폭풍이면 숨는다. 해가 다 지면 빛깔을 잃으므로 스러진다.
+            float blocking = Mathf.Max(Mathf.Max(Target(CloudKind.Stratus), Target(CloudKind.Stratocumulus) * VeilStratocumulusBlock),
                 Mathf.Max(Target(CloudKind.Altostratus), Target(CloudKind.Nimbostratus)));
-            Set(CloudKind.Lenticular, LensCycle() * (1f - blocking) * (1f - storm) * (1f - Smooth(LensDuskStart, 1f, inputs.Twilight)));
+            Set(CloudKind.IridescentVeil, VeilCycle() * (1f - blocking) * (1f - storm) * (1f - Smooth(VeilDuskStart, 1f, inputs.Twilight)));
 
             // 탑은 전선 비에 가려 사라지고, 뇌우면 적란운으로 끝까지 솟아 뚜렷하다.
             presence *= tower * (1f - TowerFrontFade * Smooth(FairFadeStart, FairFadeEnd, front));
@@ -624,26 +624,26 @@ namespace _SAIUN.Scripts.Weather
             TowerGrowth = Mathf.Lerp(growth, 1f, storm);
         }
 
-        // 새 주기에 들어서면 렌즈구름 무리의 자리를 새로 고른다. 주기 끝(1 - lensPresence)은 비어 있으므로 옮기는 것이 보이지 않는다.
-        private void PlaceLens()
+        // 새 주기에 들어서면 채운 너울의 자리를 새로 고른다. 주기 끝(1 - veilPresence)은 비어 있으므로 옮기는 것이 보이지 않는다.
+        private void PlaceVeil()
         {
-            int cycle = Mathf.FloorToInt(_lensTime / (lensCycleMinutes * 60f));
-            if (cycle == _lensCycle) return;
-            _lensCycle = cycle;
-            LensPlace = new Vector4(
-                Mathf.Lerp(lensAzimuthShift.x, lensAzimuthShift.y, _random()),
-                Mathf.Lerp(lensElevationShift.x, lensElevationShift.y, _random()),
-                Mathf.Lerp(lensScale.x, lensScale.y, _random()),
+            int cycle = Mathf.FloorToInt(_veilTime / (veilCycleMinutes * 60f));
+            if (cycle == _veilCycle) return;
+            _veilCycle = cycle;
+            VeilPlace = new Vector4(
+                Mathf.Lerp(veilAzimuthShift.x, veilAzimuthShift.y, _random()),
+                Mathf.Lerp(veilElevationShift.x, veilElevationShift.y, _random()),
+                Mathf.Lerp(veilScale.x, veilScale.y, _random()),
                 _random());
         }
 
-        // 렌즈구름은 주기의 앞쪽 lensPresence 동안 떠 있고, 앞뒤 lensFade 동안 피어나고 사라진다.
-        private float LensCycle()
+        // 채운 너울은 주기의 앞쪽 veilPresence 동안 떠 있고, 앞뒤 veilFade 동안 피어나고 사라진다.
+        private float VeilCycle()
         {
-            float phase = Mathf.Repeat(_lensTime / (lensCycleMinutes * 60f), 1f);
-            float fade = Mathf.Min(lensFade, lensPresence / 2f);
+            float phase = Mathf.Repeat(_veilTime / (veilCycleMinutes * 60f), 1f);
+            float fade = Mathf.Min(veilFade, veilPresence / 2f);
             float rise = Smooth(0f, fade, phase);
-            float fall = 1f - Smooth(lensPresence - fade, lensPresence, phase);
+            float fall = 1f - Smooth(veilPresence - fade, veilPresence, phase);
             return Mathf.Min(rise, fall);
         }
 

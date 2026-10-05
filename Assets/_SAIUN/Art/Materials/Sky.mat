@@ -55,7 +55,7 @@ Material:
     - _DriftHigh: {r: 0, g: 0, b: 0, a: 0}
     - _Extra: {r: 0, g: 0, b: 1, a: 0}
     - _High: {r: 0, g: 0, b: 0, a: 0}
-    - _LensPlace: {r: 0, g: 0, b: 1, a: 0}
+    - _VeilPlace: {r: 0, g: 0, b: 1, a: 0}
     - _Low: {r: 0, g: 0, b: 0, a: 0}
     - _Mid: {r: 0, g: 0, b: 0, a: 0}
     - _Moon: {r: 0, g: -1, b: 0, a: 0}

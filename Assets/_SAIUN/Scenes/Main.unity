@@ -419,13 +419,13 @@ MonoBehaviour:
     towerHoldSeconds: 300
     towerFadeSeconds: 150
     towerCumulus: 0.3
-    lensCycleMinutes: 13
-    lensPresence: 0.5
-    lensFade: 0.1
-    lensStartPhase: 0.25
-    lensAzimuthShift: {x: -6, y: 1.5}
-    lensElevationShift: {x: -3, y: 0.5}
-    lensScale: {x: 0.75, y: 1.05}
+    veilCycleMinutes: 13
+    veilPresence: 0.5
+    veilFade: 0.1
+    veilStartPhase: 0.25
+    veilAzimuthShift: {x: -6, y: 1.5}
+    veilElevationShift: {x: -3, y: 0.5}
+    veilScale: {x: 0.75, y: 1.05}
     fairResponse: 45
     stormResponse: 8
 --- !u!114 &10825362

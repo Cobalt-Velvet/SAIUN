@@ -330,6 +330,27 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 한_장을_그리는_동안에는_구름이_흘러도_그_장의_매개변수가_그대로다()
+        {
+            // 여덟 칸을 서로 다른 순간으로 그리면 흐르는 구름 가장자리가 칸마다 어긋나 4화소 빗살이 된다.
+            SetWind(Vector3.right, WeatherController.MaxWindStrength);
+            SkyView sky = MakeSky(null);
+            sky.RenderAll();
+            sky.Tick(0.1f);   // 새 장의 첫 칸
+            Vector4 atStart = SheetMaterial(sky).GetVector("_Drift");
+
+            // 칸 몇 개를 더 그린다(장은 아직 끝나지 않았다).
+            for (int i = 0; i < 3; i++) sky.Tick(0.1f);
+            Assert.That(sky.Phase, Is.InRange(1, SkyView.Interleave - 1), "장을 그리는 중이다");
+            Assert.AreNotEqual(atStart, Material(sky).GetVector("_Drift"), "구름은 그새 흘렀다");
+            Assert.AreEqual(atStart, SheetMaterial(sky).GetVector("_Drift"), "그리는 장은 시작할 때 값을 쓴다");
+
+            // 장을 마치고 새 장을 시작하면 지금 값을 다시 고정한다.
+            for (int i = 0; i < SkyView.Interleave; i++) sky.Tick(0.1f);
+            Assert.AreNotEqual(atStart, SheetMaterial(sky).GetVector("_Drift"), "새 장은 흐른 구름을 그린다");
+        }
+
+        [Test]
         public void 바다는_매_프레임_흐르고_물결은_땅_바람을_따르며_낮은_해는_붉게_비친다()
         {
             SetWind(Vector3.right, WeatherController.MaxWindStrength);
@@ -727,6 +748,11 @@ namespace _SAIUN.Tests
         private static Material Material(SkyView sky)
         {
             return (Material)typeof(SkyView).GetField("_material", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sky);
+        }
+
+        private static Material SheetMaterial(SkyView sky)
+        {
+            return (Material)typeof(SkyView).GetField("_sheetMaterial", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sky);
         }
 
         private SkyLighting MakeSkyLighting(SkyView sky, SunOrbitController orbit)
