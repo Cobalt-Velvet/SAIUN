@@ -5,7 +5,7 @@ using NUnit.Framework;
 namespace _SAIUN.Tests
 {
     /// <summary>
-    /// 구름층 높이(2026-10-01 "다양화"): 같은 종류도 나타날 때마다 다른 높이에 뜨고, 보이는 동안은 높이가 그대로이며,
+    /// 구름층 높이: 같은 종류도 나타날 때마다 다른 높이에 뜨고, 보이는 동안은 높이가 그대로이며,
     /// 적운 밑면은 하루 동안 올라간다.
     /// </summary>
     public class CloudHeightsTests

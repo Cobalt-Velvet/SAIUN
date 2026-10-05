@@ -87,15 +87,6 @@ namespace _SAIUN.Scripts.UI
             if (sessionPanel != null) sessionPanel.OnOpenChanged -= HandlePanelOpenChanged;
         }
 
-        /// <summary>세션 설정 패널을 연결한다. 씬 조립과 테스트에서 쓴다.</summary>
-        public void SetSessionPanel(SessionPanelView panel)
-        {
-            if (sessionPanel != null && isActiveAndEnabled) sessionPanel.OnOpenChanged -= HandlePanelOpenChanged;
-            sessionPanel = panel;
-            if (sessionPanel != null && isActiveAndEnabled) sessionPanel.OnOpenChanged += HandlePanelOpenChanged;
-            if (gameManager != null) Refresh(gameManager.StateMachine.CurrentState);
-        }
-
         // ---- 이벤트 ----
 
         private void HandleStateChanged(PomodoroState from, PomodoroState to)

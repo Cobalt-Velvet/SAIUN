@@ -6,7 +6,7 @@ using UnityEngine;
 namespace _SAIUN.Editor
 {
     /// <summary>
-    /// 하늘(2026-09-28)의 그림 재료를 코드로 만든다. 외부 그림을 쓰지 않는다. 파일이 이미 있으면 건드리지 않는다.
+    /// 하늘의 그림 재료를 코드로 만든다. 외부 그림을 쓰지 않는다. 파일이 이미 있으면 건드리지 않는다.
     ///  - 구름 결 노이즈(3D, 64칸 타일): R 값 노이즈 fbm(큰 덩어리·휘기), G·B·A 뒤집은 워리 4·8·16칸(큰·중간·잔 송이).
     ///    워리는 크기마다 따로 둔다. 섞으면 송이가 뭉개진다.
     ///  - 하늘 재질(Hidden/SAIUN/Sky)
@@ -44,12 +44,17 @@ namespace _SAIUN.Editor
         private const int ShiftB = 16;
         private const float UIntRange = 4294967295f;
 
-        // 시계 글자 그림자: 푸른 기가 도는 짙은 그늘, 아래로 조금, 넓고 부드럽게.
-        // 2026-10-02 검토: 밝은 구름·흐린 하늘 위에서 작은 글자(상태·지금 시각)가 묻혀 조금 짙고 넓게 했다.
+        // 큰 시계 글자 그림자: 푸른 기가 도는 짙은 그늘, 아래로 조금, 넓고 부드럽게.
         private static readonly Color TextShadowColor = new Color(0.03f, 0.07f, 0.16f, 0.62f);
         private const float TextShadowOffsetY = -0.35f;
         private const float TextShadowDilate = 0.4f;
         private const float TextShadowSoftness = 0.75f;
+        // 작은 글자(상태·지금 시각) 그늘: 그림자의 퍼짐은 글자 크기에 비례해 작은 글자에서는 몇 화소뿐이다.
+        // 그래서 아래로 떨어뜨리지 않고 글자를 감싸게 두르고, 더 짙고 두껍게 해 밝은 구름 위에서도 윤곽이 선다.
+        private static readonly Color SmallTextShadowColor = new Color(0.03f, 0.07f, 0.16f, 0.85f);
+        private const float SmallTextShadowOffsetY = -0.12f;
+        private const float SmallTextShadowDilate = 0.75f;
+        private const float SmallTextShadowSoftness = 0.55f;
         private const string UnderlayKeyword = "UNDERLAY_ON";
 
         [MenuItem("SAIUN/Rebuild Sky Noise")]
@@ -120,9 +125,9 @@ namespace _SAIUN.Editor
 
         /// <summary>
         /// 시계 글자 그림자 재질. 글꼴 재질(아틀라스 포함)을 그대로 따라 underlay를 켠다.
-        /// 글꼴이 바뀌면 같은 자리의 재질을 새 글꼴로 다시 맞춘다.
+        /// 글꼴이 바뀌면 같은 자리의 재질을 새 글꼴로 다시 맞춘다. smallText면 작은 글자용 두른 그늘을 쓴다.
         /// </summary>
-        public static Material EnsureTextShadowMaterial(TMP_FontAsset font, string path)
+        public static Material EnsureTextShadowMaterial(TMP_FontAsset font, string path, bool smallText)
         {
             if (font == null || font.material == null) return null;
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -131,10 +136,10 @@ namespace _SAIUN.Editor
             material.shader = font.material.shader;
             material.CopyPropertiesFromMaterial(font.material);
             material.EnableKeyword(UnderlayKeyword);
-            material.SetColor("_UnderlayColor", TextShadowColor);
-            material.SetFloat("_UnderlayOffsetY", TextShadowOffsetY);
-            material.SetFloat("_UnderlayDilate", TextShadowDilate);
-            material.SetFloat("_UnderlaySoftness", TextShadowSoftness);
+            material.SetColor("_UnderlayColor", smallText ? SmallTextShadowColor : TextShadowColor);
+            material.SetFloat("_UnderlayOffsetY", smallText ? SmallTextShadowOffsetY : TextShadowOffsetY);
+            material.SetFloat("_UnderlayDilate", smallText ? SmallTextShadowDilate : TextShadowDilate);
+            material.SetFloat("_UnderlaySoftness", smallText ? SmallTextShadowSoftness : TextShadowSoftness);
             if (created)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(path));

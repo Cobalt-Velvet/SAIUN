@@ -85,7 +85,7 @@ namespace _SAIUN.Scripts.Weather
     }
 
     /// <summary>
-    /// 어떤 구름이 언제, 얼마나 뜰지 정한다 (2026-09-28, 사용자: "나머지 구름도 전부, 출현 랜덤성과 조건도").
+    /// 어떤 구름이 언제, 얼마나 뜰지 정한다.
     /// 실제 날씨의 순서를 따르되, 위젯에서 자주 볼 수 있도록 시간을 줄였다.
     ///  - 맑은 날: 몇 분마다 장면을 새로 고른다. 하루 중 때와 바람에 따라 무게가 다르다
     ///    (아침엔 안개·양떼구름, 한낮엔 뭉게구름 떼, 저녁엔 새털구름, 바람이 세면 새털구름·두루마리구름).
@@ -94,11 +94,12 @@ namespace _SAIUN.Scripts.Weather
     ///  - 뇌우(집중 상태 연동 먹구름): 탑이 적란운이 되어 모루가 서고, 몰려오는 순간 아치구름이 잠깐 선다.
     ///    폭풍이 지나가면 가끔 유방운이 남는다.
     ///  - 드문 구름: 조개·양떼구름에 구멍구름, 바람 센 날 켈빈-헬름홀츠 물결구름, 해가 진 뒤 야광운.
-    ///  - 채운 렌즈구름: 몇 분 주기로 피었다 사라지며 대부분의 시간 떠 있다. 층구름이 덮거나 폭풍이면 숨는다.
-    ///  - 웅대적운: 드물게, 특별하게(사용자 선택). 맑은 날 한낮~오후, 대류가 이는 장면(뭉게구름 떼·맑음·새털·양떼구름)에서만
+    ///  - 채운 렌즈구름: 몇 분 주기로 피었다 사라지며 절반쯤 떠 있다. 필 때마다 자리·크기·모양이 달라진다.
+    ///    층구름이 덮거나 폭풍이면 숨는다.
+    ///  - 웅대적운: 드물게, 특별하게. 맑은 날 한낮~오후, 대류가 이는 장면(뭉게구름 떼·맑음·새털·양떼구름)에서만
     ///    가끔 굴려 솟는다. 몇 분에 걸쳐 자라 오르고, 다 자라 머무는 동안 채운 갓구름이 얹히고, 스러진다.
     ///    한 번 솟으면 한동안 다시 솟지 않아 세션 한 번에 한두 번 볼 수 있다. 뇌우면 적란운으로 끝까지 솟는다.
-    ///    쉬는 동안(시계·휴식)에도 구름멍을 할 수 있게 때와 상관없이 가끔 솟는다(사용자 요청). 다만 해가 깊이 졌으면 솟지 않는다.
+    ///    쉬는 동안(시계·휴식)에도 구름멍을 할 수 있게 때와 상관없이 가끔 솟는다. 다만 해가 깊이 졌으면 솟지 않는다.
     /// 여기서는 목표 양만 정하고, 하늘(SkyView)이 그 목표로 천천히 옮겨 간다.
     /// </summary>
     [Serializable]
@@ -270,16 +271,25 @@ namespace _SAIUN.Scripts.Weather
 
         [Header("채운 렌즈구름")]
         [Tooltip("렌즈구름이 피었다 사라지는 한 주기(분)")]
-        [SerializeField, Min(0.1f)] private float lensCycleMinutes = 11f;
+        [SerializeField, Min(0.1f)] private float lensCycleMinutes = 13f;
 
         [Tooltip("한 주기 가운데 렌즈구름이 떠 있는 비율(피어나고 사라지는 시간 포함)")]
-        [SerializeField, Range(0.1f, 1f)] private float lensPresence = 0.72f;
+        [SerializeField, Range(0.1f, 1f)] private float lensPresence = 0.5f;
 
         [Tooltip("피어나고 사라지는 데 걸리는 비율(주기 대비)")]
         [SerializeField, Range(0.01f, 0.3f)] private float lensFade = 0.1f;
 
         [Tooltip("처음 켰을 때 주기의 어디서 시작할지(0~1). 켜자마자 떠 있게 한다.")]
         [SerializeField, Range(0f, 1f)] private float lensStartPhase = 0.25f;
+
+        [Tooltip("주기마다 렌즈구름 무리를 옮기는 방위 범위(도, 음수가 왼쪽). 오른쪽의 탑을 가리지 않게 왼쪽으로 치우친다.")]
+        [SerializeField] private Vector2 lensAzimuthShift = new Vector2(-6f, 1.5f);
+
+        [Tooltip("주기마다 옮기는 고도 범위(도). 위로는 지금 시각 글자 아래까지만 오른다.")]
+        [SerializeField] private Vector2 lensElevationShift = new Vector2(-3f, 0.5f);
+
+        [Tooltip("주기마다 고르는 무리 크기 배율 범위")]
+        [SerializeField] private Vector2 lensScale = new Vector2(0.75f, 1.05f);
 
         [Header("옮겨 가는 빠르기")]
         [Tooltip("맑은 날 구름이 새 장면으로 옮겨 가는 데 걸리는 시간(초)")]
@@ -309,6 +319,12 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>이번 박명에 야광운이 뜨는지.</summary>
         public bool NoctilucentTonight { get; private set; }
 
+        /// <summary>
+        /// 이번 주기의 렌즈구름 무리 자리(방위 이동°, 고도 이동°, 크기 배율, 무늬 0~1). 셰이더 _LensPlace로 간다.
+        /// 주기가 바뀌는 때(렌즈구름이 다 사라져 있을 때)에만 새로 골라, 떠 있는 동안 자리가 튀지 않는다.
+        /// </summary>
+        public Vector4 LensPlace { get; private set; } = new Vector4(0f, 0f, 1f, 0f);
+
         private readonly float[] _targets = new float[KindCount];
         private Func<float> _random = () => UnityEngine.Random.value;
         private bool _started;
@@ -324,6 +340,7 @@ namespace _SAIUN.Scripts.Weather
         private float _stormPeak;
         private bool _twilightEpisode;
         private float _lensTime;
+        private int _lensCycle = -1;
         private float _towerAge = -1f;
         private float _towerCooldown;
         private float _towerRollLeft;
@@ -370,6 +387,7 @@ namespace _SAIUN.Scripts.Weather
 
             _kelvinLeft = Mathf.Max(0f, _kelvinLeft - deltaTime);
             _lensTime += deltaTime;
+            PlaceLens();
             TrackStorm(deltaTime, inputs.Storm);
             TrackTwilight(inputs.Twilight);
             TrackTower(deltaTime, inputs);
@@ -604,6 +622,19 @@ namespace _SAIUN.Scripts.Weather
             presence *= tower * (1f - TowerFrontFade * Smooth(FairFadeStart, FairFadeEnd, front));
             TowerPresence = Mathf.Lerp(presence, 1f, storm);
             TowerGrowth = Mathf.Lerp(growth, 1f, storm);
+        }
+
+        // 새 주기에 들어서면 렌즈구름 무리의 자리를 새로 고른다. 주기 끝(1 - lensPresence)은 비어 있으므로 옮기는 것이 보이지 않는다.
+        private void PlaceLens()
+        {
+            int cycle = Mathf.FloorToInt(_lensTime / (lensCycleMinutes * 60f));
+            if (cycle == _lensCycle) return;
+            _lensCycle = cycle;
+            LensPlace = new Vector4(
+                Mathf.Lerp(lensAzimuthShift.x, lensAzimuthShift.y, _random()),
+                Mathf.Lerp(lensElevationShift.x, lensElevationShift.y, _random()),
+                Mathf.Lerp(lensScale.x, lensScale.y, _random()),
+                _random());
         }
 
         // 렌즈구름은 주기의 앞쪽 lensPresence 동안 떠 있고, 앞뒤 lensFade 동안 피어나고 사라진다.

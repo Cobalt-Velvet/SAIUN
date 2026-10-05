@@ -4,7 +4,7 @@ using UnityEngine.UI;
 namespace _SAIUN.Scripts.UI
 {
     /// <summary>
-    /// 고정 열 수 격자의 칸 폭을 격자 폭에 맞춘다 (2026-09-29, 사이드바).
+    /// 고정 열 수 격자의 칸 폭을 격자 폭에 맞춘다(사이드바처럼 폭이 바뀔 때).
     /// 카드(폭 480)에 맞춰 칸 폭을 박아 두면 사이드바(폭 380)에서 마지막 칸이 잘리므로, 폭이 바뀔 때마다 나눠 맞춘다.
     /// </summary>
     [RequireComponent(typeof(GridLayoutGroup))]

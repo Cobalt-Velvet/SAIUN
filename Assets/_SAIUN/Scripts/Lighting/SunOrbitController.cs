@@ -8,20 +8,19 @@ namespace _SAIUN.Scripts.Lighting
 {
     /// <summary>
     /// 포모도로 진행률을 Directional Light의 궤도로 옮긴다 (사양서 v1.1 4장).
-    /// 수평각은 진행률을 따라 선형으로 돈다. 사양서 값(+70° → −70°)은 2026-09-29 사용자 결정으로 바꿨다:
+    /// 수평각은 진행률을 따라 선형으로 돈다. 사양서 값(+70° → −70°) 대신 20° → 190°를 쓴다:
     /// 지평선 아래가 바다가 되면서 해가 앞바다로 져야 물에 윤슬 길이 서기 때문이다. 카메라(옆 20°)에서 보아
     /// 아침엔 등 뒤(20°), 한낮엔 왼쪽(105°), 해 질 녘엔 앞바다 조금 왼쪽(190°)이다. 해 질 녘 정원은 역광이 된다.
     /// 카메라 옆 각을 바꾸면 이 두 값도 같이 옮긴다(하늘의 해 방위 = 수평각 + 180° − 카메라 옆 각).
     /// 수직 고도는 아침·저녁에 낮고 한낮에 높아, 그림자가 길어졌다 짧아졌다 한다(4-1 "낮고 긴 그림자"·"짧은 그림자").
-    /// 이 고도 변화는 사양서 10장 구현 금지 목록에 있었지만 2026-09-19 사용자 지시로 켰다. 끄면 45° 고정이다.
     /// 빛 색도 진행률을 따라 아침·저녁에 따뜻해지며, 구름 등이 이 색과 방향을 읽는다.
     /// FOCUS 구간에서만 궤도를 갱신하고, 그 밖의 상태에서는 마지막 궤도를 유지한다.
-    /// 쉬는 동안은 해가 진다(2026-09-28, 집중 한 번이 하루). 휴식 시간을 따라 천천히 져서 노을이 시간의 흐름대로 변한다
-    /// (2026-09-29 사용자 "노을의 세기도 시간의 흐름에 따라"): 지평선의 금빛 → 해가 넘어가며 구름 밑이 붉게 타는 노을 →
+    /// 쉬는 동안은 해가 진다(집중 한 번이 하루). 휴식 시간을 따라 천천히 져서 노을이 시간의 흐름대로 변한다:
+    /// 지평선의 금빛 → 해가 넘어가며 구름 밑이 붉게 타는 노을 →
     /// 해가 지평선 아래 3~4°일 때 해 진 쪽이 분홍·보랏빛으로 다시 달아오르는 박명광. 짧은 휴식은 여기서 끝나고,
     /// 긴 휴식(세션을 다 마침)은 더 내려가 별이 돋는 푸른 박명까지 간다. 빛이 어둡고 푸르게 가라앉고, 하늘은 Twilight를 읽는다.
     ///
-    /// 세션 밖(시계 화면)의 하늘은 시계를 따른다(2026-09-30, 사용자 "idle 상태에서도 미려하게" → "1,3의 토글").
+    /// 세션 밖(시계 화면)의 하늘은 시계를 따른다.
     /// 실제 시각이면 사는 곳의 해 뜨고 지는 시각대로 아침·한낮·노을·밤이 오고, 하루 순환을 켜면 cycleMinutes에 하루를 돈다.
     /// 해가 진 뒤는 실제 해 고도에서 박명과 밤을 읽고, 밤에는 달(실제 위상)이 뜬다(SkyClock).
     /// 시간은 앞으로만 흐른다: 세션이 끝나면 세션의 하늘에서부터 지금 시각까지, 세션이 시작하면 시계 하늘에서 새 아침까지
@@ -29,20 +28,14 @@ namespace _SAIUN.Scripts.Lighting
     /// </summary>
     public class SunOrbitController : MonoBehaviour
     {
-        // ---- 궤도 (사양서 8장 값 70° → −70°를 사용자 결정으로 바꿨다) ----
+        // ---- 궤도 (해가 등 뒤에서 떠 앞바다로 진다) ----
         public const float StartHorizontalAngle = 20f;
         public const float EndHorizontalAngle = 190f;
-
-        /// <summary>고도 변화를 끌 때 쓰는 사양서 고정 고도.</summary>
-        public const float VerticalAngle = 45f;
 
         [SerializeField] private Light sun;
         [SerializeField] private PomodoroTimer timer;
 
         [Header("고도 (그림자 길이)")]
-        [Tooltip("끄면 사양서의 45° 고정으로 돌아간다")]
-        [SerializeField] private bool varyElevation = true;
-
         [Tooltip("진행률 0·1(해 뜰 때·질 때)의 고도. 낮을수록 그림자가 길다.")]
         [SerializeField, Range(5f, 85f)] private float horizonElevation = 22f;
 
@@ -99,7 +92,7 @@ namespace _SAIUN.Scripts.Lighting
         public float HorizontalAngle { get; private set; } = StartHorizontalAngle;
 
         /// <summary>현재 적용된 고도(도).</summary>
-        public float Elevation { get; private set; } = VerticalAngle;
+        public float Elevation { get; private set; }
 
         /// <summary>현재 진행률(0~1).</summary>
         public float Progress { get; private set; }
@@ -382,7 +375,7 @@ namespace _SAIUN.Scripts.Lighting
         {
             Progress = Mathf.Clamp01(progress);
             HorizontalAngle = HorizontalAngleFor(Progress);
-            Elevation = varyElevation ? ElevationFor(Progress, horizonElevation, noonElevation) : VerticalAngle;
+            Elevation = ElevationFor(Progress, horizonElevation, noonElevation);
             SunColor = sunColor != null ? sunColor.Evaluate(Progress) : Color.white;
 
             if (sun == null) return;
@@ -391,7 +384,7 @@ namespace _SAIUN.Scripts.Lighting
         }
 
         /// <summary>
-        /// 하늘이 대기를 지난 햇빛으로 셈한 빛깔(가장 밝은 성분 1)과 한낮 대비 세기(0~1)를 받는다(2026-09-29, 정원이 하늘빛을 받게).
+        /// 하늘이 대기를 지난 햇빛으로 셈한 빛깔(가장 밝은 성분 1)과 한낮 대비 세기(0~1)를 받는다(정원이 하늘빛을 받게).
         /// 낮은 해는 붉고 어둡고, 해가 지면 0이 되어 정원은 하늘의 주변광만 받는다.
         /// </summary>
         public void SetSkyLight(Color sunlight, float strength)

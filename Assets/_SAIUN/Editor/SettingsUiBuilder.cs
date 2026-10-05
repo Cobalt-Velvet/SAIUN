@@ -248,7 +248,7 @@ namespace _SAIUN.Editor
 
             RectTransform content = ScrollArea(screen);
 
-            // 사양서 12-2-1의 캐릭터 항목은 2026-09-21 사용자 결정으로 캐릭터와 함께 없앴다.
+            // 사양서 12-2-1의 캐릭터 항목은 캐릭터와 함께 없앴다.
             Section(content, "방해 앱");
             Sub(content, "블랙리스트");
             RectTransform blacklistRows = List(content, "BlacklistRows");
@@ -259,12 +259,12 @@ namespace _SAIUN.Editor
             (TMP_InputField whitelistInput, Button whitelistAdd) = InputWithButton(content, "WhitelistAdd", "항상 허용할 프로세스");
             SliderField grace = SliderRow(content, "Grace");
 
-            // 사양서 12-2-3. 실제 날씨 연동(날씨 API)은 2026-10-01 사용자 결정으로 하지 않는다. 하늘은 앱이 스스로 짓는다.
+            // 사양서 12-2-3. 실제 날씨 연동(날씨 API)은 하지 않는다. 하늘은 앱이 스스로 짓는다.
             Section(content, "날씨");
             Toggle weatherRandom = ToggleRow(content, "WeatherRandom", "랜덤 날씨 (세트마다)");
             Toggle weatherFocus = ToggleRow(content, "WeatherFocus", "집중 상태 연동 (방해 앱이면 먹구름)");
 
-            // 세션 밖 시계 화면의 하늘(2026-09-30): 실제 시각·하루 순환, 해 뜨고 지는 시각을 셈할 곳
+            // 세션 밖 시계 화면의 하늘: 실제 시각·하루 순환, 해 뜨고 지는 시각을 셈할 곳
             Section(content, "하늘");
             Toggle idleSkyCycle = ToggleRow(content, "IdleSkyCycle", "시계 하늘이 하루를 천천히 돌기 (끄면 실제 시각)");
             Sub(content, "사는 곳 (해 뜨고 지는 시각)");
@@ -448,7 +448,7 @@ namespace _SAIUN.Editor
             Button next = ColoredButton(buttons, "Next", "다음", BodyFontSize, SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
             Size(next, width: TutorialButtonWidth, height: RowHeight);
 
-            // 사양서 14장 세 단계. 첫 단계는 캐릭터 설정이었지만 캐릭터를 없애(2026-09-21) 방해 앱 등록으로 바꿨다.
+            // 사양서 14장 세 단계. 첫 단계는 캐릭터 설정이었지만 캐릭터를 없애 방해 앱 등록으로 바꿨다.
             RectTransform gear = canvas.Find("Settings/Gear") as RectTransform;
             RectTransform start = bar != null && bar.PrimaryButton != null ? (RectTransform)bar.PrimaryButton.transform : null;
             var steps = new[]

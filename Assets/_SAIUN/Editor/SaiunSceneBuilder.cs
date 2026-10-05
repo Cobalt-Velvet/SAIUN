@@ -198,7 +198,7 @@ namespace _SAIUN.Editor
         // 씬에 직접 놓인 컴포넌트도 직렬화된 색을 들고 있어 C# 기본값을 바꿔도 따라오지 않는다. 조립할 때마다 다시 입힌다.
         private static void ApplyPaletteToScene()
         {
-            SetSceneColors<WindowController>(("glassTint", SaiunPalette.Charcoal), ("borderColor", SaiunPalette.Sand));
+            SetSceneColors<WindowController>(("borderColor", SaiunPalette.Sand));
             SetSceneColors<DesktopGlassView>(("tint", SaiunPalette.Charcoal));
             SetSceneColors<GlassRimView>(("rimColor", SaiunPalette.Sand));
             SetSceneColors<ScreenAlertView>(
@@ -368,7 +368,7 @@ namespace _SAIUN.Editor
             rt.anchoredPosition = Vector2.zero;
             rt.sizeDelta = new Vector2(0f, SceneMetrics.SkyLayerHeight);
 
-            TMP_Text phase = CreateText(root.transform, "PhaseLabel", font, HudLabelFontSize, "POMODORO");
+            TMP_Text phase = CreateText(root.transform, "PhaseLabel", font, HudLabelFontSize, "집중");
             SetTopAnchored(phase.rectTransform, y: -36f, height: 30f);
 
             TMP_Text primary = CreateText(root.transform, "PrimaryText", font, HudPrimaryFontSize, "00:00");
@@ -493,7 +493,7 @@ namespace _SAIUN.Editor
             }
 
             Transform backdropCard = EnsureCard(EnsureBackdropCanvas(camera).transform);
-            EnsureDesktopGlass(backdropCard, uiCard, windowController);
+            EnsureDesktopGlass(backdropCard, windowController);
             Flowerbed bed = EnsureFlowerbed();
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsureWeather(camera, backdropCard, stateMachine, bed);
@@ -648,21 +648,15 @@ namespace _SAIUN.Editor
 
             var so = new SerializedObject(controller);
             so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.DesktopBlur;
-            // Acrylic으로 바꿔 쓸 때를 대비해 조율해 둔 농도를 씬에도 남긴다.
-            so.FindProperty("glassTintStrength").floatValue = 0.15f;
-            so.FindProperty("extendFrame").boolValue = false;
-            so.FindProperty("excludeFromCapture").boolValue = true;
             so.FindProperty("roundedCorners").boolValue = true;
-            so.FindProperty("customBorder").boolValue = true;
             so.ApplyModifiedPropertiesWithoutUndo();
             Debug.Log("SaiunSceneBuilder: 유리 배경을 DesktopBlur로 설정했습니다.");
         }
 
         // 창 뒤 화면을 흐리게 깔아 주는 층. 3D 씬보다 뒤에 있어야 하므로 카메라 공간 캔버스에 둔다.
-        // 예전에는 오버레이 캔버스에 있었으므로, 거기 남아 있으면 옮겨 온다(참조와 fileID는 유지된다).
-        private static void EnsureDesktopGlass(Transform canvas, Transform legacyCanvas, WindowController windowController)
+        private static void EnsureDesktopGlass(Transform canvas, WindowController windowController)
         {
-            Transform existing = canvas.Find("DesktopGlass") ?? legacyCanvas.Find("DesktopGlass");
+            Transform existing = canvas.Find("DesktopGlass");
             GameObject glass = existing != null
                 ? existing.gameObject
                 : new GameObject("DesktopGlass", typeof(RectTransform), typeof(RawImage), typeof(DesktopGlassView));
@@ -673,14 +667,7 @@ namespace _SAIUN.Editor
             glass.GetComponent<RawImage>().raycastTarget = false;
 
             // 틴트는 흐린 화면 위에 얹는 별도 층이다.
-            // 예전에는 단색 Image였고 지금은 기울기 텍스처를 쓰므로, 남아 있으면 갈아 끼운다.
             Transform tintChild = glass.transform.Find("Tint");
-            if (tintChild != null && tintChild.GetComponent<RawImage>() == null)
-            {
-                Object.DestroyImmediate(tintChild.gameObject);
-                tintChild = null;
-            }
-
             GameObject tint = tintChild != null
                 ? tintChild.gameObject
                 : new GameObject("Tint", typeof(RectTransform), typeof(RawImage));
@@ -789,7 +776,7 @@ namespace _SAIUN.Editor
             rim.GetComponent<RawImage>().raycastTarget = false;
         }
 
-        // 하늘과 같은 눈(원근, 14° 올려다봄, 같은 화각). 사양서 2-4의 정사영 아이소메트릭을 사용자 선택으로 바꿨다.
+        // 하늘과 같은 눈(원근, 14° 올려다봄, 같은 화각). 사양서 2-4의 정사영 아이소메트릭 대신이다.
         // 배경 알파 0과 Solid Color 설정은 투명 창에 필요하므로 건드리지 않는다.
         private static Camera SetupCamera()
         {
@@ -871,7 +858,7 @@ namespace _SAIUN.Editor
                 return null;
             }
 
-            // 화분과 데크는 바닷바람에 바랜 나무 한 장을 같이 쓴다(2026-09-29 사용자 선택).
+            // 화분과 데크는 바닷바람에 바랜 나무 한 장을 같이 쓴다.
             Material planterMaterial = EnsureMaterial(PlanterMaterialPath, lit, _ => { });
             (Texture2D wood, Texture2D woodNormal) = WoodArtBuilder.EnsureWoodTextures();
             planterMaterial.SetColor("_BaseColor", Color.white);
@@ -982,7 +969,7 @@ namespace _SAIUN.Editor
             {
                 RainEffect rain = EnsureRain(camera, weather);
                 if (bed != null) EnsureSplash(rain, bed);
-                EnsureWind(camera, weather);
+                EnsureWind(weather);
             }
 
             if (bed == null) return;
@@ -1082,7 +1069,9 @@ namespace _SAIUN.Editor
             Transform existing = uiCard.Find("BarFade");
             GameObject go = existing != null ? existing.gameObject : new GameObject("BarFade", typeof(RectTransform), typeof(Image));
             go.transform.SetParent(uiCard, false);
-            go.transform.SetSiblingIndex(bar.GetSiblingIndex());
+            // 바 바로 앞에 둔다. 이미 바 앞에 있으면 바의 자리 하나 앞이 그 자리다(다시 조립해도 순서가 뒤집히지 않게).
+            int barIndex = bar.GetSiblingIndex();
+            go.transform.SetSiblingIndex(go.transform.GetSiblingIndex() < barIndex ? barIndex - 1 : barIndex);
 
             var rt = (RectTransform)go.transform;
             rt.anchorMin = new Vector2(0f, 0f);
@@ -1132,8 +1121,8 @@ namespace _SAIUN.Editor
             if (hud == null) return;
             TMP_FontAsset ui = FontBuilder.EnsureUiFont();
             TMP_FontAsset clock = FontBuilder.EnsureClockFont();
-            Material uiShadow = SkyArtBuilder.EnsureTextShadowMaterial(ui, SkyArtBuilder.TextShadowPath);
-            Material clockShadow = SkyArtBuilder.EnsureTextShadowMaterial(clock, SkyArtBuilder.ClockShadowPath);
+            Material uiShadow = SkyArtBuilder.EnsureTextShadowMaterial(ui, SkyArtBuilder.TextShadowPath, smallText: true);
+            Material clockShadow = SkyArtBuilder.EnsureTextShadowMaterial(clock, SkyArtBuilder.ClockShadowPath, smallText: false);
             if (uiShadow == null || clockShadow == null) return;
             foreach (string name in new[] { "PhaseLabel", "PrimaryText", "SecondaryText" })
             {
@@ -1247,15 +1236,10 @@ namespace _SAIUN.Editor
         }
 
         // 눈에 보이는 바람: 세상 공간에서 실제 바람 방향으로 흐른다. 카메라 앞 데크·모래밭·바다 위 눈높이 아래 구역에만 분다.
-        private static void EnsureWind(Camera camera, WeatherController weather)
+        private static void EnsureWind(WeatherController weather)
         {
-            // 예전엔 카메라 자식이었다(화면 평면 위로만 흘렀다). 세상으로 옮긴다.
-            Transform existing = camera.transform.Find("Wind");
-            if (existing == null)
-            {
-                GameObject found = GameObject.Find("Wind");
-                existing = found != null ? found.transform : null;
-            }
+            GameObject found = GameObject.Find("Wind");
+            Transform existing = found != null ? found.transform : null;
             GameObject windGo = existing != null ? existing.gameObject : new GameObject("Wind");
             windGo.transform.SetParent(null, false);
             Vector3 ahead = Vector3.ProjectOnPlane(SceneMetrics.CameraRotation * Vector3.forward, Vector3.up).normalized;

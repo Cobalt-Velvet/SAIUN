@@ -6,7 +6,7 @@ using UnityEngine;
 namespace _SAIUN.Tests
 {
     /// <summary>
-    /// 눈높이 시점(2026-09-30): 흙을 거의 옆에서 보므로 작물은 흙 위로 선 키로만 보인다.
+    /// 눈높이 시점: 흙을 거의 옆에서 보므로 작물은 흙 위로 선 키로만 보인다.
     /// 앞줄 포기가 창에서 차지하는 키(화소)로 단계마다 알아볼 수 있는지, 단계마다 커지는지 본다.
     /// </summary>
     public class CropModelTests : MainSceneTestBase

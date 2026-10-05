@@ -16,8 +16,8 @@ namespace _SAIUN.Scripts.Core
     [DefaultExecutionOrder(-50)]
     public class GameManager : MonoBehaviour
     {
-        // ---- 프레임레이트 (사양서 8장) ----
-        private const int FocusFrameRate = 144;
+        // ---- 프레임레이트 ----
+        // 하늘은 천천히 움직이므로 60이면 충분하다. 다른 창을 보고 있을 때는 절반으로 낮춰 전력을 아낀다.
         private const int ActiveFrameRate = 60;
         private const int AwayFrameRate = 30;
 
@@ -345,8 +345,6 @@ namespace _SAIUN.Scripts.Core
 
         private void HandleStateChanged(PomodoroState from, PomodoroState to)
         {
-            ApplyFrameRate();
-
             if (from == PomodoroState.Idle && to == PomodoroState.Focus)
             {
                 _sessionStartTime = SaiunDatabase.Now();
@@ -444,12 +442,9 @@ namespace _SAIUN.Scripts.Core
 
         private void ApplyFrameRate()
         {
-            int target;
-            if (!_hasFocus) target = AwayFrameRate;
-            else if (stateMachine != null && stateMachine.CurrentState == PomodoroState.Focus) target = FocusFrameRate;
-            else target = ActiveFrameRate;
+            int target = _hasFocus ? ActiveFrameRate : AwayFrameRate;
 
-            // 상태가 바뀔 때 한 번만 바꾼다. 매 프레임 설정하지 않는다.
+            // 포커스가 바뀔 때 한 번만 바꾼다. 매 프레임 설정하지 않는다.
             if (target == _appliedFrameRate) return;
             _appliedFrameRate = target;
             Application.targetFrameRate = target;

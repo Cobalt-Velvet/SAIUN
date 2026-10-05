@@ -8,7 +8,7 @@ namespace _SAIUN.Tests
 {
     /// <summary>
     /// P2-01: 진행률 0/0.5/1이 수평각 +70/0/−70으로 매핑되고, FOCUS에서만 갱신된다.
-    /// 고도는 해 뜰 때·질 때 낮고 한낮에 높아 그림자가 길어졌다 짧아진다(2026-09-19 사용자 지시).
+    /// 고도는 해 뜰 때·질 때 낮고 한낮에 높아 그림자가 길어졌다 짧아진다.
     /// </summary>
     public class SunOrbitControllerTests
     {
@@ -82,19 +82,6 @@ namespace _SAIUN.Tests
             float noon = ShadowLength();
 
             Assert.Greater(morning, noon * 3f, "높이 1인 물체의 그림자 길이");
-        }
-
-        [Test]
-        public void 고도_변화를_끄면_사양서의_45도_고정이다()
-        {
-            typeof(SunOrbitController)
-                .GetField("varyElevation", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                .SetValue(_orbit, false);
-
-            _orbit.Apply(0f);
-            Assert.AreEqual(SunOrbitController.VerticalAngle, _orbit.Elevation, 0.001f);
-            _orbit.Apply(0.5f);
-            Assert.AreEqual(SunOrbitController.VerticalAngle, _orbit.Elevation, 0.001f);
         }
 
         [Test]

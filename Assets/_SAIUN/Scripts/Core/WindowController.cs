@@ -11,8 +11,8 @@ namespace _SAIUN.Scripts.Core
     /// <summary>
     /// Win32 투명 창·유리 배경·항상 위·드래그 이동·창 모양(떠 있는 카드 / 오른쪽 세로 전체 사이드바).
     /// Win32 의존부는 이 클래스에만 둔다. 창 위치 저장·복원은 GameManager가 이 클래스의 API로 배선한다.
-    /// 사이드바(2026-09-29 사용자 요청)는 창이 있는 모니터의 오른쪽 가장자리에 붙어 작업 영역 세로 전체를 채우고,
-    /// 앱바로 등록해 최대화한 다른 창이 비켜 가게 한다. 화면 배율(DPI)만큼 창을 키우고 UI·하늘은 논리 크기로 짠다.
+    /// 사이드바는 창이 있는 모니터의 오른쪽 가장자리에 붙어 작업 영역 세로 전체를 채운다. 다른 창 위에 떠 있을 뿐
+    /// 화면 공간을 예약하지는 않는다. 화면 배율(DPI)만큼 창을 키우고 UI·하늘은 논리 크기로 짠다.
     /// 모니터 구성이나 배율이 바뀌면 몇 초 안에 다시 붙는다. 사이드바에서는 끌어 옮기지 않는다.
     /// GameManager.Start가 위치를 복원하기 전에 창 핸들이 준비돼야 하므로 실행 순서를 앞당긴다.
     /// </summary>
@@ -28,47 +28,19 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
         [DllImport("user32.dll", SetLastError = true)] static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
-        [DllImport("user32.dll")] static extern int SetWindowCompositionAttribute(IntPtr hWnd, ref WINDOWCOMPOSITIONATTRIBDATA data); // spellchecker:ignore WINDOWCOMPOSITIONATTRIBDATA
-        [DllImport("Dwmapi.dll")] static extern uint DwmExtendFrameIntoClientArea(IntPtr hWnd, ref MARGINS pMarInset); // spellchecker:ignore Dwmapi
-        [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+        [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute); // spellchecker:ignore Dwmapi
         [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hWnd);
         [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
         [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi);
-        [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessage(string lpString);
-        [DllImport("shell32.dll")] static extern UIntPtr SHAppBarMessage(uint dwMessage, ref APPBARDATA pData);
 
         [StructLayout(LayoutKind.Sequential)]
         struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public RECT rc; public IntPtr lParam; }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct MARGINS { public int cxLeftWidth, cxRightWidth, cyTopHeight, cyBottomHeight; }
 
         [StructLayout(LayoutKind.Sequential)]
         struct POINT { public int x, y; }
 
         [StructLayout(LayoutKind.Sequential)]
         struct RECT { public int left, top, right, bottom; }
-
-        // DWM 합성 속성. 문서화되지 않았지만 Windows 10 1803 이후로 형태가 바뀌지 않았다.
-        [StructLayout(LayoutKind.Sequential)]
-        struct ACCENT_POLICY // spellchecker:ignore ACCENT
-        {
-            public int AccentState;
-            public int AccentFlags;
-            public int GradientColor;   // 0xAABBGGRR
-            public int AnimationId;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct WINDOWCOMPOSITIONATTRIBDATA
-        {
-            public int Attribute;
-            public IntPtr Data;
-            public int SizeOfData;
-        }
 
         const int  GWL_STYLE         = -16;
         const uint WS_POPUP          = 0x80000000;
@@ -81,13 +53,7 @@ namespace _SAIUN.Scripts.Core
         const uint SWP_FRAMECHANGED  = 0x0020; // spellchecker:ignore FRAMECHANGED
         const uint SPI_GETWORKAREA   = 0x0030; // spellchecker:ignore GETWORKAREA
         const uint MONITOR_DEFAULTTONEAREST = 2; // spellchecker:ignore DEFAULTTONEAREST
-        const uint ABM_NEW      = 0;
-        const uint ABM_REMOVE   = 1;
-        const uint ABM_QUERYPOS = 2; // spellchecker:ignore QUERYPOS
-        const uint ABM_SETPOS   = 3; // spellchecker:ignore SETPOS
-        const uint ABE_RIGHT    = 2;
         const float BaseDpi     = 96f;
-        const string AppBarMessageName = "SAIUN_AppBar";
 
         // 에디터에는 모니터가 없으므로 사이드바 높이를 개발 PC 작업 영역쯤으로 둔다.
         const int EditorSidebarHeight = 1040;
@@ -101,20 +67,12 @@ namespace _SAIUN.Scripts.Core
         const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
         const int DWMWA_BORDER_COLOR = 34;
         const int DWMWA_SYSTEMBACKDROP_TYPE = 38;   // spellchecker:ignore SYSTEMBACKDROP
+        const int DWMSBT_NONE = 1;                  // spellchecker:ignore DWMSBT
 
-        // 문서화되지 않은 합성 속성 상수.
-        const int WCA_ACCENT_POLICY = 19;           // spellchecker:ignore WCA
-        const int ACCENT_DISABLED = 0;
-        const int ACCENT_ENABLE_TRANSPARENTGRADIENT = 2;     // spellchecker:ignore TRANSPARENTGRADIENT
-        const int ACCENT_ENABLE_BLURBEHIND = 3;              // spellchecker:ignore BLURBEHIND
-        const int ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;       // spellchecker:ignore ACRYLICBLURBEHIND
-
-        // 창 모서리를 둥글게. 2는 기본 반경, 3은 작은 반경이다.
+        // 창 모서리를 둥글게(기본 반경) 또는 깎지 않게.
         const int DWMWCP_DONOTROUND = 1;   // spellchecker:ignore DWMWCP DONOTROUND
         const int DWMWCP_ROUND = 2;
-        const int DWMWCP_ROUNDSMALL = 3;   // spellchecker:ignore ROUNDSMALL
 
-        // 창 크기는 SceneMetrics가 단일 출처다. 플레이어가 레지스트리에 남긴 이전 해상도를 덮어쓴다.
         const string UNITY_WND_CLASS = "UnityWndClass";
         static readonly IntPtr HWND_TOPMOST   = new IntPtr(-1);
         static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2); // spellchecker:ignore NOTOPMOST
@@ -125,52 +83,24 @@ namespace _SAIUN.Scripts.Core
         // 창 크기를 바꾼 뒤 창 안쪽 크기가 맞을 때까지 다시 맞춰 보는 프레임 수
         const int SettleFrames = 30;
 
-        /// <summary>창 뒤에 깔리는 유리 배경의 종류.</summary>
+        /// <summary>창 전체 유리가 무엇을 흐려 깔지.</summary>
         public enum GlassMode
         {
-            /// <summary>배경 없음. 바탕화면이 그대로 비친다.</summary>
-            None,
-            /// <summary>DWM Mica. 바탕화면 색만 크게 흐린다. 투명도를 조절할 수 없다.</summary>
-            SystemMica,
-            /// <summary>DWM Acrylic. 투명도가 고정이라 뒷배경 색이 거의 묻힌다.</summary>
-            SystemAcrylic,
-            /// <summary>틴트 색과 농도를 직접 지정하는 Acrylic. 농도를 낮추면 뒷배경 색이 배어 나온다.</summary>
-            TintedAcrylic,
-            /// <summary>틴트 Acrylic보다 가벼운 단순 블러. 뒷배경이 더 선명하게 비친다.</summary>
-            TintedBlur,
-            /// <summary>블러 없이 색만 얇게 덮는다. 뒷배경이 또렷하게 그대로 비친다.</summary>
-            TransparentTint,
-            /// <summary>화면을 직접 읽어 흐린다. 뒷배경의 형태와 색이 그대로 남는 유일한 방식이다.</summary>
+            /// <summary>화면을 직접 읽어 흐린다. 뒤의 다른 창까지 비친다. 자기 자신을 다시 찍지 않도록 캡처에서 빠진다.</summary>
             DesktopBlur,
-            /// <summary>바탕화면 레이어만 읽어 흐린다. 다른 창은 안 비치지만 녹화에도 정상으로 나온다.</summary>
+            /// <summary>바탕화면 레이어만 읽어 흐린다. 다른 창은 안 비치지만 녹화·스크린샷에 정상으로 나온다.</summary>
             WallpaperBlur,
         }
 
         [Header("유리 배경")]
-        [Tooltip("창 뒤를 흐리는 방식. Tinted 계열만 농도를 조절할 수 있다.")]
+        [Tooltip("창 전체 유리가 무엇을 흐려 깔지(실행 인자 -glass로도 바꾼다)")]
         [SerializeField] private GlassMode glass = GlassMode.DesktopBlur;
-
-        [Tooltip("유리에 섞을 틴트 색. 팔레트의 어두운 톤을 기본으로 쓴다.")]
-        [SerializeField] private Color glassTint = SaiunPalette.Charcoal;
-
-        [Tooltip("틴트 농도. 낮출수록 뒷배경 색이 그대로 배어 나온다.")]
-        [Range(0f, 1f)]
-        [SerializeField] private float glassTintStrength = 0.15f;
 
         [Tooltip("창 모서리를 둥글게 깎는다. Windows 11에서만 동작한다.")]
         [SerializeField] private bool roundedCorners = true;
 
         [Tooltip("DWM이 그리는 1픽셀 테두리 색. 유리 가장자리를 또렷하게 만든다.")]
         [SerializeField] private Color borderColor = SaiunPalette.Sand;
-
-        [Tooltip("테두리를 그릴지 여부. 끄면 DWM 기본 테두리를 쓴다.")]
-        [SerializeField] private bool customBorder = true;
-
-        [Tooltip("DWM 프레임을 클라이언트 영역까지 확장한다. 합성 블러를 쓸 때는 꺼야 배경이 제대로 비친다.")]
-        [SerializeField] private bool extendFrame;
-
-        [Tooltip("화면 녹화와 스크린샷에서 이 창을 제외한다. DesktopBlur가 자기 자신을 다시 찍는 것을 막는다.")]
-        [SerializeField] private bool excludeFromCapture = true;
 
         [Header("사이드바")]
         [Tooltip("사이드바 폭(화면 배율 100% 기준 화소)")]
@@ -183,9 +113,6 @@ namespace _SAIUN.Scripts.Core
 #pragma warning disable CS0414   // 에디터 컴파일에서는 Win32 경로가 빠져 읽는 곳이 없다.
         [SerializeField, Min(0.2f)] private float displayPollSeconds = 2f;
 #pragma warning restore CS0414
-
-        [Tooltip("사이드바를 앱바로 등록해 다른 창이 비켜 가게 한다. 끄면 다른 창 위에 떠 있기만 한다.")]
-        [SerializeField] private bool registerAppBar = true;
 
         /// <summary>창 좌상단 스크린 좌표. 에디터에서는 (0,0).</summary>
         public Vector2Int Position { get; private set; }
@@ -202,9 +129,6 @@ namespace _SAIUN.Scripts.Core
         /// <summary>현재 적용된 유리 배경.</summary>
         public GlassMode CurrentGlass => glass;
 
-        /// <summary>창을 끌고 있는 중인지. 에디터에서는 드래그 경로가 없어 항상 false다.</summary>
-        public bool IsDragging => _dragging;
-
         /// <summary>투명 창 설정이 끝났을 때 1회 발행.</summary>
         public event Action OnReady;
 
@@ -220,7 +144,6 @@ namespace _SAIUN.Scripts.Core
         Vector2Int _cardPosition;
 #if !UNITY_EDITOR
         bool _alwaysOnTop = true;
-        bool _appBar;
         float _sincePoll;
         Vector4 _dockedDisplay;
 #endif
@@ -255,12 +178,6 @@ namespace _SAIUN.Scripts.Core
             }
 
             ReadOverrides();
-
-            if (extendFrame)
-            {
-                var margins = new MARGINS { cxLeftWidth = -1 };
-                DwmExtendFrameIntoClientArea(_hwnd, ref margins);
-            }
 
             // 화면 배율만큼 카드를 키운다(배율 100%면 480×680 그대로다).
             WindowLayout card = WindowLayout.Card(DpiScale());
@@ -313,7 +230,7 @@ namespace _SAIUN.Scripts.Core
             RefreshPosition();
         }
 
-        // 창이 있는 모니터의 오른쪽 가장자리에 붙는다. 앱바로 등록하면 셸이 다른 앱바(오른쪽 작업 표시줄 등)를 피해 자리를 준다.
+        // 창이 있는 모니터 작업 영역의 오른쪽 가장자리에 붙는다.
         System.Collections.IEnumerator Dock()
         {
             _changing = true;
@@ -326,25 +243,8 @@ namespace _SAIUN.Scripts.Core
 
             float dpiScale = scale;
             scale = WindowLayout.SidebarScale(dpiScale, work.bottom - work.top, maxSidebarHeight);
-            int width = Mathf.Max(1, Mathf.RoundToInt(sidebarWidth * scale));
-            int right = monitor.right;
-            if (registerAppBar)
-            {
-                var data = AppBarData();
-                if (!_appBar)
-                {
-                    SHAppBarMessage(ABM_NEW, ref data);
-                    _appBar = true;
-                }
-                data.uEdge = ABE_RIGHT;
-                data.rc = new RECT { left = monitor.right - width, top = monitor.top, right = monitor.right, bottom = monitor.bottom };
-                SHAppBarMessage(ABM_QUERYPOS, ref data);
-                right = data.rc.right;
-                data.rc.left = right - width;
-                SHAppBarMessage(ABM_SETPOS, ref data);
-            }
-
-            WindowLayout layout = WindowLayout.Dock(scale, right, work.top, work.bottom, sidebarWidth);
+            // 작업 표시줄을 오른쪽에 둔 경우에도 그 왼쪽에 붙도록 작업 영역의 오른쪽을 쓴다.
+            WindowLayout layout = WindowLayout.Dock(scale, work.right, work.top, work.bottom, sidebarWidth);
             yield return ApplyPhysical(layout.Physical, move: true);
             _dockedDisplay = new Vector4(monitor.left, monitor.right, work.top * 10000f + work.bottom, dpiScale);
             Layout = layout;
@@ -352,11 +252,10 @@ namespace _SAIUN.Scripts.Core
             OnLayoutChanged?.Invoke(Layout);
         }
 
-        // 카드로 돌아간다. 앱바를 내려놓고 마지막으로 끌어 둔 자리로 돌아간다.
+        // 카드로 돌아간다. 마지막으로 끌어 둔 자리로 돌아간다.
         System.Collections.IEnumerator Undock()
         {
             _changing = true;
-            RemoveAppBar();
             WindowLayout card = WindowLayout.Card(DpiScale());
             yield return ApplyPhysical(card.Physical, move: false);
             Layout = card;
@@ -385,16 +284,6 @@ namespace _SAIUN.Scripts.Core
             return dpi > 0 ? dpi / BaseDpi : 1f;
         }
 
-        APPBARDATA AppBarData()
-        {
-            return new APPBARDATA
-            {
-                cbSize = Marshal.SizeOf(typeof(APPBARDATA)),
-                hWnd = _hwnd,
-                uCallbackMessage = RegisterWindowMessage(AppBarMessageName),
-            };
-        }
-
         // 사이드바일 때 모니터 크기·작업 영역·배율이 바뀌었으면 다시 붙는다.
         void PollDisplay()
         {
@@ -419,27 +308,6 @@ namespace _SAIUN.Scripts.Core
 #else
             Layout = on ? WindowLayout.Dock(1f, 0, 0, EditorSidebarHeight, sidebarWidth) : WindowLayout.Card(1f);
             OnLayoutChanged?.Invoke(Layout);
-#endif
-        }
-
-        void OnApplicationQuit()
-        {
-            RemoveAppBar();
-        }
-
-        void OnDestroy()
-        {
-            RemoveAppBar();
-        }
-
-        // 앱바 자리를 내려놓아 작업 영역을 돌려준다.
-        void RemoveAppBar()
-        {
-#if !UNITY_EDITOR
-            if (!_appBar || _hwnd == IntPtr.Zero) return;
-            var data = AppBarData();
-            SHAppBarMessage(ABM_REMOVE, ref data);
-            _appBar = false;
 #endif
         }
 
@@ -555,127 +423,30 @@ namespace _SAIUN.Scripts.Core
             return Position;
         }
 
-        /// <summary>유리 배경을 바꾼다. 틴트 색과 농도는 현재 설정값을 쓴다.</summary>
-        public void SetGlass(GlassMode mode)
-        {
-            glass = mode;
-            ApplyGlass();
-        }
-
-        /// <summary>틴트 색과 농도를 바꾼다. Tinted 계열에서만 효과가 있다.</summary>
-        public void SetGlassTint(Color tint, float strength)
-        {
-            glassTint = tint;
-            glassTintStrength = Mathf.Clamp01(strength);
-            ApplyGlass();
-        }
-
         // ---- 유리 배경 ----
 
+        // 창을 시스템 배경 없이 투명하게 둔다. 흐림은 DesktopGlassView가 직접 그린다.
+        // 어두운 유리를 쓰므로 다크 모드로 둬야 DWM이 그리는 테두리·그림자 색조가 맞는다.
         void ApplyGlass()
         {
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) return;
-
-            // 어두운 틴트를 쓰므로 다크 모드로 둬야 시스템 배경 색조가 맞는다.
             int dark = 1;
             DwmSetWindowAttribute(_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
-
-            switch (glass)
-            {
-                case GlassMode.SystemMica:
-                    SetAccent(ACCENT_DISABLED, 0);
-                    SetSystemBackdrop(2);
-                    break;
-
-                case GlassMode.SystemAcrylic:
-                    SetAccent(ACCENT_DISABLED, 0);
-                    SetSystemBackdrop(3);
-                    break;
-
-                case GlassMode.TintedAcrylic:
-                    // 시스템 배경과 합성 속성을 같이 켜면 시스템 쪽이 이겨서 농도 조절이 먹지 않는다.
-                    SetSystemBackdrop(1);
-                    SetAccent(ACCENT_ENABLE_ACRYLICBLURBEHIND, ToAbgr(glassTint, glassTintStrength));
-                    break;
-
-                case GlassMode.TintedBlur:
-                    SetSystemBackdrop(1);
-                    SetAccent(ACCENT_ENABLE_BLURBEHIND, ToAbgr(glassTint, glassTintStrength));
-                    break;
-
-                case GlassMode.TransparentTint:
-                    SetSystemBackdrop(1);
-                    SetAccent(ACCENT_ENABLE_TRANSPARENTGRADIENT, ToAbgr(glassTint, glassTintStrength));
-                    break;
-
-                case GlassMode.DesktopBlur:
-                case GlassMode.WallpaperBlur:
-                    // 창을 완전히 투명하게 두고, 흐림은 DesktopGlassView가 직접 그린다.
-                    SetSystemBackdrop(1);
-                    SetAccent(ACCENT_DISABLED, 0);
-                    break;
-
-                default:
-                    SetAccent(ACCENT_DISABLED, 0);
-                    SetSystemBackdrop(1);
-                    break;
-            }
-
-            Debug.Log($"WindowController: 유리 배경 {glass}, 틴트 #{ColorUtility.ToHtmlStringRGB(glassTint)} 농도 {glassTintStrength:F2}");
-#endif
-        }
-
-        void SetSystemBackdrop(int type)
-        {
-#if !UNITY_EDITOR
-            int value = type;
-            DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref value, sizeof(int));
-#endif
-        }
-
-        void SetAccent(int state, int gradientColor)
-        {
-#if !UNITY_EDITOR
-            var policy = new ACCENT_POLICY
-            {
-                AccentState = state,
-                // 2는 네 변을 모두 그리라는 뜻이다. 틴트를 쓸 때만 의미가 있다.
-                AccentFlags = state == ACCENT_DISABLED ? 0 : 2,
-                GradientColor = gradientColor,
-                AnimationId = 0,
-            };
-
-            int size = Marshal.SizeOf(policy);
-            IntPtr buffer = Marshal.AllocHGlobal(size);
-            try
-            {
-                Marshal.StructureToPtr(policy, buffer, false);
-                var data = new WINDOWCOMPOSITIONATTRIBDATA
-                {
-                    Attribute = WCA_ACCENT_POLICY,
-                    Data = buffer,
-                    SizeOfData = size,
-                };
-                SetWindowCompositionAttribute(_hwnd, ref data);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
+            int none = DWMSBT_NONE;
+            DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref none, sizeof(int));
 #endif
         }
 
         /// <summary>
         /// 화면 캡처에서 이 창을 뺀다. DesktopBlur는 화면을 그대로 읽으므로,
         /// 제외하지 않으면 자기가 그린 유리를 다시 찍어 무한히 겹친다.
-        /// 끄면 OBS 같은 녹화 도구에도 보이지만 DesktopBlur는 쓸 수 없다.
         /// </summary>
         void ApplyCaptureExclusion()
         {
 #if !UNITY_EDITOR
             // 바탕화면 레이어만 읽는 모드는 자기 자신이 안 찍히므로 제외할 이유가 없다.
-            bool exclude = excludeFromCapture && glass == GlassMode.DesktopBlur;
+            bool exclude = glass == GlassMode.DesktopBlur;
             bool ok = SetWindowDisplayAffinity(_hwnd, exclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
             Debug.Log($"WindowController: 캡처 제외 {exclude} 적용 {(ok ? "성공" : "실패")} err={Marshal.GetLastWin32Error()}");
 #endif
@@ -693,20 +464,9 @@ namespace _SAIUN.Scripts.Core
         void ApplyBorder()
         {
 #if !UNITY_EDITOR
-            if (!customBorder) return;
             int colorRef = ToColorRef(borderColor);
             DwmSetWindowAttribute(_hwnd, DWMWA_BORDER_COLOR, ref colorRef, sizeof(int));
 #endif
-        }
-
-        /// <summary>합성 속성이 쓰는 0xAABBGGRR 형식으로 바꾼다.</summary>
-        static int ToAbgr(Color color, float alpha)
-        {
-            int r = Mathf.Clamp(Mathf.RoundToInt(color.r * 255f), 0, 255);
-            int g = Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255);
-            int b = Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255);
-            int a = Mathf.Clamp(Mathf.RoundToInt(Mathf.Clamp01(alpha) * 255f), 0, 255);
-            return (a << 24) | (b << 16) | (g << 8) | r;
         }
 
         /// <summary>DWM 테두리가 쓰는 0x00BBGGRR 형식으로 바꾼다.</summary>
@@ -718,45 +478,16 @@ namespace _SAIUN.Scripts.Core
             return (b << 16) | (g << 8) | r;
         }
 
-        // 실험 중에는 실행 인자로 값을 바꿔 한 번의 빌드로 여러 조합을 본다.
-        // 예: SAIUN.exe -glass tintedacrylic -tint 0.2 -corners off
+        // 실행 인자 -glass desktopblur|wallpaperblur 로 유리 모드를 바꾼다. 화면을 밖에서 찍어 확인할 때
+        // 바탕화면만 읽는 쪽을 쓰면 뒤의 다른 창이 비치지 않는다.
         void ReadOverrides()
         {
             string[] args = Environment.GetCommandLineArgs();
             for (int i = 0; i < args.Length - 1; i++)
             {
-                string value = args[i + 1];
-                switch (args[i])
-                {
-                    case "-glass":
-                        if (Enum.TryParse(value, true, out GlassMode parsed)) glass = parsed;
-                        else Debug.LogWarning($"WindowController: 알 수 없는 -glass 값 {value}");
-                        break;
-
-                    case "-tint":
-                        if (float.TryParse(value, out float strength)) glassTintStrength = Mathf.Clamp01(strength);
-                        break;
-
-                    case "-corners":
-                        roundedCorners = value != "off";
-                        break;
-
-                    case "-border":
-                        customBorder = value != "off";
-                        break;
-
-                    case "-frame":
-                        extendFrame = value != "off";
-                        break;
-
-                    case "-capture":
-                        excludeFromCapture = value != "on";
-                        break;
-
-                    case "-appbar":
-                        registerAppBar = value != "off";
-                        break;
-                }
+                if (args[i] != "-glass") continue;
+                if (Enum.TryParse(args[i + 1], true, out GlassMode parsed)) glass = parsed;
+                else Debug.LogWarning($"WindowController: 알 수 없는 -glass 값 {args[i + 1]}");
             }
         }
 

@@ -164,21 +164,25 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 상태에_따라_프레임레이트가_한_번씩_바뀐다()
+        public void 창_포커스에_따라_프레임레이트가_바뀌고_세션_상태와는_무관하다()
         {
-            // 배치 모드에서는 창 포커스가 없을 수 있어 포커스 상태를 고정한다.
-            typeof(GameManager)
-                .GetField("_hasFocus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-                .SetValue(_gm, true);
+            // 배치 모드에서는 창 포커스가 없을 수 있어 포커스 이벤트를 직접 보낸다.
+            System.Reflection.MethodInfo focus = typeof(GameManager)
+                .GetMethod("OnApplicationFocus", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
 
-            // Start()가 아직 안 돌았을 수 있으므로 전이로 확인한다.
-            _gm.RequestStart(ShortConfig());
-            Assert.AreEqual(144, Application.targetFrameRate);
-
-            Advance(300);   // → ShortBreak
+            focus.Invoke(_gm, new object[] { true });
             Assert.AreEqual(60, Application.targetFrameRate);
 
-            _gm.RequestCancel();
+            _gm.RequestStart(ShortConfig());
+            Assert.AreEqual(60, Application.targetFrameRate, "집중 중에도 60이다");
+
+            focus.Invoke(_gm, new object[] { false });
+            Assert.AreEqual(30, Application.targetFrameRate);
+
+            Advance(300);   // → ShortBreak
+            Assert.AreEqual(30, Application.targetFrameRate);
+
+            focus.Invoke(_gm, new object[] { true });
             Assert.AreEqual(60, Application.targetFrameRate);
         }
 

@@ -52,9 +52,6 @@ namespace _SAIUN.Scripts.Distraction
         /// <summary>유예 남은 시간(초).</summary>
         public float GraceRemainingSeconds { get; private set; }
 
-        /// <summary>마지막 폴링에서 본 전면 프로세스 이름. 진단용.</summary>
-        public string LastForegroundProcess { get; private set; }
-
         public bool IsWatching => _loop != null;
 
         public int GraceSeconds
@@ -171,12 +168,6 @@ namespace _SAIUN.Scripts.Distraction
         internal void Poll()
         {
             string process = ProcessNameProvider?.Invoke();
-            if (process != LastForegroundProcess)
-            {
-                // 전면 앱이 바뀔 때만 남긴다. 블랙리스트 진단용.
-                Debug.Log($"ForegroundWatcher: 전면 = {process ?? "(없음)"}");
-            }
-            LastForegroundProcess = process;
             bool distracting = !string.IsNullOrEmpty(process)
                                && Blacklist.IsDistracting(process)
                                && !IsExcusedThisSession(process);

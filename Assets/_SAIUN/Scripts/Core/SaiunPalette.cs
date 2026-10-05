@@ -6,7 +6,7 @@ namespace _SAIUN.Scripts.Core
     /// 확정된 색 팔레트. UI의 용도별 색은 모두 여기서 가져온다.
     /// 코드 곳곳에 색 리터럴을 두지 않기 위한 단일 출처다.
     ///
-    /// 2026-09-30 사용자 선택 "유목": 사양서 3-2의 민트·정글 5색이 바다·하늘·바랜 나무 데크와 따로 놀아,
+    /// "유목" 팔레트: 사양서 3-2의 민트·정글 5색이 바다·하늘·바랜 나무 데크와 따로 놀아,
     /// 바닷가에서 색을 새로 가져왔다. 파도에 씻긴 나무(숯빛 갈색·마른 나무빛), 모래, 바다 유리(청록), 산호.
     /// 작물의 잎·알곡·열매는 자연의 색이라 UI 팔레트와 떼어 따로 둔다(옛 5색 값 그대로).
     /// </summary>
@@ -80,9 +80,6 @@ namespace _SAIUN.Scripts.Core
 
         /// <summary>포인트 색 위에 올리는 글자색. 바다 유리 위에서 대비 7.7이다.</summary>
         public static readonly Color OnMainPoint = Charcoal;
-
-        /// <summary>집중 구간 강조색.</summary>
-        public static readonly Color FocusAccent = SeaGlass;
 
         /// <summary>휴식 구간 강조색.</summary>
         public static readonly Color BreakAccent = Sage;

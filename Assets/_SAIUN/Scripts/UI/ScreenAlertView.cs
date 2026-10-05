@@ -33,7 +33,6 @@ namespace _SAIUN.Scripts.UI
         }
 
         public float Duration => fadeIn + hold + fadeOut;
-        public float Peak => peak;
 
         /// <summary>시작 후 t초의 세기(0~peak). 곡선 밖이면 0.</summary>
         public float Evaluate(float t)

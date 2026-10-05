@@ -3,7 +3,7 @@ using System;
 namespace _SAIUN.Scripts.Lighting
 {
     /// <summary>
-    /// 시각과 자리로 실제 해의 고도, 해가 어떤 고도를 지나는 시각, 달의 나이를 셈한다 (2026-09-30, 시계 화면 하늘).
+    /// 시각과 자리로 실제 해의 고도, 해가 어떤 고도를 지나는 시각, 달의 나이를 셈한다(시계 화면 하늘).
     /// 해는 미국 해양대기청(NOAA)의 근사식(연중 날짜의 푸리에 급수로 적위·균시차)을 쓴다. 오차는 1분 안팎이다.
     /// 달은 평균 삭망월로 나이만 센다. 하늘에서 달의 자리는 해의 하루 길을 나이만큼 늦춰 따라가게 근사한다(SunOrbitController).
     /// </summary>
@@ -15,7 +15,6 @@ namespace _SAIUN.Scripts.Lighting
         // 기준 삭: 2000-01-06 18:14 UTC
         private static readonly DateTime ReferenceNewMoonUtc = new DateTime(2000, 1, 6, 18, 14, 0, DateTimeKind.Utc);
 
-        private const double MinutesPerDay = 1440.0;
         private const double DegreesPerHourAngleMinute = 0.25;   // 지구는 4분에 1° 돈다
         private const double NoonMinutesUtc = 720.0;
 

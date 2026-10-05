@@ -419,10 +419,13 @@ MonoBehaviour:
     towerHoldSeconds: 300
     towerFadeSeconds: 150
     towerCumulus: 0.3
-    lensCycleMinutes: 11
-    lensPresence: 0.72
+    lensCycleMinutes: 13
+    lensPresence: 0.5
     lensFade: 0.1
     lensStartPhase: 0.25
+    lensAzimuthShift: {x: -6, y: 1.5}
+    lensElevationShift: {x: -3, y: 0.5}
+    lensScale: {x: 0.75, y: 1.05}
     fairResponse: 45
     stormResponse: 8
 --- !u!114 &10825362
@@ -20042,18 +20045,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1c6ef39d886775842b1ccf746506450e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::_SAIUN.Scripts.Core.WindowController
-  glass: 6
-  glassTint: {r: 0.16862746, g: 0.15294118, b: 0.13725491, a: 1}
-  glassTintStrength: 0.15
+  glass: 0
   roundedCorners: 1
   borderColor: {r: 0.9529412, g: 0.9254902, b: 0.8784314, a: 1}
-  customBorder: 1
-  extendFrame: 0
-  excludeFromCapture: 1
   sidebarWidth: 380
   maxSidebarHeight: 1100
   displayPollSeconds: 2
-  registerAppBar: 1
 --- !u!114 &330585549
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -25735,7 +25732,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.RawImage
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.16862746, g: 0.15294118, b: 0.13725491, a: 0.22}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -25935,7 +25932,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Lighting.SunOrbitController
   sun: {fileID: 410087040}
   timer: {fileID: 215741474}
-  varyElevation: 1
   horizonElevation: 22
   noonElevation: 68
   sunColor:
@@ -30609,8 +30605,8 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1812618469}
-  - {fileID: 341622328}
   - {fileID: 1227369194}
+  - {fileID: 341622328}
   - {fileID: 1648420493}
   - {fileID: 259773523}
   - {fileID: 173403004}
@@ -31548,10 +31544,6 @@ MonoBehaviour:
   wallpaperInterval: 0.3
   tint: {r: 0.16862746, g: 0.15294118, b: 0.13725491, a: 1}
   tintStrength: 0.22
-  ambientInfluence: 0.55
-  ambientMargin: 10
-  ambientThickness: 8
-  ambientResponse: 6
 --- !u!114 &861211984
 MonoBehaviour:
   m_ObjectHideFlags: 0

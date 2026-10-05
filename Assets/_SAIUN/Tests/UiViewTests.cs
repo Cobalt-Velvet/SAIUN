@@ -166,12 +166,12 @@ namespace _SAIUN.Tests
             Assert.AreEqual(PomodoroState.Interrupted, _sm.CurrentState);
             Assert.AreEqual("괜찮아요", _bar.CurrentButtonLabel);
             Assert.IsTrue(_bar.PrimaryButton.interactable);
-            Assert.AreEqual("INTERRUPTED 7", _hud.PhaseText);
+            Assert.AreEqual("유예 7초", _hud.PhaseText);
 
             _bar.PrimaryButton.onClick.Invoke();
             Assert.AreEqual(PomodoroState.Focus, _sm.CurrentState);
             Assert.AreEqual("정지", _bar.CurrentButtonLabel);
-            Assert.AreEqual("POMODORO", _hud.PhaseText);
+            Assert.AreEqual("집중", _hud.PhaseText);
         }
 
         [Test]
@@ -224,7 +224,7 @@ namespace _SAIUN.Tests
             Assert.IsTrue(_hud.IsSecondaryVisible);
             string clock = DateTime.Now.ToString("HH:mm");
             Assert.IsTrue(_hud.SecondaryText == clock || Math.Abs((DateTime.Now - DateTime.ParseExact(_hud.SecondaryText, "HH:mm", null)).TotalMinutes) <= 1);
-            Assert.AreEqual("POMODORO", _hud.PhaseText);
+            Assert.AreEqual("집중", _hud.PhaseText);
 
             Advance(61);
             Assert.AreEqual("03:59", _hud.PrimaryText);
@@ -241,7 +241,7 @@ namespace _SAIUN.Tests
 
             Advance(300);   // 1세트 완료 → ShortBreak
             Assert.AreEqual(1, _hud.FilledDotCount);
-            Assert.AreEqual("SHORT BREAK", _hud.PhaseText);
+            Assert.AreEqual("짧은 휴식", _hud.PhaseText);
             Assert.AreEqual("01:00", _hud.PrimaryText);
 
             Advance(60);
@@ -251,7 +251,7 @@ namespace _SAIUN.Tests
             Advance(60);
             Advance(300);   // 3세트 완료 → LongBreak
             Assert.AreEqual(3, _hud.FilledDotCount);
-            Assert.AreEqual("LONG BREAK", _hud.PhaseText);
+            Assert.AreEqual("긴 휴식", _hud.PhaseText);
 
             Advance(300);   // → Idle
             Assert.IsFalse(_hud.AreDotsVisible);

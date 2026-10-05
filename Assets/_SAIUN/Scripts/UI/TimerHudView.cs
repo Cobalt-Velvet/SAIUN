@@ -27,11 +27,13 @@ namespace _SAIUN.Scripts.UI
 
         [Header("표시 형식")]
         [SerializeField] private string clockFormat = "HH:mm";
-        [SerializeField] private string focusLabel = "POMODORO";
-        [SerializeField] private string shortBreakLabel = "SHORT BREAK";
-        [SerializeField] private string longBreakLabel = "LONG BREAK";
-        [SerializeField] private string interruptedLabel = "INTERRUPTED";
-        [SerializeField] private string failedLabel = "FAILED";
+        [SerializeField] private string focusLabel = "집중";
+        [SerializeField] private string shortBreakLabel = "짧은 휴식";
+        [SerializeField] private string longBreakLabel = "긴 휴식";
+        [SerializeField] private string interruptedLabel = "유예";
+        [Tooltip("유예 중 남은 초를 넣어 보여 줄 형식. {0}이 남은 초다.")]
+        [SerializeField] private string graceFormat = "유예 {0}초";
+        [SerializeField] private string failedLabel = "실패";
 
         [Header("색상")]
         [SerializeField] private Color textColor = SaiunPalette.HudText;
@@ -109,7 +111,7 @@ namespace _SAIUN.Scripts.UI
         private void HandleGraceTick(float remainingSeconds)
         {
             if (phaseLabel == null || gameManager.StateMachine.CurrentState != PomodoroState.Interrupted) return;
-            phaseLabel.text = $"{interruptedLabel} {Mathf.CeilToInt(remainingSeconds)}";
+            phaseLabel.text = string.Format(graceFormat, Mathf.CeilToInt(remainingSeconds));
         }
 
         // 시계는 매 프레임이 아니라 1초마다 확인하고, 표시 문자열이 바뀔 때만 갱신한다.

@@ -7,26 +7,26 @@ using UnityEngine.UI;
 namespace _SAIUN.Scripts.Weather
 {
     /// <summary>
-    /// 카드 위쪽의 하늘 (2026-09-28, 사용자: "구름이 이 프로그램의 50%", "가슴이 웅장해지고 노스탤지어를 느껴야").
+    /// 카드 위쪽의 하늘. 웅장함과 그리움을 주는 것이 목표다.
     /// 셰이더(Hidden/SAIUN/Sky)가 웅대적운 탑과 채운 갓구름을 부피로 그리고, 지평선 아래는 하늘을 비추는 바다와 모래밭이다.
     ///  - 세션 진행률(해)이 하루다: 아침 금빛 → 한낮 파랑 → 늦은 오후 금빛 → 해 질 녘 노을.
     ///  - 웅대적운: 드물게, 특별하게. 맑은 날 한낮~오후에 가끔 솟아 몇 분에 걸쳐 자라고, 머물다 스러진다(예보가 정한다).
     ///    솟을 때마다 모양이 다르다. 먹구름이 오면 적란운으로 끝까지 솟고 어두워진다.
-    ///  - 채운: 탑과 따로, 왼쪽 빈 하늘의 렌즈구름 무리 가장자리에 빛깔 띠가 선다. 몇 분마다 피었다 사라지며 대부분의 시간 보인다.
+    ///  - 채운: 탑과 따로, 왼쪽 빈 하늘의 렌즈구름 무리 가장자리에 빛깔 띠가 선다. 몇 분마다 피었다 사라지며, 필 때마다 자리가 달라진다.
     ///    탑이 다 자라면 꼭대기의 갓구름에도 채운이 선다(가끔 보는 장면). SAIUN을 만든 이유가 웅대적운과 채운이다.
     ///  - 나머지 구름(권운·권적운·권층운·고적운·고층운·층적운·층운·난층운·적운 떼, 모루·유방운·아치구름·꼬리구름,
     ///    구멍구름·물결구름·야광운)은 예보(CloudForecast)가 때·날씨·바람과 무작위로 정한 양을 향해 천천히 옮겨 간다.
     ///  - 하늘빛은 셰이더가 대기 산란으로 셈한다. 해 방향은 정원 그림자를 만드는 해(SunOrbitController)의 방위를 카메라에서 본
     ///    그대로 쓰고, 고도는 아침엔 금빛 아침 해, 저녁엔 지평선에 닿는 해로 넓힌다. 해가 움직이면 하늘빛도 따라 바뀐다.
     ///  - 쉬는 동안 해가 지면(해의 Twilight) 노을·박명 하늘이 되고, 높은 구름만 붉게 남는다.
-    ///  - 구름은 층마다 다른 바람을 탄다(2026-09-29 사용자 "모든 구름의 속도가 같은 것도 다르게"). 낮은 구름은 땅 바람
+    ///  - 구름은 층마다 다른 바람을 탄다. 낮은 구름은 땅 바람
     ///    (풍향계·빗줄기·바람결과 같은 바람)을 타고, 높이 오를수록 바람이 빨라지고 시계 방향으로 비껴 돌며 방향도 한결같다.
     ///    렌즈구름(채운)과 웅대적운 탑은 제자리에 선다(렌즈구름은 산 너머 선 물결이라 바람이 불어도 머문다).
-    ///  - 지평선 아래는 바다다(2026-09-29 사용자 "해변은 어떰? 빛에 의해서 난반사가 일어나도록"). 물이 하늘·구름·노을을
+    ///  - 지평선 아래는 바다다. 물이 하늘·구름·노을을
     ///    비추고, 해가 앞바다로 지는 저녁엔 윤슬 길이 선다. 물결은 땅 바람을 따라 흐르고 파도가 모래밭에 밀려왔다 빠진다.
     ///    바다는 보이는 장을 만들 때 매 프레임 그리므로 윤슬이 반짝인다(하늘은 여전히 1/8씩 그린다).
-    ///  - 창 전체 유리(설정)를 켜면 하늘과 바다 없이 구름만 바탕화면 유리 위에 띄운다(2026-09-29 사용자
-    ///    "투명도 토글은 창 전체"). 바탕화면을 읽는 유리는 이때만 켠다.
+    ///  - 창 전체 유리(설정)를 켜면 하늘과 바다 없이 구름만 바탕화면 유리 위에 띄운다.
+    ///    바탕화면을 읽는 유리는 이때만 켠다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -53,6 +53,7 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int LowId = Shader.PropertyToID("_Low");
         private static readonly int SpecialId = Shader.PropertyToID("_Special");
         private static readonly int ExtraId = Shader.PropertyToID("_Extra");
+        private static readonly int LensPlaceId = Shader.PropertyToID("_LensPlace");
         private static readonly int SkyTimeId = Shader.PropertyToID("_SkyTime");
         private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static readonly int PhaseId = Shader.PropertyToID("_Phase");
@@ -216,9 +217,6 @@ namespace _SAIUN.Scripts.Weather
 
         /// <summary>구름 예보.</summary>
         public CloudForecast Forecast => forecast;
-
-        /// <summary>구름층이 뜨는 높이.</summary>
-        public CloudHeights Heights => cloudHeights;
 
         /// <summary>지금 하늘에 뜬 구름의 양(0~1). 예보의 목표로 천천히 옮겨 간다.</summary>
         public float Coverage(CloudKind kind) => _coverage[(int)kind];
@@ -472,6 +470,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetVector(LowId, Pack(CloudKind.Stratocumulus, CloudKind.Stratus, CloudKind.Cumulus, CloudKind.Nimbostratus));
             _material.SetVector(SpecialId, Pack(CloudKind.Anvil, CloudKind.Mammatus, CloudKind.Arcus, CloudKind.FallstreakHole));
             _material.SetVector(ExtraId, new Vector4(Coverage(CloudKind.KelvinHelmholtz), Twilight(), TowerPresence, Night()));
+            _material.SetVector(LensPlaceId, forecast.LensPlace);
         }
 
         private Vector4 Pack(CloudKind x, CloudKind y, CloudKind z, CloudKind w)

@@ -1,5 +1,4 @@
-// 카드의 하늘: 대기 산란으로 셈한 하늘빛 위에 웅대적운 탑, 채운, 그리고 나머지 구름 모두를 그린다
-// (2026-09-28, 사용자 "구름이 이 프로그램의 절반", "하늘이 인공적이라 미려하게").
+// 카드의 하늘: 대기 산란으로 셈한 하늘빛 위에 웅대적운 탑, 채운, 그리고 나머지 구름 모두를 그린다.
 // 본문은 시안 실험실(WebGL)과 같은 소스에서 만든다. 보는 사람은 원점(km), +z가 앞, +x가 오른쪽, +y가 위.
 //  - 하늘빛은 레일리·미 산란과 오존 흡수로 셈한다. 해 방향(_SunDir)은 정원 그림자를 만드는 해와 같은 방위라,
 //    해가 움직이면 하늘빛(짙은 파랑, 금빛 지평선, 노을, 땅 그림자와 푸른 박명)이 따라 바뀐다.
@@ -29,6 +28,7 @@ Shader "Hidden/SAIUN/Sky"
         _Low ("Stratocumulus, Stratus, Cumulus, Nimbostratus", Vector) = (0, 0, 0, 0)
         _Special ("Anvil, Mammatus, Arcus, Fallstreak Hole", Vector) = (0, 0, 0, 0)
         _Extra ("Kelvin-Helmholtz, Twilight, Tower, Night", Vector) = (0, 0, 1, 0)
+        _LensPlace ("Lenticular Place (azimuth, elevation, scale, pattern)", Vector) = (0, 0, 1, 0)
         _SunDir ("Sun Direction (sky space)", Vector) = (0, 0.7, -0.7, 0)
         _Moon ("Moon Direction (sky space) and lit fraction", Vector) = (0, -1, 0, 0)
         _AltHigh ("Altitude km: Cirrus, Cirrocumulus, Cirrostratus", Vector) = (9, 7.6, 8.4, 0)
@@ -74,6 +74,7 @@ Shader "Hidden/SAIUN/Sky"
             float4 _Low;
             float4 _Special;
             float4 _Extra;
+            float4 _LensPlace;
             float4 _SunDir;
             float4 _Moon;
             float4 _AltHigh;
@@ -159,20 +160,20 @@ Shader "Hidden/SAIUN/Sky"
             STATIC const float EARTH_RADIUS = 6371.0;
             // 겉껍질이 반투명하게 비치도록 낮춘 소광 계수. 높으면 겉부터 꽉 막혀 석고 덩어리처럼 보인다.
             STATIC const float SIGMA = 9.0;
-            // 웅대적운 탑(2026-10-01 사용자가 준 사진처럼): 송이가 빽빽해 겉이 또렷하고 송이 사이 골에 그늘이 깊다.
+            // 웅대적운 탑(사진 속 웅대적운처럼): 송이가 빽빽해 겉이 또렷하고 송이 사이 골에 그늘이 깊다.
             // 해 받는 면은 하얗게 빛나고 그늘은 하늘빛을 받아 푸르다. 그래서 탑만 더 짙고, 해를 더 받고, 흩어진 빛과 하늘빛은 덜 받는다.
             STATIC const float TOWER_SIGMA = 2.5;
             STATIC const float TOWER_SUN = 1.8;
             STATIC const float TOWER_MULTI = 0.16;
             STATIC const float TOWER_AMBIENT = 0.6;
-            // 뭉게구름 떼도 탑처럼(2026-10-01 "강한 명암"): 해 받는 윗면은 밝고 밑면·그늘은 깊다.
+            // 뭉게구름 떼도 탑처럼 명암이 강하다: 해 받는 윗면은 밝고 밑면·그늘은 깊다.
             STATIC const float CUMULUS_SIGMA = 2.0;
             STATIC const float CUMULUS_SUN = 1.4;
             STATIC const float CUMULUS_MULTI = 0.24;
             STATIC const float CUMULUS_AMBIENT = 0.75;
             STATIC const int MAX_LAYERS = 14;
 
-            // 구름층 고도(km). 같은 종류라도 늘 같은 높이에 뜨지 않는다(2026-10-01 사용자 "다양화"): SkyView가 층이 보이지 않는
+            // 구름층 고도(km). 같은 종류라도 늘 같은 높이에 뜨지 않는다: SkyView가 층이 보이지 않는
             // 사이에 범위 안에서 새 높이를 골라 _AltHigh(권운·권적운·권층운)·_AltLow(고적운·고층운·층적운·적운 밑면)로 넘긴다.
             // 적운 밑면은 하루 동안 올라간다(땅이 데워지며 응결 높이가 오른다).
             #define CIRRUS_ALTITUDE (_AltHigh.x)
@@ -308,7 +309,7 @@ Shader "Hidden/SAIUN/Sky"
 
             float RayleighPhase(float mu) { return 3.0 / (16.0 * PI) * (1.0 + mu * mu); }
 
-            // 편광 하늘(2026-10-01 사용자 "더 극적이었으면" → "강한 명암·짙은 하늘"): 해에서 90° 떨어진 하늘의 한 번 흩어진
+            // 편광 하늘(짙은 하늘로 극적인 명암을 만든다): 해에서 90° 떨어진 하늘의 한 번 흩어진
             // 빛은 거의 다 편광돼 있다(레일리 편광도 sin²θ/(1+cos²θ)). 사진가가 편광 필터로 그 빛을 걸러 하늘을 짙게 하듯
             // POLARIZER만큼 걸러 해 반대편·옆 하늘이 짙은 파랑이 된다. 구름과 여러 번 흩어진 빛은 편광되지 않아 그대로다.
             STATIC const float POLARIZER = 0.6;
@@ -336,7 +337,7 @@ Shader "Hidden/SAIUN/Sky"
                 gMulti += NIGHT_GLOW * smoothstep(0.2, 0.8, Night());
             }
 
-            // 불타는 노을(2026-10-01 사용자 "더 극적이었으면"): 해가 지평선 가까이(위 10°~아래 4°) 있으면 구름이 받는 햇빛이
+            // 불타는 노을: 해가 지평선 가까이(위 10°~아래 4°) 있으면 구름이 받는 햇빛이
             // 더 세고 더 붉다. 실제로도 낮은 해는 긴 공기를 지나 붉어지지만, 노을 사진처럼 구름 밑이 타오르게 빛깔을 한 번 더 짙게 한다.
             float SunsetFire() {
                 float el = SunElevationDeg();
@@ -484,7 +485,7 @@ Shader "Hidden/SAIUN/Sky"
                 return float3(1.0, 0.97, 0.9) * (lit * maria + EARTHSHINE) * MOON_BRIGHT * edge;
             }
 
-            // 채운의 빛깔(2026-10-01 다시 만듦, 사용자 "채운이 전혀 매력적이지 않고 셰이더 오류처럼 보인다"):
+            // 채운의 빛깔:
             // 작고 고른 물방울이 휘게 한 빛이 겹쳐 생기는 간섭 빛깔이라 차례가 정해져 있다. 높은 차수의 부드러운 파스텔만 쓴다:
             // 분홍 → 복숭아빛 금색 → 연두 → 물빛 → 연보라 → 분홍…(진주조개 안쪽처럼). 빛깔마다 밝기가 비슷해 구름의 밝기를 바꾸지 않는다.
             // (빛깔별 간섭 세기를 그대로 쓰면 어두운 차수에서 자홍·청록 가시가 튀어 형광 테두리처럼 보였다.) ph 1이 한 바퀴다.
@@ -658,7 +659,7 @@ Shader "Hidden/SAIUN/Sky"
             // 맑은 날 낮게 흩어진 뭉게구름. 밑면이 평평하고 위가 둥글게 부푼다. 탑보다 가까워 크게 보이고, 오후일수록 자란다.
 
             // 송이 꼭대기의 높이(밑면에서 km). 0이면 구름이 없다. 송이는 서로 떨어져 있고 오후일수록 높이 자란다.
-            // 송이 크기는 고르지 않다(2026-10-01 사용자 "뭉게구름의 평균적인 크기가 전부 균일해 보이는"): 실제 뭉게구름 밭은
+            // 송이 크기는 고르지 않다: 실제 뭉게구름 밭은
             // 작은 송이가 아주 많고 큰 송이는 드물며, 작은 것은 납작하고(편평운) 큰 것일수록 높이 솟는다(중간운).
             // 크기가 다른 세 겹의 송이 자리(간격 약 1.2·2.5·5.5 km)를 겹치고, 클수록 드물게(문턱을 높게) 하고 높이 솟게 한다.
             float CumulusHeight(float2 xz) {
@@ -675,7 +676,7 @@ Shader "Hidden/SAIUN/Sky"
                 return max(h, 0.0) * grow;
             }
 
-            // 송이 하나는 봉우리 두세 개가 솟은 덩어리다(2026-10-01 사용자 "기본 구름의 모양이 너무 밋밋하다"): 몸통(CumulusHeight)의
+            // 송이 하나는 봉우리 두세 개가 솟은 덩어리다: 몸통(CumulusHeight)의
             // 지붕을 봉우리 칸(약 0.8 km)이 군데군데 밀어 올리고, 겉에는 콜리플라워 송이(약 0.3 km)와 잔 혹(약 0.12 km)이 부푼다.
             // 위쪽일수록 송이가 불룩하고 겉면이 또렷하며(해 받는 윗면), 밑면은 평평하고 조금 흐릿하다.
             // 바람에 흘러가며 송이가 천천히 끓어오른다.
@@ -832,7 +833,7 @@ Shader "Hidden/SAIUN/Sky"
             // 그래야 이 앱의 주인공인 탑이 층구름에 다 가려지지 않는다. x는 층 위 자리의 가로(km).
             float TowerSideThin(float x) { return 1.0 - 0.55 * smoothstep(-2.0, 9.0, x); }
 
-            // 고적운(양떼구름, 2026-10-01 사용자 "기본 구름의 모양이 너무 밋밋하다"): 둥근 구름 덩이(약 0.4~0.8 km)가 파란 틈을
+            // 고적운(양떼구름): 둥근 구름 덩이(약 0.4~0.8 km)가 파란 틈을
             // 두고 물결 줄로 늘어선다. 덩이 크기는 자리마다 다르고 결이 곳곳에서 휜다. 덩이 가운데가 두꺼워 둥근 덩이로 읽히고,
             // 해 쪽 가장자리는 밝고 반대쪽은 잿빛이다(그늘은 겹치는 쪽이 해 쪽 가까운 자리의 두께로 셈한다).
             // blur는 한 화소가 덮는 길이(km): 덩이가 화소보다 잘아지는 지평선 쪽은 평균 덮임으로 옅은 너울이 된다.
@@ -923,7 +924,7 @@ Shader "Hidden/SAIUN/Sky"
                 return clamp(max(big, small) + lumps * 0.12, 0.0, 1.0) * area;
             }
 
-            // 광선이 밑면에서 늘어진 유방운 주머니 면과 처음 만나는 거리(2026-10-02, 사용자 "유방운을 손봐야"):
+            // 광선이 밑면에서 늘어진 유방운 주머니 면과 처음 만나는 거리:
             // 평평한 판에 음영만 그리면 비늘처럼 보이므로, 주머니가 실제로 MAMMATUS_DEPTH만큼 늘어진 높이 면을 걸어서 찾는다.
             // 그래서 지평선 쪽에서는 주머니 밑자락이 겹치며 윤곽을 짓는다. 못 만나면 밑면(층)까지. pouchAt은 만난 자리의 주머니 값이다.
             float MammatusHit(float3 ro, float3 rd, out float pouchAt) {
@@ -971,10 +972,17 @@ Shader "Hidden/SAIUN/Sky"
             float2 Direction(float3 rd) { return float2(degrees(atan2(rd.x, rd.z)), degrees(asin(clamp(rd.y, -1.0, 1.0)))); }
 
             // 채운 렌즈구름: 산을 넘는 바람의 물결 꼭대기에 생겨 제자리에 머무는 매끈한 렌즈. 막 생긴 작고 고른 물방울이라 채운이 가장 곱다.
-            // 렌즈마다 가운데(방위, 고도)와 반폭(가로, 두께). 탑과 시계를 피해 왼쪽 빈 하늘에 둔다. 큰 렌즈 아래로 작은 렌즈가 접시처럼 포개진다.
-            STATIC const float4 LENS0 = float4(-9.0, 17.0, 17.0, 3.0);
-            STATIC const float4 LENS1 = float4(-12.0, 12.2, 12.0, 1.7);
-            STATIC const float4 LENS2 = float4(-1.5, 23.0, 7.0, 1.1);
+            // 렌즈마다 무리 가운데에서 떨어진 자리(방위, 고도)와 반폭(가로, 두께). 큰 렌즈 아래로 작은 렌즈가 접시처럼 포개진다.
+            // 무리는 탑과 시계를 피해 왼쪽 빈 하늘(LENS_HOME)에 서고, 나타날 때마다 _LensPlace만큼 옮겨 크기·좌우·셋째 렌즈가 달라진다.
+            // 가장 높이 올라도 시계 밑 지금 시각 글자(고도 약 22.5°)에 닿지 않는다.
+            STATIC const float2 LENS_HOME = float2(-9.0, 15.5);
+            STATIC const float4 LENS0 = float4(0.0, 0.0, 17.0, 3.0);
+            STATIC const float4 LENS1 = float4(-3.0, -4.8, 12.0, 1.7);
+            STATIC const float4 LENS2 = float4(7.5, 4.5, 7.0, 1.1);
+            // 무리 가운데에서 렌즈가 닿는 가장 먼 거리(°, 배율 1). 이 밖은 셈하지 않는다.
+            STATIC const float2 LENS_REACH = float2(18.0, 9.5);
+            // 셋째(작은 위쪽) 렌즈가 빠지는 비율
+            STATIC const float LENS_THIRD_ABSENT = 0.35;
             // 렌즈구름이 떠 있는 높이(km). 뭉게구름보다 높아 가까운 뭉게구름이 앞을 가린다.
             STATIC const float LENS_ALTITUDE = 5.2;
             // 채운 빛깔 띠: 가장자리의 차례(µm), 가장자리에서 가운데까지 바뀌는 폭, 해에서 1°마다 바뀌는 양, 해에서 멀 때 남는 세기, 세기
@@ -1021,9 +1029,22 @@ Shader "Hidden/SAIUN/Sky"
                 return clamp(t, 0.0, 1.0) * smoothstep(0.0, 0.3, halfThickness) * lerp(0.8, 1.0, plates);
             }
 
+            // 렌즈 하나를 이번 자리로 옮긴다. mirror가 -1이면 무리를 좌우로 뒤집는다.
+            float4 PlaceLens(float4 lens, float mirror) {
+                float scale = _LensPlace.z;
+                return float4(LENS_HOME + _LensPlace.xy + lens.xy * float2(mirror, 1.0) * scale, lens.zw * scale);
+            }
+
             float LensField(float2 dir) {
-                if (_Mid.z <= 0.001 || dir.x > 9.0 || dir.y < 8.0 || dir.y > 27.0) return 0.0;
-                float d = max(LensShape(dir, LENS0, 0.1), max(LensShape(dir, LENS1, 0.4) * 0.85, LensShape(dir, LENS2, 0.7) * 0.7));
+                if (_Mid.z <= 0.001) return 0.0;
+                float2 rel = (dir - LENS_HOME - _LensPlace.xy) / max(_LensPlace.z, 0.1);
+                if (abs(rel.x) > LENS_REACH.x || abs(rel.y) > LENS_REACH.y) return 0.0;
+                float salt = _LensPlace.w;
+                float mirror = H1(salt * 17.3 + 0.5) < 0.5 ? -1.0 : 1.0;
+                float third = step(LENS_THIRD_ABSENT, H1(salt * 23.9 + 0.25));
+                float d = max(LensShape(dir, PlaceLens(LENS0, mirror), 0.1 + salt),
+                                            max(LensShape(dir, PlaceLens(LENS1, mirror), 0.4 + salt) * 0.85,
+                                                    LensShape(dir, PlaceLens(LENS2, mirror), 0.7 + salt) * 0.7 * third));
                 if (d <= 0.0) return 0.0;
                 // 비단 결: 긴 축을 따라 늘어난 아주 옅은 줄
                 float silk = N(float3(dir * float2(0.05, 0.6), 0.83) + float3(_SkyTime * 0.0015, 0.0, 0.0)).r;
@@ -1056,7 +1077,7 @@ Shader "Hidden/SAIUN/Sky"
 
             // 켈빈-헬름홀츠 물결구름: 위아래 바람이 어긋나는 얇은 층의 윗면이 바다의 부서지는 파도처럼 줄지어 솟아
             // 앞(오른쪽, 위 바람이 부는 쪽)으로 말려 넘어간다. 몇 분이면 사라진다. 시계 아래 왼쪽 하늘(방위 −29~3°, 고도 15~29°).
-            // 2026-10-02(사용자 "물결구름을 손봐야"): 가는 나선이 손글씨·아이콘처럼 보여, 부서지는 파도의 모양으로 다시 빚었다.
+            // 가는 나선은 손글씨·아이콘처럼 보이므로 부서지는 파도의 모양으로 빚는다.
             //  - 등: 층에서 완만하게 솟아 마루로 오르는 꽉 찬 덩어리
             //  - 입술: 마루에서 앞으로 던져져 아래로 말려 내려오는 두툼한 관(끝으로 갈수록 가늘고 찢긴다)
             //  - 통: 입술 밑의 빈 속. 하늘이 비친다. 그 안쪽 벽(curl)은 해를 등져 그늘진다.
@@ -1733,7 +1754,7 @@ Shader "Hidden/SAIUN/Sky"
             float3 LightScale() { return MoonLights() ? MOON_TINT * (MOON_LIGHT * MoonShine()) : float3(1.0, 1.0, 1.0); }
 
             // ==== 바다와 해변 (보이는 장을 만드는 패스, 매 프레임) ====
-            // 지평선 아래는 바다다(2026-09-29 사용자 "해변은 어떰? 빛에 의해서 난반사가 일어나도록").
+            // 지평선 아래는 바다다. 빛이 물결에 흩어져 반짝인다.
             // 물은 하늘을 비추므로 하늘의 빛깔·구름·노을이 그대로 아래로 이어진다.
             //  - 물결 면이 비추는 하늘은 이미 그린 하늘 장에서 거울 방향으로 읽는다. 웅대적운과 구름도 물에 비친다.
             //  - 해 쪽으로는 물결 면마다 햇빛을 튕겨 윤슬 길이 선다(콕스-멍크 물결 기울기 분포). 반짝임은 매 프레임 새로 인다.
@@ -1789,8 +1810,8 @@ Shader "Hidden/SAIUN/Sky"
             // 물결 높이(0~1).
             //  - 너울: 먼바다에서 밀려오는 긴 결. 물가에 가까워지며 해안과 나란히 누워 늘 물가 쪽(앞)으로 온다. 바람과 상관없다.
             //  - 잔물결: 바람이 이는 잔 결 두 겹. _SeaWind.xy(바람을 따라 흘러간 거리, km)만큼 밀려 흐른다.
-            // 결을 바람 방향으로 돌리면 바람이 조금만 바뀌어도 먼 물결이 눈을 축으로 휩쓸리듯 돈다(2026-09-30 사용자 "수면이 너무 빨리
-            // 움직인다"). 그래서 무늬는 돌리지 않고 흘러간 거리로만 민다. 바람이 바뀌면 흐르는 방향이 서서히 바뀔 뿐 무늬는 튀지 않는다.
+            // 결을 바람 방향으로 돌리면 바람이 조금만 바뀌어도 먼 물결이 눈을 축으로 휩쓸리듯 돌아
+            // 수면이 너무 빨리 움직여 보인다. 그래서 무늬는 돌리지 않고 흘러간 거리로만 민다. 바람이 바뀌면 흐르는 방향이 서서히 바뀔 뿐 무늬는 튀지 않는다.
             // 잔물결 주파수는 SEA_DRIFT_PERIOD(km)에서 정수 번 돌게 골라, 흘러간 거리를 그 주기로 되감아도 무늬가 이어진다.
             float WaveHeight(float2 p) {
                 float t = _SeaTime;

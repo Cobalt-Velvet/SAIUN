@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace _SAIUN.Tests
 {
     /// <summary>
-    /// 구름 예보(2026-09-28): 맑은 날 장면은 몇 분마다 때·바람에 따라 무작위로 바뀌고,
+    /// 구름 예보: 맑은 날 장면은 몇 분마다 때·바람에 따라 무작위로 바뀌고,
     /// 비는 권층운 → 고층운 → 난층운, 뇌우는 모루·아치구름·유방운, 드문 구름은 정해진 조건에서만 뜬다.
     /// </summary>
     public class CloudForecastTests
@@ -329,7 +329,7 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 채운_렌즈구름은_주기의_대부분_떠_있고_층구름이_덮으면_숨는다()
+        public void 채운_렌즈구름은_주기마다_피었다_사라지고_층구름이_덮으면_숨는다()
         {
             // 난수 0이면 맑음 장면(렌즈구름을 가리는 층이 없다)
             CloudForecast forecast = Make(() => 0f);
@@ -357,6 +357,36 @@ namespace _SAIUN.Tests
             rainy.Rain = 0.6f;
             forecast.Tick(0.01f, rainy);
             Assert.AreEqual(0f, forecast.Target(CloudKind.Lenticular), 0.0001f, "비구름이 덮으면 숨는다");
+        }
+
+        [Test]
+        public void 채운_렌즈구름은_주기마다_새_자리에_뜨고_떠_있는_동안에는_옮기지_않는다()
+        {
+            var rng = new Random(11);
+            CloudForecast forecast = Make(() => (float)rng.NextDouble());
+            Set(forecast, "lensCycleMinutes", 1f);
+            forecast.Tick(0.01f, Day(0.3f));
+
+            var places = new List<UnityEngine.Vector4>();
+            UnityEngine.Vector4 current = forecast.LensPlace;
+            places.Add(current);
+            for (int i = 0; i < 240; i++)
+            {
+                float before = forecast.Target(CloudKind.Lenticular);
+                forecast.Tick(1f, Day(0.3f));
+                if (forecast.LensPlace == current) continue;
+                Assert.Less(before, 0.0001f, "자리는 사라져 있을 때만 바뀐다");
+                current = forecast.LensPlace;
+                places.Add(current);
+            }
+
+            Assert.AreEqual(5, places.Count, "1분 주기로 4분 동안 네 번 새로 자리를 잡는다");
+            foreach (UnityEngine.Vector4 place in places)
+            {
+                Assert.That(place.x, Is.InRange(-6f, 1.5f), "탑을 가리지 않게 왼쪽으로 치우친다");
+                Assert.That(place.y, Is.InRange(-3f, 0.5f), "지금 시각 글자 아래에 머문다");
+                Assert.That(place.z, Is.InRange(0.75f, 1.05f));
+            }
         }
     }
 }

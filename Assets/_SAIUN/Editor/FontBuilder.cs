@@ -8,7 +8,7 @@ using UnityEngine.TextCore.LowLevel;
 namespace _SAIUN.Editor
 {
     /// <summary>
-    /// 앱 글꼴 (2026-09-29, 사용자 선택 Sarasa Gothic K, SIL OFL 1.1).
+    /// 앱 글꼴: Sarasa Gothic K (SIL OFL 1.1).
     ///  - 글자: Tools/Fonts/subset_sarasa.py가 앱 고정 문구의 글자와 입력용 한글 완성형·가나·영문·기호만 남긴 TTF
     ///    (Art/Fonts/Sarasa, 굵기당 약 2 MB, 라이선스 OFL.txt 함께).
     ///  - 시계 큰 숫자는 Light, 나머지 글은 Regular. 둘 다 동적 아틀라스라 사용자가 친 글자도 같은 글꼴로 보인다.

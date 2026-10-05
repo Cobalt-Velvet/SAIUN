@@ -51,23 +51,6 @@ namespace _SAIUN.Scripts.UI
         [Range(0f, 1f)]
         [SerializeField] private float tintStrength = 0.22f;
 
-        [Header("주변 반응")]
-        [Tooltip("창 둘레의 색을 얼마나 틴트에 섞을지. 0이면 팔레트 색만 쓴다.")]
-        [Range(0f, 1f)]
-        [SerializeField] private float ambientInfluence = 0.55f;
-
-        [Tooltip("창에서 이만큼 떨어진 바깥을 읽는다(픽셀). 창 그림자를 피하려고 띄운다.")]
-        [Range(2, 32)]
-        [SerializeField] private int ambientMargin = 10;
-
-        [Tooltip("읽어 들이는 띠의 두께(픽셀).")]
-        [Range(2, 32)]
-        [SerializeField] private int ambientThickness = 8;
-
-        [Tooltip("주변 색이 바뀔 때 따라가는 속도. 낮을수록 부드럽게 변한다.")]
-        [Range(0.5f, 20f)]
-        [SerializeField] private float ambientResponse = 6f;
-
         /// <summary>마지막 읽기가 성공했는지.</summary>
         public bool IsCapturing { get; private set; }
 
@@ -95,15 +78,8 @@ namespace _SAIUN.Scripts.UI
         private readonly object _shared = new object();
         private Vector2Int _sharedPosition;
         private DesktopCapture.Source _sharedSource;
-        private bool _sharedAmbientValid;
-        private readonly Color[] _sharedAmbient = new Color[4];
-        private readonly Color[] _workerAmbient = new Color[4];
         private RenderTexture _blurA;
         private RenderTexture _blurB;
-        private readonly Color[] _ambientSamples = new Color[4];
-        private readonly Color[] _ambientCorners = new Color[4];
-        private Texture2D _ambientTexture;
-        private bool _ambientReady;
 
         private void Awake()
         {
@@ -114,8 +90,7 @@ namespace _SAIUN.Scripts.UI
             if (tintOverlay != null)
             {
                 tintOverlay.raycastTarget = false;
-                tintOverlay.color = Color.white;
-                EnsureAmbientTexture();
+                ApplyTint();
             }
         }
 
@@ -147,14 +122,6 @@ namespace _SAIUN.Scripts.UI
 
             ReleaseRenderTexture(ref _blurA);
             ReleaseRenderTexture(ref _blurB);
-
-            if (_ambientTexture != null)
-            {
-                if (Application.isPlaying) Destroy(_ambientTexture);
-                else DestroyImmediate(_ambientTexture);
-                _ambientTexture = null;
-            }
-            _ambientReady = false;
         }
 
         /// <summary>
@@ -204,100 +171,12 @@ namespace _SAIUN.Scripts.UI
             texture = null;
         }
 
-        /// <summary>틴트를 바꾼다.</summary>
-        public void SetTint(Color color, float strength)
-        {
-            tint = color;
-            tintStrength = Mathf.Clamp01(strength);
-            EnsureAmbientTexture();
-        }
-
-        /// <summary>
-        /// 창 둘레의 색을 읽어 틴트에 섞는다.
-        /// 유리 안에 비치는 그림은 바탕화면이지만, 색만은 실제로 뒤에 있는 것을 따라가게 만든다.
-        /// 밝은 창 위로 옮기면 유리가 그쪽으로 물든다.
-        /// </summary>
-        private void UpdateAmbientTint()
+        // 유리 위에 팔레트 색을 얇게 깐다. 흐린 뒷배경이 하늘 색과 따로 놀지 않게 묶어 준다.
+        private void ApplyTint()
         {
             if (tintOverlay == null) return;
-            EnsureAmbientTexture();
-
-            bool sampled;
-            lock (_shared)
-            {
-                sampled = _sharedAmbientValid;
-                if (sampled) System.Array.Copy(_sharedAmbient, _ambientSamples, _ambientSamples.Length);
-            }
-
-            if (!sampled)
-            {
-                // 못 읽었거나 화면 전체를 읽는 모드면 팔레트 색만 쓴다.
-                for (int i = 0; i < _ambientCorners.Length; i++)
-                {
-                    _ambientCorners[i] = SaiunPalette.WithAlpha(tint, tintStrength);
-                }
-                ApplyAmbientTexture();
-                return;
-            }
-
-            // 네 변의 색으로 네 귀퉁이를 만든다. 쌍선형 확대가 그 사이를 이어 준다.
-            // 창의 절반만 다른 창 위에 있어도 그쪽만 물든다.
-            Color top = _ambientSamples[DesktopCapture.AmbientTop];
-            Color bottom = _ambientSamples[DesktopCapture.AmbientBottom];
-            Color left = _ambientSamples[DesktopCapture.AmbientLeft];
-            Color right = _ambientSamples[DesktopCapture.AmbientRight];
-
-            // 텍스처는 아래에서 위로 채워지므로 아래쪽 두 칸이 먼저다.
-            Color[] target =
-            {
-                Blend(bottom, left), Blend(bottom, right),
-                Blend(top, left), Blend(top, right),
-            };
-
-            float step = _ambientReady ? Mathf.Clamp01(Time.unscaledDeltaTime * ambientResponse) : 1f;
-            for (int i = 0; i < _ambientCorners.Length; i++)
-            {
-                _ambientCorners[i] = Color.Lerp(_ambientCorners[i], target[i], step);
-            }
-            _ambientReady = true;
-
-            ApplyAmbientTexture();
-        }
-
-        /// <summary>두 변의 색을 섞고, 팔레트 틴트와 다시 섞는다.</summary>
-        private Color Blend(Color a, Color b)
-        {
-            Color ambient = Color.Lerp(a, b, 0.5f);
-            return SaiunPalette.WithAlpha(Color.Lerp(tint, ambient, ambientInfluence), tintStrength);
-        }
-
-        private void EnsureAmbientTexture()
-        {
-            if (_ambientTexture != null) return;
-
-            // 2×2면 충분하다. 쌍선형 확대가 부드러운 기울기를 만들어 준다.
-            _ambientTexture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
-            {
-                name = "GlassTint",
-                filterMode = FilterMode.Bilinear,
-                wrapMode = TextureWrapMode.Clamp,
-                hideFlags = HideFlags.HideAndDontSave,
-            };
-
-            for (int i = 0; i < _ambientCorners.Length; i++)
-            {
-                _ambientCorners[i] = SaiunPalette.WithAlpha(tint, tintStrength);
-            }
-            ApplyAmbientTexture();
-            if (tintOverlay != null) tintOverlay.texture = _ambientTexture;
-        }
-
-        private void ApplyAmbientTexture()
-        {
-            if (_ambientTexture == null) return;
-            _ambientTexture.SetPixels(_ambientCorners);
-            _ambientTexture.Apply(false, false);
-            if (tintOverlay != null && tintOverlay.texture != _ambientTexture) tintOverlay.texture = _ambientTexture;
+            tintOverlay.texture = null;
+            tintOverlay.color = SaiunPalette.WithAlpha(tint, tintStrength);
         }
 
         /// <summary>유리 모드에 맞는 읽기 대상을 고른다.</summary>
@@ -335,7 +214,6 @@ namespace _SAIUN.Scripts.UI
                     }
                 }
 
-                UpdateAmbientTint();
                 yield return null;
             }
         }
@@ -410,23 +288,6 @@ namespace _SAIUN.Scripts.UI
                     if (moved || capture.LastChangeAmount > changeThreshold) idleFrames = 0;
                     else idleFrames++;
 
-                    if (source == DesktopCapture.Source.WallpaperLayer && ambientInfluence > 0f)
-                    {
-                        bool ok = capture.SampleAmbient(position.x, position.y,
-                            windowSize.x, windowSize.y,
-                            ambientMargin, ambientThickness, _workerAmbient);
-
-                        lock (_shared)
-                        {
-                            _sharedAmbientValid = ok;
-                            if (ok) System.Array.Copy(_workerAmbient, _sharedAmbient, _sharedAmbient.Length);
-                        }
-                    }
-                    else
-                    {
-                        lock (_shared) { _sharedAmbientValid = false; }
-                    }
-
                     // 몇 번 연달아 그대로면 느린 쪽으로 넘어간다.
                     float interval = idleFrames > IdleFramesBeforeSlowing ? idleInterval : refreshInterval;
                     Thread.Sleep(Mathf.Max(1, Mathf.RoundToInt(interval * 1000f)));
@@ -443,11 +304,10 @@ namespace _SAIUN.Scripts.UI
             }
         }
 
-
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            if (tintOverlay != null) tintOverlay.color = Color.white;
+            ApplyTint();
         }
 #endif
     }

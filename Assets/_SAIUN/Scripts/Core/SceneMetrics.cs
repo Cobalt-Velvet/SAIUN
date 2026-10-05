@@ -18,8 +18,7 @@ namespace _SAIUN.Scripts.Core
         public const int SceneLayerHeight = 272;
         public const int BottomBarHeight = 68;
 
-        /// <summary>Scene Layer의 위·아래 경계. 창 왼쪽 위를 원점으로 아래로 잰 픽셀이다.</summary>
-        public const int SceneLayerTop = SkyLayerHeight;
+        /// <summary>Scene Layer의 아래 경계. 창 왼쪽 위를 원점으로 아래로 잰 픽셀이다.</summary>
         public const int SceneLayerBottom = SkyLayerHeight + SceneLayerHeight;
 
         // ---- 화단 (사양서 8장 확정값) ----
@@ -33,7 +32,7 @@ namespace _SAIUN.Scripts.Core
         /// </summary>
         public const float PixelsPerUnit = 100f;
 
-        // ---- 눈 (2026-09-29 사용자 선택 "수평선과 같은 눈높이") ----
+        // ---- 눈 (수평선과 같은 눈높이) ----
         // 사양서 v1.1 7-4의 아이소메트릭(위 45°·옆 45° 정사영)을 바꿨다. 정원을 하늘과 같은 카메라로 본다:
         // 원근, 지평선에서 14° 올려다보고 세로 화각도 같다. 그래서 데크 선이 바다 수평선으로 모이고,
         // 화분은 앉은 눈높이에서 살짝 내려다보여 작물이 바다와 노을을 배경으로 선다.

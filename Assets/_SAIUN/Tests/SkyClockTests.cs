@@ -9,7 +9,7 @@ using Object = UnityEngine.Object;
 namespace _SAIUN.Tests
 {
     /// <summary>
-    /// 시계 화면 하늘(2026-09-30): 실제 시각의 해·달을 셈하고, 세션 밖에서는 하늘이 시계를 따르며,
+    /// 시계 화면 하늘: 실제 시각의 해·달을 셈하고, 세션 밖에서는 하늘이 시계를 따르며,
     /// 세션이 시작·끝날 때 시간이 앞으로만 흘러 새 아침·지금 시각으로 넘어간다. 자리는 서울, 표준시 +9다.
     /// </summary>
     public class SkyClockTests

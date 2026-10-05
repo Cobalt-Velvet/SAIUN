@@ -3,7 +3,7 @@ using UnityEngine;
 namespace _SAIUN.Scripts.Weather
 {
     /// <summary>
-    /// 비에 젖은 흙·화분 (2026-09-19 사용자 요청: 자연 현상을 더 풍부하게).
+    /// 비에 젖은 흙·화분.
     /// 젖을수록 색이 짙어지고 반들반들해진다(URP Lit의 기본색·Smoothness).
     /// 공유 머티리얼 에셋을 건드리지 않도록 MaterialPropertyBlock을 쓰고, 다 마르면 블록을 떼어 원래대로 둔다.
     /// </summary>
