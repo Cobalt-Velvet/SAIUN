@@ -426,6 +426,11 @@ MonoBehaviour:
     veilAzimuthShift: {x: -6, y: 1.5}
     veilElevationShift: {x: -3, y: 0.5}
     veilScale: {x: 0.75, y: 1.05}
+    veilSunPatchChance: 0.75
+    veilWispInCirrus: 0.65
+    veilMidday: {x: 0.25, y: 0.75}
+    veilBandAtMidday: 0.7
+    veilBandOtherwise: 0.45
     fairResponse: 45
     stormResponse: 8
 --- !u!114 &10825362

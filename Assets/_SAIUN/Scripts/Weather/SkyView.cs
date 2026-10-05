@@ -55,6 +55,7 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int SpecialId = Shader.PropertyToID("_Special");
         private static readonly int ExtraId = Shader.PropertyToID("_Extra");
         private static readonly int VeilPlaceId = Shader.PropertyToID("_VeilPlace");
+        private static readonly int VeilFormId = Shader.PropertyToID("_VeilForm");
         private static readonly int SkyTimeId = Shader.PropertyToID("_SkyTime");
         private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static readonly int PhaseId = Shader.PropertyToID("_Phase");
@@ -158,6 +159,9 @@ namespace _SAIUN.Scripts.Weather
 
         [Tooltip("바다의 잔물결이 땅 바람을 따라 흐르는 빠르기(m/s): x 바람이 없을 때, y 가장 셀 때. 물가로 오는 너울은 바람과 따로다.")]
         [SerializeField] private Vector2 seaChopSpeed = new Vector2(0.6f, 2.4f);
+
+        [Tooltip("해가 화면 가운데에서 가로로 이 각(도) 안이면 '해가 가까이 보인다'로 본다(해 둘레 채운 조각)")]
+        [SerializeField, Range(10f, 90f)] private float sunNearAzimuth = 50f;
 
         [Header("구름층 높이")]
         [SerializeField] private CloudHeights cloudHeights = new CloudHeights();
@@ -484,6 +488,7 @@ namespace _SAIUN.Scripts.Weather
             _material.SetVector(SpecialId, Pack(CloudKind.Anvil, CloudKind.Mammatus, CloudKind.Arcus, CloudKind.FallstreakHole));
             _material.SetVector(ExtraId, new Vector4(Coverage(CloudKind.KelvinHelmholtz), Twilight(), TowerPresence, Night()));
             _material.SetVector(VeilPlaceId, forecast.VeilPlace);
+            _material.SetFloat(VeilFormId, (float)forecast.VeilForm);
         }
 
         private Vector4 Pack(CloudKind x, CloudKind y, CloudKind z, CloudKind w)
@@ -566,7 +571,16 @@ namespace _SAIUN.Scripts.Weather
                 Wind = weather != null ? weather.WindAmount : 0f,
                 Resting = Resting(),
                 Idle = stateMachine == null || stateMachine.CurrentState == PomodoroState.Idle,
+                SunNear = SunNear(),
             };
+        }
+
+        // 해가 화면 안이나 바로 곁(가로로 sunNearAzimuth° 안)에 떠 있는지
+        private bool SunNear()
+        {
+            Vector3 sunDir = SkySunDirection();
+            float azimuth = Mathf.DeltaAngle(View.z, Mathf.Atan2(sunDir.x, sunDir.z) * Mathf.Rad2Deg);
+            return Mathf.Abs(azimuth) <= sunNearAzimuth && sunDir.y > 0f;
         }
 
         // 시계(세션 밖)나 휴식이면 쉬는 중이다.

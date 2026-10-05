@@ -331,11 +331,16 @@ namespace _SAIUN.Tests
         [Test]
         public void 채운_너울은_주기마다_피었다_사라지고_층구름이_덮으면_숨는다()
         {
-            // 난수 0이면 맑음 장면(너울을 가리는 층이 없다)
+            // 난수 0이면 맑음 장면(너울을 가리는 층이 없다). 물결구름도 서므로 그동안은 너울이 비켜 준다.
             CloudForecast forecast = Make(() => 0f);
             Set(forecast, "veilCycleMinutes", 1f);
             forecast.Tick(0.01f, Day(0.3f));
             Assert.AreEqual(SkyScene.Clear, forecast.Scene);
+            Assert.AreEqual(1f, forecast.Target(CloudKind.KelvinHelmholtz), 0.0001f);
+            Assert.AreEqual(0f, forecast.Target(CloudKind.IridescentVeil), 0.0001f, "물결구름이 선 동안 너울은 비켜 준다");
+
+            Set(forecast, "_kelvinLeft", 0f);
+            forecast.Tick(0.01f, Day(0.3f));
             Assert.Greater(forecast.Target(CloudKind.IridescentVeil), 0.99f, "켜자마자 떠 있다");
 
             int shown = 0;
@@ -357,6 +362,29 @@ namespace _SAIUN.Tests
             rainy.Rain = 0.6f;
             forecast.Tick(0.01f, rainy);
             Assert.AreEqual(0f, forecast.Target(CloudKind.IridescentVeil), 0.0001f, "비구름이 덮으면 숨는다");
+        }
+
+        [Test]
+        public void 채운_너울은_해가_가까우면_해_둘레_조각_결진_하늘이면_실_한낮이면_띠를_고른다()
+        {
+            VeilForm Pick(float roll, SkyScene scene, float progress, bool sunNear)
+            {
+                CloudForecast forecast = Make(() => roll);
+                var inputs = Day(progress);
+                inputs.SunNear = sunNear;
+                forecast.Tick(0.01f, inputs);
+                // 장면을 정해 두고 새 주기를 맞게 해 모양을 다시 고르게 한다.
+                Set(forecast, "<Scene>k__BackingField", scene);
+                Set(forecast, "_veilCycle", -1);
+                forecast.Tick(0.01f, inputs);
+                return forecast.VeilForm;
+            }
+
+            Assert.AreEqual(VeilForm.SunPatch, Pick(0f, SkyScene.Clear, 0.9f, true), "해가 가까이 보이면 해 둘레 조각");
+            Assert.AreEqual(VeilForm.Wisp, Pick(0f, SkyScene.Cirrus, 0.5f, false), "새털구름 하늘에는 실");
+            Assert.AreEqual(VeilForm.Band, Pick(0f, SkyScene.FairCumulus, 0.5f, false), "해가 높은 한낮에는 띠");
+            Assert.AreEqual(VeilForm.Band, Pick(0.9f, SkyScene.Cirrus, 0.9f, true), "드물게는 다른 모양도 뜬다");
+            Assert.AreEqual(VeilForm.Wisp, Pick(0.9f, SkyScene.FairCumulus, 0.5f, false));
         }
 
         [Test]

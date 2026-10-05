@@ -38,6 +38,14 @@ namespace _SAIUN.Scripts.Weather
         CirrostratusVeil,  // 햇무리구름 너울
     }
 
+    /// <summary>채운 너울의 모양. 셰이더 _VeilForm의 값과 같다.</summary>
+    public enum VeilForm
+    {
+        Band,      // 띠: 결진 비단 구름에 가로로 선 무지개(불무지개). 해가 높은 한낮에 어울린다.
+        Wisp,      // 실: 비스듬히 늘어진 실구름 한 가닥이 길이를 따라 무지개로 물든다. 새털구름 하늘에 어울린다.
+        SunPatch,  // 해 둘레 조각: 해 쪽의 얇은 조각구름이 해를 둘러싼 고리 빛깔로 물든다. 해가 가까이 보일 때.
+    }
+
     /// <summary>하늘이 읽는 바깥 상태.</summary>
     public struct SkyInputs
     {
@@ -48,6 +56,7 @@ namespace _SAIUN.Scripts.Weather
         public float Wind;       // 바람 세기 0~1
         public bool Resting;     // 쉬는 중(시계·휴식)
         public bool Idle;        // 시계 화면(세션 밖)
+        public bool SunNear;     // 해가 화면 안이나 바로 곁에 있다(해 둘레 채운 조각이 보인다)
     }
 
     /// <summary>장면 하나가 나올 가능성(아침·한낮·저녁 무게, 바람 1당 더하는 무게)과 주된 구름 양의 범위.</summary>
@@ -291,6 +300,20 @@ namespace _SAIUN.Scripts.Weather
         [Tooltip("주기마다 고르는 너울 크기 배율 범위")]
         [SerializeField] private Vector2 veilScale = new Vector2(0.75f, 1.05f);
 
+        [Tooltip("해가 가까이 보일 때 해 둘레 조각을 고를 확률")]
+        [SerializeField, Range(0f, 1f)] private float veilSunPatchChance = 0.75f;
+
+        [Tooltip("새털구름·햇무리구름 너울 장면에서 실을 고를 확률(나머지는 띠)")]
+        [SerializeField, Range(0f, 1f)] private float veilWispInCirrus = 0.65f;
+
+        [Tooltip("해가 높은 한낮(진행률 범위)에는 띠를 고를 확률. 불무지개는 해가 높을 때 선다.")]
+        [SerializeField] private Vector2 veilMidday = new Vector2(0.25f, 0.75f);
+
+        [SerializeField, Range(0f, 1f)] private float veilBandAtMidday = 0.7f;
+
+        [Tooltip("그 밖의 때 띠를 고를 확률(나머지는 실)")]
+        [SerializeField, Range(0f, 1f)] private float veilBandOtherwise = 0.45f;
+
         [Header("옮겨 가는 빠르기")]
         [Tooltip("맑은 날 구름이 새 장면으로 옮겨 가는 데 걸리는 시간(초)")]
         [SerializeField, Min(0.01f)] private float fairResponse = 45f;
@@ -324,6 +347,9 @@ namespace _SAIUN.Scripts.Weather
         /// 주기가 바뀌는 때(너울이 다 사라져 있을 때)에만 새로 골라, 떠 있는 동안 자리가 튀지 않는다.
         /// </summary>
         public Vector4 VeilPlace { get; private set; } = new Vector4(0f, 0f, 1f, 0f);
+
+        /// <summary>이번 주기의 채운 너울 모양. 자리와 함께 너울이 사라져 있을 때만 바뀐다.</summary>
+        public VeilForm VeilForm { get; private set; } = VeilForm.Band;
 
         private readonly float[] _targets = new float[KindCount];
         private Func<float> _random = () => UnityEngine.Random.value;
@@ -387,7 +413,7 @@ namespace _SAIUN.Scripts.Weather
 
             _kelvinLeft = Mathf.Max(0f, _kelvinLeft - deltaTime);
             _veilTime += deltaTime;
-            PlaceVeil();
+            PlaceVeil(inputs);
             TrackStorm(deltaTime, inputs.Storm);
             TrackTwilight(inputs.Twilight);
             TrackTower(deltaTime, inputs);
@@ -616,7 +642,9 @@ namespace _SAIUN.Scripts.Weather
             // 채운 너울: 층구름이 덮거나 폭풍이면 숨는다. 해가 다 지면 빛깔을 잃으므로 스러진다.
             float blocking = Mathf.Max(Mathf.Max(Target(CloudKind.Stratus), Target(CloudKind.Stratocumulus) * VeilStratocumulusBlock),
                 Mathf.Max(Target(CloudKind.Altostratus), Target(CloudKind.Nimbostratus)));
-            Set(CloudKind.IridescentVeil, VeilCycle() * (1f - blocking) * (1f - storm) * (1f - Smooth(VeilDuskStart, 1f, inputs.Twilight)));
+            // 물결구름은 너울과 같은 왼쪽 하늘에 서므로, 서 있는 동안 너울은 비켜 준다(드문 물결구름이 주인공이다).
+            float giveWay = 1f - Target(CloudKind.KelvinHelmholtz);
+            Set(CloudKind.IridescentVeil, VeilCycle() * (1f - blocking) * (1f - storm) * (1f - Smooth(VeilDuskStart, 1f, inputs.Twilight)) * giveWay);
 
             // 탑은 전선 비에 가려 사라지고, 뇌우면 적란운으로 끝까지 솟아 뚜렷하다.
             presence *= tower * (1f - TowerFrontFade * Smooth(FairFadeStart, FairFadeEnd, front));
@@ -624,17 +652,28 @@ namespace _SAIUN.Scripts.Weather
             TowerGrowth = Mathf.Lerp(growth, 1f, storm);
         }
 
-        // 새 주기에 들어서면 채운 너울의 자리를 새로 고른다. 주기 끝(1 - veilPresence)은 비어 있으므로 옮기는 것이 보이지 않는다.
-        private void PlaceVeil()
+        // 새 주기에 들어서면 채운 너울의 모양과 자리를 새로 고른다. 주기 끝(1 - veilPresence)은 비어 있으므로 바뀌는 것이 보이지 않는다.
+        private void PlaceVeil(SkyInputs inputs)
         {
             int cycle = Mathf.FloorToInt(_veilTime / (veilCycleMinutes * 60f));
             if (cycle == _veilCycle) return;
             _veilCycle = cycle;
+            VeilForm = ChooseVeilForm(inputs);
             VeilPlace = new Vector4(
                 Mathf.Lerp(veilAzimuthShift.x, veilAzimuthShift.y, _random()),
                 Mathf.Lerp(veilElevationShift.x, veilElevationShift.y, _random()),
                 Mathf.Lerp(veilScale.x, veilScale.y, _random()),
                 _random());
+        }
+
+        // 하늘에 어울리는 모양을 고른다: 해가 가까우면 해 둘레 조각, 결진 하늘이면 실, 해가 높은 한낮이면 띠.
+        private VeilForm ChooseVeilForm(SkyInputs inputs)
+        {
+            if (inputs.SunNear && _random() < veilSunPatchChance) return VeilForm.SunPatch;
+            bool fibrous = Scene == SkyScene.Cirrus || Scene == SkyScene.CirrostratusVeil;
+            if (fibrous) return _random() < veilWispInCirrus ? VeilForm.Wisp : VeilForm.Band;
+            bool midday = inputs.Progress >= veilMidday.x && inputs.Progress <= veilMidday.y;
+            return _random() < (midday ? veilBandAtMidday : veilBandOtherwise) ? VeilForm.Band : VeilForm.Wisp;
         }
 
         // 채운 너울은 주기의 앞쪽 veilPresence 동안 떠 있고, 앞뒤 veilFade 동안 피어나고 사라진다.
