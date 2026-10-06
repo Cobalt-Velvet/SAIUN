@@ -56,7 +56,7 @@ namespace _SAIUN.Scripts.Core
         public const float ShadowDistance = 20f;
 
         /// <summary>
-        /// 유리 배경(하늘) 캔버스를 카메라에서 떨어뜨리는 거리.
+        /// 하늘 캔버스를 카메라에서 떨어뜨리는 거리.
         /// 씬의 어떤 오브젝트보다 뒤에 있어야 깊이 테스트로 가려지고, Far 클립 안에 있어야 그려진다.
         /// </summary>
         public const float BackdropPlaneDistance = CameraFarClip - 1f;

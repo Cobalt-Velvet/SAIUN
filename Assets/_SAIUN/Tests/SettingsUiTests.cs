@@ -211,28 +211,6 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 창_전체_유리를_켜면_저장되고_하늘이_구름만_유리_위에_띄운다()
-        {
-            OpenSettings();
-            var sky = Find<SkyView>();
-            var glass = Get<GameObject>(sky, "desktopGlass");
-            Assert.IsNotNull(glass, "씬 조립기가 바탕화면 유리를 잇는다");
-            Assert.IsFalse(Get<Toggle>(_settings, "windowGlassToggle").isOn, "처음엔 위는 하늘, 아래는 바다다");
-            Assert.IsFalse(sky.WindowGlass);
-            Assert.IsFalse(glass.activeSelf, "하늘과 바다가 창을 덮으므로 바탕화면을 읽지 않는다");
-
-            Get<Toggle>(_settings, "windowGlassToggle").isOn = true;
-            Assert.IsTrue(SettingsStore.WindowGlass);
-            Assert.IsTrue(sky.WindowGlass);
-            Assert.IsTrue(glass.activeSelf, "창 전체로 바탕화면이 비친다");
-
-            Get<Toggle>(_settings, "windowGlassToggle").isOn = false;
-            Assert.IsFalse(SettingsStore.WindowGlass);
-            Assert.IsFalse(sky.WindowGlass);
-            Assert.IsFalse(glass.activeSelf);
-        }
-
-        [Test]
         public void 데이터_항목에_누적_기록이_보인다()
         {
             Gm.Database.InsertSession(new SessionRecord

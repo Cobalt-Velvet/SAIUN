@@ -68,9 +68,6 @@ namespace _SAIUN.Scripts.Core
         /// <summary>앱을 끄기 직전. 세션 기록은 이미 끝난 뒤다. 테스트에서 종료를 가로챌 때도 쓴다.</summary>
         public event Action OnQuitRequested;
 
-        /// <summary>창 전체 유리를 켜거나 껐다. 하늘이 창을 채울지, 구름만 유리 위에 띄울지 바꾼다.</summary>
-        public event Action<bool> OnWindowGlassChanged;
-
         /// <summary>시계 화면 하늘을 하루 순환으로 켜거나(참) 실제 시각으로 돌렸다(거짓).</summary>
         public event Action<bool> OnIdleSkyCycleChanged;
 
@@ -237,13 +234,6 @@ namespace _SAIUN.Scripts.Core
         {
             SettingsStore.GraceSeconds = seconds;
             if (watcher != null) watcher.GraceSeconds = SettingsStore.GraceSeconds;
-        }
-
-        /// <summary>창 전체 유리를 켜거나 끈다. 켜면 창 전체로 바탕화면이 비치고 구름만 뜨며, 끄면 하늘과 바다가 창을 채운다.</summary>
-        public void RequestSetWindowGlass(bool enabled)
-        {
-            SettingsStore.WindowGlass = enabled;
-            OnWindowGlassChanged?.Invoke(enabled);
         }
 
         /// <summary>시계 하늘을 셈할 도시를 정한다. 해 뜨고 지는 시각과 달이 그곳을 따른다.</summary>

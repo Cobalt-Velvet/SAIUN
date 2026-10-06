@@ -89,7 +89,7 @@ namespace _SAIUN.Editor
 
             Build(canvas, AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontAssetPath), gameManager, bar, rebuild: true);
 
-            // 알림·유리 테두리는 설정 화면·튜토리얼보다 위에 있어야 한다.
+            // 알림·카드 테두리는 설정 화면·튜토리얼보다 위에 있어야 한다.
             canvas.Find("ScreenAlert")?.SetAsLastSibling();
             canvas.Find("GlassRim")?.SetAsLastSibling();
 
@@ -273,7 +273,6 @@ namespace _SAIUN.Editor
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
             Toggle windowSidebar = ToggleRow(content, "WindowSidebar", "화면 오른쪽에 세로로 붙이기");
-            Toggle windowGlass = ToggleRow(content, "WindowGlass", "창 전체 유리 (하늘 대신 바탕화면 위에 구름만)");
             Button resetPosition = WideButton(content, "ResetPosition", "창 위치 초기화", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
 
             Section(content, "사운드");
@@ -315,7 +314,6 @@ namespace _SAIUN.Editor
             so.FindProperty("placeDropdown").objectReferenceValue = place;
             so.FindProperty("alwaysOnTopToggle").objectReferenceValue = alwaysOnTop;
             so.FindProperty("windowSidebarToggle").objectReferenceValue = windowSidebar;
-            so.FindProperty("windowGlassToggle").objectReferenceValue = windowGlass;
             so.FindProperty("resetPositionButton").objectReferenceValue = resetPosition;
             so.FindProperty("soundToggle").objectReferenceValue = sound;
             so.FindProperty("volumeField").objectReferenceValue = volume;

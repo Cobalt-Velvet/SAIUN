@@ -199,7 +199,6 @@ namespace _SAIUN.Editor
         private static void ApplyPaletteToScene()
         {
             SetSceneColors<WindowController>(("borderColor", SaiunPalette.Sand));
-            SetSceneColors<DesktopGlassView>(("tint", SaiunPalette.Charcoal));
             SetSceneColors<GlassRimView>(("rimColor", SaiunPalette.Sand));
             SetSceneColors<ScreenAlertView>(
                 ("breakColor", SaiunPalette.BreakAccent),
@@ -493,7 +492,7 @@ namespace _SAIUN.Editor
             }
 
             Transform backdropCard = EnsureCard(EnsureBackdropCanvas(camera).transform);
-            EnsureDesktopGlass(backdropCard, windowController);
+            RemoveDesktopGlass(backdropCard);
             Flowerbed bed = EnsureFlowerbed();
             EnsureCropGrowth(bed, stateMachine, timer, gameManager);
             EnsureWeather(camera, backdropCard, stateMachine, bed);
@@ -637,57 +636,25 @@ namespace _SAIUN.Editor
             return AssetDatabase.GetBuiltinExtraResource<Sprite>(path);
         }
 
-        // 유리 설정은 씬에 직렬화돼 있어 C# 기본값을 바꿔도 반영되지 않는다. 여기서 맞춘다.
+        // 창 설정은 씬에 직렬화돼 있어 C# 기본값을 바꿔도 반영되지 않는다. 여기서 맞춘다.
         private static void SetupWindowController(WindowController controller)
         {
             if (controller == null)
             {
-                Debug.LogWarning("SaiunSceneBuilder: WindowController가 없어 유리 설정을 건너뜁니다.");
+                Debug.LogWarning("SaiunSceneBuilder: WindowController가 없어 창 설정을 건너뜁니다.");
                 return;
             }
 
             var so = new SerializedObject(controller);
-            so.FindProperty("glass").enumValueIndex = (int)WindowController.GlassMode.DesktopBlur;
             so.FindProperty("roundedCorners").boolValue = true;
             so.ApplyModifiedPropertiesWithoutUndo();
-            Debug.Log("SaiunSceneBuilder: 유리 배경을 DesktopBlur로 설정했습니다.");
         }
 
-        // 창 뒤 화면을 흐리게 깔아 주는 층. 3D 씬보다 뒤에 있어야 하므로 카메라 공간 캔버스에 둔다.
-        private static void EnsureDesktopGlass(Transform canvas, WindowController windowController)
+        // 예전 바탕화면 유리 층(화면을 읽어 흐리게 깔던 것)이 씬에 남아 있으면 지운다.
+        private static void RemoveDesktopGlass(Transform backdropCard)
         {
-            Transform existing = canvas.Find("DesktopGlass");
-            GameObject glass = existing != null
-                ? existing.gameObject
-                : new GameObject("DesktopGlass", typeof(RectTransform), typeof(RawImage), typeof(DesktopGlassView));
-
-            glass.transform.SetParent(canvas, false);
-            glass.transform.SetAsFirstSibling();
-            Stretch(glass.GetComponent<RectTransform>());
-            glass.GetComponent<RawImage>().raycastTarget = false;
-
-            // 틴트는 흐린 화면 위에 얹는 별도 층이다.
-            Transform tintChild = glass.transform.Find("Tint");
-            GameObject tint = tintChild != null
-                ? tintChild.gameObject
-                : new GameObject("Tint", typeof(RectTransform), typeof(RawImage));
-            tint.transform.SetParent(glass.transform, false);
-            Stretch(tint.GetComponent<RectTransform>());
-            tint.GetComponent<RawImage>().raycastTarget = false;
-
-            var view = glass.GetComponent<DesktopGlassView>();
-            var so = new SerializedObject(view);
-            so.FindProperty("backdrop").objectReferenceValue = glass.GetComponent<RawImage>();
-            so.FindProperty("tintOverlay").objectReferenceValue = tint.GetComponent<RawImage>();
-            so.FindProperty("windowController").objectReferenceValue = windowController;
-            // 창 추적은 자주, 바탕화면 새로 받기는 드물게.
-            so.FindProperty("refreshInterval").floatValue = 0.06f;
-            so.FindProperty("idleInterval").floatValue = 0.6f;
-            so.FindProperty("changeThreshold").floatValue = 0.004f;
-            so.FindProperty("wallpaperInterval").floatValue = 0.3f;
-            so.FindProperty("downscale").intValue = 3;
-            so.FindProperty("blurPasses").intValue = 3;
-            so.ApplyModifiedPropertiesWithoutUndo();
+            Transform glass = backdropCard.Find("DesktopGlass");
+            if (glass != null) Object.DestroyImmediate(glass.gameObject);
         }
 
         private static void Stretch(RectTransform rt)
@@ -998,7 +965,7 @@ namespace _SAIUN.Editor
                 ? existing.gameObject
                 : new GameObject("Sky", typeof(RectTransform), typeof(RawImage), typeof(SkyView));
             sky.transform.SetParent(backdropCanvas, false);
-            sky.transform.SetSiblingIndex(1);   // DesktopGlass 바로 다음
+            sky.transform.SetAsFirstSibling();   // 카드 맨 뒤
 
             var rt = (RectTransform)sky.transform;
             rt.anchorMin = Vector2.zero;
@@ -1017,9 +984,6 @@ namespace _SAIUN.Editor
             so.FindProperty("skyMaterial").objectReferenceValue = SkyArtBuilder.EnsureSkyMaterial();
             so.FindProperty("noise").objectReferenceValue = SkyArtBuilder.EnsureNoise();
             so.FindProperty("stateMachine").objectReferenceValue = Object.FindFirstObjectByType<PomodoroStateMachine>();
-            so.FindProperty("gameManager").objectReferenceValue = Object.FindFirstObjectByType<GameManager>();
-            Transform glass = backdropCanvas.Find("DesktopGlass");
-            so.FindProperty("desktopGlass").objectReferenceValue = glass != null ? glass.gameObject : null;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             // 정원이 그려진 하늘빛을 주변광·햇빛으로 받게 한다.
@@ -1055,8 +1019,6 @@ namespace _SAIUN.Editor
             cards.GetArrayElementAtIndex(1).objectReferenceValue = backdropCard;
             view.FindProperty("rim").objectReferenceValue = Object.FindFirstObjectByType<GlassRimView>(FindObjectsInactive.Include);
             view.FindProperty("alert").objectReferenceValue = Object.FindFirstObjectByType<ScreenAlertView>(FindObjectsInactive.Include);
-            Transform glass = backdropCard.Find("DesktopGlass");
-            view.FindProperty("desktopGlass").objectReferenceValue = glass != null ? glass.gameObject : null;
             view.ApplyModifiedPropertiesWithoutUndo();
         }
 

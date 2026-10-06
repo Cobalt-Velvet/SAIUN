@@ -1,5 +1,4 @@
 using _SAIUN.Scripts.Core;
-using _SAIUN.Scripts.Data;
 using _SAIUN.Scripts.Lighting;
 using UnityEngine;
 using UnityEngine.UI;
@@ -26,8 +25,6 @@ namespace _SAIUN.Scripts.Weather
     ///  - 지평선 아래는 바다다. 물이 하늘·구름·노을을
     ///    비추고, 해가 앞바다로 지는 저녁엔 윤슬 길이 선다. 물결은 땅 바람을 따라 흐르고 파도가 모래밭에 밀려왔다 빠진다.
     ///    바다는 보이는 장을 만들 때 매 프레임 그리므로 윤슬이 반짝인다(하늘은 여전히 1/8씩 그린다).
-    ///  - 창 전체 유리(설정)를 켜면 하늘과 바다 없이 구름만 바탕화면 유리 위에 띄운다.
-    ///    바탕화면을 읽는 유리는 이때만 켠다.
     /// 부피 그리기는 무거워 한 번에 화소의 1/8만 새로 그린다(여덟 번에 한 바퀴). 반쯤 새로 그린 장을 보이면 빗살이 지므로
     /// 다 그린 장끼리만 한 바퀴 동안 천천히 섞어 넘긴다(그리는 장 · 지난 장 · 지금 장 · 보이는 장).
     /// </summary>
@@ -39,7 +36,6 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int MoonId = Shader.PropertyToID("_Moon");
         private static readonly int AltHighId = Shader.PropertyToID("_AltHigh");
         private static readonly int AltLowId = Shader.PropertyToID("_AltLow");
-        private static readonly int GlassId = Shader.PropertyToID("_Glass");
         private static readonly int DriftId = Shader.PropertyToID("_Drift");
         private static readonly int DriftHighId = Shader.PropertyToID("_DriftHigh");
         private static readonly int SeaTimeId = Shader.PropertyToID("_SeaTime");
@@ -60,13 +56,20 @@ namespace _SAIUN.Scripts.Weather
         private static readonly int SeedId = Shader.PropertyToID("_Seed");
         private static readonly int PhaseId = Shader.PropertyToID("_Phase");
         private static readonly int SkySizeId = Shader.PropertyToID("_SkySize");
+        private static readonly int TileSizeId = Shader.PropertyToID("_TileSize");
+        private static readonly int[] TileIds =
+        {
+            Shader.PropertyToID("_Tile0"), Shader.PropertyToID("_Tile1"), Shader.PropertyToID("_Tile2"), Shader.PropertyToID("_Tile3"),
+            Shader.PropertyToID("_Tile4"), Shader.PropertyToID("_Tile5"), Shader.PropertyToID("_Tile6"), Shader.PropertyToID("_Tile7"),
+        };
         private static readonly int NoiseId = Shader.PropertyToID("_Noise");
         private static readonly int PrevTexId = Shader.PropertyToID("_PrevTex");
         private static readonly int BlendId = Shader.PropertyToID("_Blend");
 
-        // 셰이더 패스: 하늘 그리기, 두 장 섞기
+        // 셰이더 패스: 하늘 그리기(한 칸), 여덟 칸 짜 맞추기, 두 장 섞기
         private const int SkyPass = 0;
-        private const int MixPass = 1;
+        private const int ComposePass = 1;
+        private const int MixPass = 2;
 
         /// <summary>한 바퀴(화소 전체)를 나눠 그리는 횟수. 셰이더의 4×2 격자와 같다.</summary>
         public const int Interleave = 8;
@@ -77,9 +80,6 @@ namespace _SAIUN.Scripts.Weather
         // 한 장을 그리는 동안 이보다 해가 움직이거나(도) 밤이 바뀌면 남은 칸을 한 번에 그린다.
         private const float SheetLightTolerance = 0.4f;
         private const float SheetNightTolerance = 0.02f;
-
-        // 셰이더에 "전부 그려라"를 알리는 칸 번호
-        private const float AllPhases = -1f;
 
         // 바람 빠르기(km/분)를 한 프레임 거리로 옮길 때
         private const float SecondsPerMinute = 60f;
@@ -101,20 +101,14 @@ namespace _SAIUN.Scripts.Weather
         private const float AirMassB = 6.07995f;
         private const float AirMassC = 1.6364f;
 
-        // 탑 모양 시드 후보. 0~15를 모두 그려 보고 탑으로 잘 읽히는 것만 골랐다
-        // (목이 가늘어 버섯처럼 보이거나 큰 구멍이 뚫리는 모양은 뺐다).
-        private static readonly float[] ShapeSeeds = { 1f, 3f, 5f, 6f, 11f, 12f, 13f, 15f };
+        // 탑 모양 시드 후보. 0~19를 모두 그려 보고 꼭대기가 넓게 부푼 탑으로 잘 읽히는 것만 골랐다
+        // (목이 가늘어 버섯처럼 보이거나 한쪽으로 기운 기둥만 남는 모양은 뺐다).
+        private static readonly float[] ShapeSeeds = { 0f, 3f, 5f, 6f, 7f, 12f, 13f, 17f };
 
         [SerializeField] private WeatherController weather;
 
         [Tooltip("쉬는 중인지 읽을 상태머신")]
         [SerializeField] private PomodoroStateMachine stateMachine;
-
-        [Tooltip("창 전체 유리 설정을 받을 게임 관리자")]
-        [SerializeField] private GameManager gameManager;
-
-        [Tooltip("바탕화면을 읽어 흐리게 까는 유리. 창 전체 유리일 때만 켠다(아니면 하늘과 바다가 창을 다 덮는다).")]
-        [SerializeField] private GameObject desktopGlass;
 
         [Tooltip("하루의 흐름을 읽을 해. 없으면 한낮으로 본다.")]
         [SerializeField] private SunOrbitController sun;
@@ -190,8 +184,6 @@ namespace _SAIUN.Scripts.Weather
         /// <summary>웅대적운 탑이 보이는 정도(0~1). 층구름·비구름이 덮으면 흐려진다.</summary>
         public float TowerPresence { get; private set; }
 
-        /// <summary>창 전체가 유리인지(하늘빛 없이 구름만 뜬다).</summary>
-        public bool WindowGlass { get; private set; }
 
         /// <summary>낮은 구름층이 바람에 흘러간 거리(하늘 좌표 x·z, km).</summary>
         public Vector2 LowDrift { get; private set; }
@@ -237,9 +229,11 @@ namespace _SAIUN.Scripts.Weather
 
         private RawImage _image;
         private Material _material;
-        // 그리는 중인 장의 하늘 매개변수. 장을 시작할 때 _material에서 한 번 복사해 그 장의 여덟 칸을 모두 같은 순간으로 그린다.
-        private Material _sheetMaterial;
-        private RenderTexture _work;      // 1/8씩 그리는 중인 장
+        // 칸마다 따로 둔 하늘 재질. 장을 시작할 때 지금 매개변수를 여덟 개에 한 번 복사하고(칸 번호도 이때 박는다),
+        // 장을 다 그릴 때까지 건드리지 않는다. 그 장의 여덟 칸을 모두 같은 순간으로 그린다.
+        private readonly Material[] _tileMaterials = new Material[Interleave];
+        private readonly RenderTexture[] _tiles = new RenderTexture[Interleave];   // 칸마다 그 칸 화소만 모은 작은 그림
+        private RenderTexture _work;      // 여덟 칸을 짜 맞출 장
         private RenderTexture _current;   // 마지막으로 다 그린 장
         private RenderTexture _previous;  // 그 앞에 다 그린 장
         private RenderTexture _display;   // 둘을 섞어 카드에 보이는 장
@@ -262,9 +256,6 @@ namespace _SAIUN.Scripts.Weather
             _image = GetComponent<RawImage>();
             if (weather == null) weather = FindFirstObjectByType<WeatherController>();
             if (stateMachine == null) stateMachine = FindFirstObjectByType<PomodoroStateMachine>();
-            if (gameManager == null) gameManager = FindFirstObjectByType<GameManager>();
-            if (gameManager != null) gameManager.OnWindowGlassChanged += ApplyGlass;
-            ApplyGlass(SettingsStore.WindowGlass);
             if (sun == null) sun = FindFirstObjectByType<SunOrbitController>();
             if (skyMaterial == null)
             {
@@ -275,7 +266,10 @@ namespace _SAIUN.Scripts.Weather
 
             // 에셋을 건드리지 않도록 실행 중에는 복사본을 쓴다.
             _material = new Material(skyMaterial) { name = "Sky (runtime)" };
-            _sheetMaterial = new Material(skyMaterial) { name = "Sky (sheet)" };
+            for (int cell = 0; cell < Interleave; cell++)
+            {
+                _tileMaterials[cell] = new Material(skyMaterial) { name = $"Sky (tile {cell})" };
+            }
             if (noise != null) _material.SetTexture(NoiseId, noise);
             _material.SetFloat(SeedId, ShapeSeeds[Random.Range(0, ShapeSeeds.Length)]);
 
@@ -306,17 +300,10 @@ namespace _SAIUN.Scripts.Weather
         {
             ReleaseTargets();
             if (_material != null) Destroy(_material);
-            if (_sheetMaterial != null) Destroy(_sheetMaterial);
-            if (gameManager != null) gameManager.OnWindowGlassChanged -= ApplyGlass;
-        }
-
-        /// <summary>창 전체를 유리로 하거나 되돌린다. 유리면 하늘빛 없이 구름만 바탕화면 위에 뜬다.</summary>
-        internal void ApplyGlass(bool on)
-        {
-            WindowGlass = on;
-            if (desktopGlass != null) desktopGlass.SetActive(on);
-            if (_material != null) _material.SetFloat(GlassId, on ? 1f : 0f);
-            if (_material != null && _display != null) RenderAll();
+            foreach (Material tileMaterial in _tileMaterials)
+            {
+                if (tileMaterial != null) Destroy(tileMaterial);
+            }
         }
 
         /// <summary>
@@ -350,6 +337,15 @@ namespace _SAIUN.Scripts.Weather
             _previous = NewTarget("Sky Previous", size);
             _display = NewTarget("Sky", size);
             _material.SetVector(SkySizeId, new Vector4(size.x, size.y, 0f, 0f));
+            // 칸 그림: 가로 4칸·세로 2칸으로 나눈 크기. 큰 장의 화소를 그대로 꺼내도록 점 거르기를 쓴다.
+            var tileSize = new Vector2Int((size.x + 3) / 4, (size.y + 1) / 2);
+            for (int cell = 0; cell < Interleave; cell++)
+            {
+                _tiles[cell] = NewTarget($"Sky Tile {cell}", tileSize);
+                _tiles[cell].filterMode = FilterMode.Point;
+                _material.SetTexture(TileIds[cell], _tiles[cell]);
+            }
+            _material.SetVector(TileSizeId, new Vector4(tileSize.x, tileSize.y, 0f, 0f));
             _image.texture = _display;
         }
 
@@ -361,9 +357,16 @@ namespace _SAIUN.Scripts.Weather
                 target.Release();
                 Destroy(target);
             }
+            for (int cell = 0; cell < Interleave; cell++)
+            {
+                if (_tiles[cell] == null) continue;
+                _tiles[cell].Release();
+                Destroy(_tiles[cell]);
+                _tiles[cell] = null;
+            }
         }
 
-        // 셰이더가 톤매핑까지 마친 값을 쓰고, sRGB 텍스처가 화면용으로 바꿔 둔다. 지난 그림을 남겨야 하므로 지우지 않는다.
+        // 셰이더가 톤매핑까지 마친 값을 쓰고, sRGB 텍스처가 화면용으로 바꿔 둔다.
         private static RenderTexture NewTarget(string targetName, Vector2Int size)
         {
             var target = new RenderTexture(size.x, size.y, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB)
@@ -409,8 +412,8 @@ namespace _SAIUN.Scripts.Weather
         {
             if (_material == null) return;
             BeginSheet();
-            _sheetMaterial.SetFloat(PhaseId, AllPhases);
-            Graphics.Blit(null, _work, _sheetMaterial, SkyPass);
+            DrawAllTiles();
+            Compose();
             Graphics.Blit(_work, _current);
             Graphics.Blit(_work, _previous);
             Phase = 0;
@@ -418,8 +421,9 @@ namespace _SAIUN.Scripts.Weather
             Present();
         }
 
-        // 격자의 한 칸(화소 1/8)만 새로 그리고 다음 칸으로 넘어간다. 한 바퀴를 다 그리면 그 장을 지금 장으로 올리고
-        // 지금 장이던 것을 지난 장으로 내려 처음부터 다시 섞는다.
+        // 격자의 한 칸(화소 1/8)만 그 칸의 작은 그림에 새로 그리고 다음 칸으로 넘어간다. 한 바퀴를 다 그리면 여덟 칸을
+        // 한 장으로 짜 맞춰 지금 장으로 올리고, 지금 장이던 것을 지난 장으로 내려 처음부터 다시 섞는다.
+        // 칸 그림은 그 칸 화소만 셈하고(버리는 화소가 없다) 대상을 통째로 덮어써 지난 내용에 기대지 않는다.
         // 한 장의 여덟 칸은 장을 시작할 때 고정한 매개변수로 그린다. 그동안에도 구름은 바람에 흐르므로, 칸마다 그 순간의
         // 매개변수로 그리면 구름 가장자리가 칸마다 한두 화소씩 어긋나 4화소 간격 빗살이 되고, 빛내림이 그 빗살을 해 쪽으로
         // 늘인다. 움직임은 다 그린 장끼리 섞어 넘기며 보인다.
@@ -429,12 +433,20 @@ namespace _SAIUN.Scripts.Weather
             if (Phase == 0) BeginSheet();
             bool lightMoved = Vector3.Angle(SunDirection, _sheetSun) > SheetLightTolerance
                               || Mathf.Abs(Night() - _sheetNight) > SheetNightTolerance;
-            if (lightMoved) BeginSheet();
-            _sheetMaterial.SetFloat(PhaseId, lightMoved ? AllPhases : Phase);
-            Graphics.Blit(null, _work, _sheetMaterial, SkyPass);
-            Phase = lightMoved ? 0 : (Phase + 1) % Interleave;
+            if (lightMoved)
+            {
+                BeginSheet();
+                DrawAllTiles();
+                Phase = 0;
+            }
+            else
+            {
+                DrawTile(Phase);
+                Phase = (Phase + 1) % Interleave;
+            }
             if (Phase != 0) return;
 
+            Compose();
             RenderTexture oldest = _previous;
             _previous = _current;
             _current = _work;
@@ -442,10 +454,31 @@ namespace _SAIUN.Scripts.Weather
             Blend = 0f;
         }
 
+        // 한 칸을 그 칸의 작은 그림에 통째로 그린다.
+        private void DrawTile(int cell)
+        {
+            Graphics.Blit(null, _tiles[cell], _tileMaterials[cell], SkyPass);
+        }
+
+        private void DrawAllTiles()
+        {
+            for (int cell = 0; cell < Interleave; cell++) DrawTile(cell);
+        }
+
+        // 여덟 칸의 작은 그림을 큰 장(_work)의 화소 자리로 짜 맞춘다.
+        private void Compose()
+        {
+            Graphics.Blit(null, _work, _material, ComposePass);
+        }
+
         // 새 장을 시작한다: 지금 매개변수를 고정하고 그때의 해·밤을 기억한다.
         private void BeginSheet()
         {
-            _sheetMaterial.CopyPropertiesFromMaterial(_material);
+            for (int cell = 0; cell < Interleave; cell++)
+            {
+                _tileMaterials[cell].CopyPropertiesFromMaterial(_material);
+                _tileMaterials[cell].SetFloat(PhaseId, cell);
+            }
             _sheetSun = SunDirection;
             _sheetNight = Night();
         }
@@ -469,7 +502,6 @@ namespace _SAIUN.Scripts.Weather
                 cloudHeights.Altitude(CloudKind.Cirrocumulus), cloudHeights.Altitude(CloudKind.Cirrostratus), 0f));
             _material.SetVector(AltLowId, new Vector4(cloudHeights.Altitude(CloudKind.Altocumulus),
                 cloudHeights.Altitude(CloudKind.Altostratus), cloudHeights.Altitude(CloudKind.Stratocumulus), cloudHeights.CumulusBase));
-            _material.SetFloat(GlassId, WindowGlass ? 1f : 0f);
             _material.SetVector(DriftId, new Vector4(LowDrift.x, LowDrift.y, MidDrift.x, MidDrift.y));
             _material.SetVector(DriftHighId, new Vector4(HighDrift.x, HighDrift.y, _holeDrift.x, _holeDrift.y));
             _material.SetVector(SeaWindId, new Vector4(SeaDrift.x, SeaDrift.y, weather != null ? weather.WindAmount : 0f, 0f));

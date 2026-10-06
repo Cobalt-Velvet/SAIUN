@@ -10,7 +10,6 @@ namespace _SAIUN.Scripts.Weather
     ///  - 주변광: 그려진 하늘 장을 몇 초마다 4×4로 줄여 읽어(GPU 비동기 읽기) 위쪽 하늘·지평선 하늘·바다와 모래밭의
     ///    빛깔을 삼색 주변광(위·가운데·아래)으로 쓴다. 한낮엔 푸른 그늘, 노을엔 금빛·분홍, 박명엔 푸르게 가라앉는다.
     ///  - 햇빛: 하늘의 해 고도에서 대기를 지난 해 빛깔(바다에 쓰는 것과 같다)을 해에 넘긴다. 낮은 해는 붉고 어둡다.
-    /// 창 전체 유리일 때는 하늘을 그리지 않으므로 주변광을 씬에 저장된 값으로 되돌리고, 햇빛 빛깔만 따른다.
     /// </summary>
     public class SkyLighting : MonoBehaviour
     {
@@ -72,7 +71,7 @@ namespace _SAIUN.Scripts.Weather
         private Color _equatorTarget;
         private Color _groundTarget;
 
-        // 씬에 저장된 주변광(창 전체 유리일 때 되돌린다)
+        // 씬에 저장된 주변광(사라질 때 되돌린다)
         private AmbientMode _savedMode;
         private Color _savedSky;
         private Color _savedEquator;
@@ -109,12 +108,6 @@ namespace _SAIUN.Scripts.Weather
         {
             if (sky == null) return;
             UpdateSunlight();
-
-            if (sky.WindowGlass)
-            {
-                Restore();
-                return;
-            }
 
             _sinceSample += deltaTime;
             if (_sinceSample >= sampleInterval && !_pending)

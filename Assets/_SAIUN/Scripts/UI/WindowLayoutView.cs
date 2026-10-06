@@ -8,7 +8,6 @@ namespace _SAIUN.Scripts.UI
     /// 창 모양(카드·사이드바)에 맞춰 UI를 맞춘다.
     /// 캔버스는 화면 배율만큼 키우고(논리 화소로 짠 UI가 배율 125~150% 화면에서도 같은 크기로 보인다),
     /// 카드 높이를 창의 논리 높이로 늘리며, 창 크기로 구운 테두리·알림 빛을 다시 굽는다.
-    /// 바탕화면을 읽는 유리는 창 크기로 읽으므로 켜져 있으면 다시 켠다.
     /// </summary>
     public class WindowLayoutView : MonoBehaviour
     {
@@ -22,7 +21,6 @@ namespace _SAIUN.Scripts.UI
 
         [SerializeField] private GlassRimView rim;
         [SerializeField] private ScreenAlertView alert;
-        [SerializeField] private GameObject desktopGlass;
 
         private void Awake()
         {
@@ -56,12 +54,6 @@ namespace _SAIUN.Scripts.UI
 
             if (rim != null) rim.Rebuild(layout.Logical, rounded: !layout.Sidebar);
             if (alert != null) alert.Resize(layout.Logical);
-
-            if (desktopGlass != null && desktopGlass.activeSelf)
-            {
-                desktopGlass.SetActive(false);
-                desktopGlass.SetActive(true);
-            }
         }
     }
 }

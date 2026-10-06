@@ -281,27 +281,6 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 창_전체를_유리로_하면_하늘빛_없이_구름만_그리고_그때만_바탕화면_유리를_켠다()
-        {
-            SkyView sky = MakeSky(null);
-            var glass = Own(new GameObject("DesktopGlass"));
-            Set(sky, "desktopGlass", glass);
-            sky.ApplyGlass(false);
-            Assert.IsFalse(sky.WindowGlass, "처음엔 하늘과 바다가 창을 채운다");
-            Assert.IsFalse(glass.activeSelf, "바탕화면을 읽지 않는다");
-            Assert.AreEqual(0f, Material(sky).GetFloat("_Glass"), 0.0001f);
-
-            sky.ApplyGlass(true);
-            Assert.IsTrue(glass.activeSelf);
-            Assert.AreEqual(1f, Material(sky).GetFloat("_Glass"), 0.0001f);
-            sky.Tick(0.1f);
-            Assert.AreEqual(1f, Material(sky).GetFloat("_Glass"), 0.0001f, "매 프레임 다시 넘겨도 유지된다");
-
-            sky.ApplyGlass(false);
-            Assert.AreEqual(0f, Material(sky).GetFloat("_Glass"), 0.0001f);
-        }
-
-        [Test]
         public void 구름은_층마다_다른_바람을_타고_높을수록_빠르고_비껴_흐른다()
         {
             SetWind(Vector3.right, 3f);
@@ -337,17 +316,22 @@ namespace _SAIUN.Tests
             SkyView sky = MakeSky(null);
             sky.RenderAll();
             sky.Tick(0.1f);   // 새 장의 첫 칸
-            Vector4 atStart = SheetMaterial(sky).GetVector("_Drift");
+            Material[] tiles = TileMaterials(sky);
+            Vector4 atStart = tiles[0].GetVector("_Drift");
 
             // 칸 몇 개를 더 그린다(장은 아직 끝나지 않았다).
             for (int i = 0; i < 3; i++) sky.Tick(0.1f);
             Assert.That(sky.Phase, Is.InRange(1, SkyView.Interleave - 1), "장을 그리는 중이다");
             Assert.AreNotEqual(atStart, Material(sky).GetVector("_Drift"), "구름은 그새 흘렀다");
-            Assert.AreEqual(atStart, SheetMaterial(sky).GetVector("_Drift"), "그리는 장은 시작할 때 값을 쓴다");
+            for (int cell = 0; cell < SkyView.Interleave; cell++)
+            {
+                Assert.AreEqual(atStart, tiles[cell].GetVector("_Drift"), "그리는 장의 여덟 칸은 모두 시작할 때 값을 쓴다");
+                Assert.AreEqual(cell, tiles[cell].GetFloat("_Phase"), "칸마다 제 칸 번호로 그린다");
+            }
 
             // 장을 마치고 새 장을 시작하면 지금 값을 다시 고정한다.
             for (int i = 0; i < SkyView.Interleave; i++) sky.Tick(0.1f);
-            Assert.AreNotEqual(atStart, SheetMaterial(sky).GetVector("_Drift"), "새 장은 흐른 구름을 그린다");
+            Assert.AreNotEqual(atStart, tiles[0].GetVector("_Drift"), "새 장은 흐른 구름을 그린다");
         }
 
         [Test]
@@ -394,10 +378,6 @@ namespace _SAIUN.Tests
             Assert.Greater(lighting.SkyColor.b, lighting.SkyColor.r, "한낮 위쪽 하늘빛은 푸르다");
             float Warmth(Color c) => c.r / Mathf.Max(c.b, 1e-4f);
             Assert.Greater(Warmth(lighting.GroundColor), Warmth(lighting.SkyColor), "아래(모래밭·바다)에서 튀는 빛은 하늘보다 따뜻하다");
-
-            sky.ApplyGlass(true);
-            lighting.Tick(0.1f);
-            Assert.AreNotEqual(UnityEngine.Rendering.AmbientMode.Trilight, RenderSettings.ambientMode, "창 전체 유리면 씬 주변광으로 돌아간다");
         }
 
         [Test]
@@ -750,9 +730,9 @@ namespace _SAIUN.Tests
             return (Material)typeof(SkyView).GetField("_material", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sky);
         }
 
-        private static Material SheetMaterial(SkyView sky)
+        private static Material[] TileMaterials(SkyView sky)
         {
-            return (Material)typeof(SkyView).GetField("_sheetMaterial", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sky);
+            return (Material[])typeof(SkyView).GetField("_tileMaterials", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(sky);
         }
 
         private SkyLighting MakeSkyLighting(SkyView sky, SunOrbitController orbit)

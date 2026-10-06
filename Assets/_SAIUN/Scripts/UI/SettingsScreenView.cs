@@ -57,7 +57,6 @@ namespace _SAIUN.Scripts.UI
         [Header("창")]
         [SerializeField] private Toggle alwaysOnTopToggle;
         [SerializeField] private Toggle windowSidebarToggle;
-        [SerializeField] private Toggle windowGlassToggle;
         [SerializeField] private Toggle idleSkyCycleToggle;
 
         [Tooltip("시계 하늘을 셈할 도시(해 뜨고 지는 시각)")]
@@ -165,7 +164,6 @@ namespace _SAIUN.Scripts.UI
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.SetIsOnWithoutNotify(SettingsStore.AlwaysOnTop);
             if (windowSidebarToggle != null) windowSidebarToggle.SetIsOnWithoutNotify(SettingsStore.WindowSidebar);
             RefreshResetPosition();
-            if (windowGlassToggle != null) windowGlassToggle.SetIsOnWithoutNotify(SettingsStore.WindowGlass);
             if (idleSkyCycleToggle != null) idleSkyCycleToggle.SetIsOnWithoutNotify(SettingsStore.IdleSkyCycle);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
             RefreshPlace();
@@ -260,7 +258,6 @@ namespace _SAIUN.Scripts.UI
                 windowSidebarToggle.onValueChanged.AddListener(gameManager.RequestSetWindowSidebar);
                 windowSidebarToggle.onValueChanged.AddListener(_ => RefreshResetPosition());
             }
-            if (windowGlassToggle != null) windowGlassToggle.onValueChanged.AddListener(gameManager.RequestSetWindowGlass);
             if (idleSkyCycleToggle != null) idleSkyCycleToggle.onValueChanged.AddListener(gameManager.RequestSetIdleSkyCycle);
             if (placeDropdown != null) placeDropdown.onValueChanged.AddListener(index => gameManager.RequestSetSkyPlace(SkyPlaces.All[index].Name));
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);

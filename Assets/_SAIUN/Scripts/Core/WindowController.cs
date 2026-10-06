@@ -9,7 +9,8 @@ using UnityEngine.EventSystems;
 namespace _SAIUN.Scripts.Core
 {
     /// <summary>
-    /// Win32 투명 창·유리 배경·항상 위·드래그 이동·창 모양(떠 있는 카드 / 오른쪽 세로 전체 사이드바).
+    /// Win32 테두리 없는 창·항상 위·드래그 이동·창 모양(떠 있는 카드 / 오른쪽 세로 전체 사이드바).
+    /// 화면 녹화·스크린샷(OBS 등)에 그대로 잡힌다.
     /// Win32 의존부는 이 클래스에만 둔다. 창 위치 저장·복원은 GameManager가 이 클래스의 API로 배선한다.
     /// 사이드바는 창이 있는 모니터의 오른쪽 가장자리에 붙어 작업 영역 세로 전체를 채운다. 다른 창 위에 떠 있을 뿐
     /// 화면 공간을 예약하지는 않는다. 화면 배율(DPI)만큼 창을 키우고 UI·하늘은 논리 크기로 짠다.
@@ -27,7 +28,6 @@ namespace _SAIUN.Scripts.Core
         [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT lpPoint);
         [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
         [DllImport("user32.dll")] static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
-        [DllImport("user32.dll", SetLastError = true)] static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
         [DllImport("Dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int dwAttribute, ref int pvAttribute, int cbAttribute); // spellchecker:ignore Dwmapi
         [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr hWnd);
         [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hWnd, uint dwFlags);
@@ -58,16 +58,10 @@ namespace _SAIUN.Scripts.Core
         // 에디터에는 모니터가 없으므로 사이드바 높이를 개발 PC 작업 영역쯤으로 둔다.
         const int EditorSidebarHeight = 1040;
 
-        // 화면 캡처에서 이 창만 빼는 속성. 직접 흐림을 쓸 때 자기 자신을 다시 찍지 않으려면 필요하다.
-        const uint WDA_NONE = 0x0000;                  // spellchecker:ignore WDA
-        const uint WDA_EXCLUDEFROMCAPTURE = 0x0011;    // spellchecker:ignore EXCLUDEFROMCAPTURE
-
         // Windows 11 빌드 22621 이상에서 지원하는 창 속성.
         const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
         const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
         const int DWMWA_BORDER_COLOR = 34;
-        const int DWMWA_SYSTEMBACKDROP_TYPE = 38;   // spellchecker:ignore SYSTEMBACKDROP
-        const int DWMSBT_NONE = 1;                  // spellchecker:ignore DWMSBT
 
         // 창 모서리를 둥글게(기본 반경) 또는 깎지 않게.
         const int DWMWCP_DONOTROUND = 1;   // spellchecker:ignore DWMWCP DONOTROUND
@@ -83,23 +77,12 @@ namespace _SAIUN.Scripts.Core
         // 창 크기를 바꾼 뒤 창 안쪽 크기가 맞을 때까지 다시 맞춰 보는 프레임 수
         const int SettleFrames = 30;
 
-        /// <summary>창 전체 유리가 무엇을 흐려 깔지.</summary>
-        public enum GlassMode
-        {
-            /// <summary>화면을 직접 읽어 흐린다. 뒤의 다른 창까지 비친다. 자기 자신을 다시 찍지 않도록 캡처에서 빠진다.</summary>
-            DesktopBlur,
-            /// <summary>바탕화면 레이어만 읽어 흐린다. 다른 창은 안 비치지만 녹화·스크린샷에 정상으로 나온다.</summary>
-            WallpaperBlur,
-        }
 
-        [Header("유리 배경")]
-        [Tooltip("창 전체 유리가 무엇을 흐려 깔지(실행 인자 -glass로도 바꾼다)")]
-        [SerializeField] private GlassMode glass = GlassMode.DesktopBlur;
-
+        [Header("창 테두리")]
         [Tooltip("창 모서리를 둥글게 깎는다. Windows 11에서만 동작한다.")]
         [SerializeField] private bool roundedCorners = true;
 
-        [Tooltip("DWM이 그리는 1픽셀 테두리 색. 유리 가장자리를 또렷하게 만든다.")]
+        [Tooltip("DWM이 그리는 1픽셀 테두리 색. 카드 가장자리를 또렷하게 만든다.")]
         [SerializeField] private Color borderColor = SaiunPalette.Sand;
 
         [Header("사이드바")]
@@ -123,13 +106,10 @@ namespace _SAIUN.Scripts.Core
         /// <summary>창 모양이 바뀌었을 때(처음 준비됐을 때 포함) 발행.</summary>
         public event Action<WindowLayout> OnLayoutChanged;
 
-        /// <summary>투명 창 설정이 끝나 MoveTo 등을 호출해도 되는 상태인지.</summary>
+        /// <summary>창 설정이 끝나 MoveTo 등을 호출해도 되는 상태인지.</summary>
         public bool IsReady { get; private set; }
 
-        /// <summary>현재 적용된 유리 배경.</summary>
-        public GlassMode CurrentGlass => glass;
-
-        /// <summary>투명 창 설정이 끝났을 때 1회 발행.</summary>
+        /// <summary>창 설정이 끝났을 때 1회 발행.</summary>
         public event Action OnReady;
 
         /// <summary>드래그가 끝나 창 위치가 바뀌었을 때 발행. 에디터 컴파일에서는 Win32 경로가 빠져 발행 지점이 없다.</summary>
@@ -173,11 +153,9 @@ namespace _SAIUN.Scripts.Core
             if (_hwnd == IntPtr.Zero) _hwnd = GetActiveWindow();
             if (_hwnd == IntPtr.Zero)
             {
-                Debug.LogWarning("WindowController: 창 핸들을 찾지 못해 투명 창 설정을 건너뜁니다.");
+                Debug.LogWarning("WindowController: 창 핸들을 찾지 못해 창 설정을 건너뜁니다.");
                 yield break;
             }
-
-            ReadOverrides();
 
             // 화면 배율만큼 카드를 키운다(배율 100%면 480×680 그대로다).
             WindowLayout card = WindowLayout.Card(DpiScale());
@@ -189,7 +167,7 @@ namespace _SAIUN.Scripts.Core
             OnLayoutChanged?.Invoke(Layout);
         }
 
-        // 창을 rect 크기로 바꾸고 스타일·유리를 다시 입힌다. 먼저 창 크기만 바꿔 Unity가 따라오게 하고(시작할 때와 같은 길),
+        // 창을 rect 크기로 바꾸고 스타일·테두리를 다시 입힌다. 먼저 창 크기만 바꿔 Unity가 따라오게 하고(시작할 때와 같은 길),
         // 따라오지 않을 때만 해상도를 바꾼다. 실행 중 해상도 변경은 테두리 있는 창 크기로 뒤늦게 다시 적용되며
         // 테두리를 뺀 창을 그만큼 키우기 때문이다.
         System.Collections.IEnumerator ApplyPhysical(RectInt rect, bool move)
@@ -222,8 +200,7 @@ namespace _SAIUN.Scripts.Core
             }
             Debug.Log($"WindowController: 창 {rect.width}x{rect.height} → 화면 {Screen.width}x{Screen.height}");
 
-            ApplyGlass();
-            ApplyCaptureExclusion();
+            ApplyDarkMode();
             ApplyCorners();
             ApplyBorder();
             SetAlwaysOnTop(_alwaysOnTop);
@@ -342,7 +319,7 @@ namespace _SAIUN.Scripts.Core
         // ---- 드래그 ----
         //
         // OS에 캡션 드래그를 넘기면(WM_NCLBUTTONDOWN) 그 호출이 드래그가 끝날 때까지 돌아오지 않는다.
-        // 그동안 Unity가 통째로 멈춰서 시계도 유리 배경도 얼어붙는다.
+        // 그동안 Unity가 통째로 멈춰서 시계도 하늘도 얼어붙는다.
         // 그래서 위치를 직접 옮긴다. 매 프레임 그리므로 배경이 창을 따라온다.
 
         void BeginDrag()
@@ -423,32 +400,15 @@ namespace _SAIUN.Scripts.Core
             return Position;
         }
 
-        // ---- 유리 배경 ----
+        // ---- 창 테두리 ----
 
-        // 창을 시스템 배경 없이 투명하게 둔다. 흐림은 DesktopGlassView가 직접 그린다.
-        // 어두운 유리를 쓰므로 다크 모드로 둬야 DWM이 그리는 테두리·그림자 색조가 맞는다.
-        void ApplyGlass()
+        // 어두운 카드이므로 다크 모드로 둬야 DWM이 그리는 테두리·그림자 색조가 맞는다.
+        void ApplyDarkMode()
         {
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) return;
             int dark = 1;
             DwmSetWindowAttribute(_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
-            int none = DWMSBT_NONE;
-            DwmSetWindowAttribute(_hwnd, DWMWA_SYSTEMBACKDROP_TYPE, ref none, sizeof(int));
-#endif
-        }
-
-        /// <summary>
-        /// 화면 캡처에서 이 창을 뺀다. DesktopBlur는 화면을 그대로 읽으므로,
-        /// 제외하지 않으면 자기가 그린 유리를 다시 찍어 무한히 겹친다.
-        /// </summary>
-        void ApplyCaptureExclusion()
-        {
-#if !UNITY_EDITOR
-            // 바탕화면 레이어만 읽는 모드는 자기 자신이 안 찍히므로 제외할 이유가 없다.
-            bool exclude = glass == GlassMode.DesktopBlur;
-            bool ok = SetWindowDisplayAffinity(_hwnd, exclude ? WDA_EXCLUDEFROMCAPTURE : WDA_NONE);
-            Debug.Log($"WindowController: 캡처 제외 {exclude} 적용 {(ok ? "성공" : "실패")} err={Marshal.GetLastWin32Error()}");
 #endif
         }
 
@@ -476,19 +436,6 @@ namespace _SAIUN.Scripts.Core
             int g = Mathf.Clamp(Mathf.RoundToInt(color.g * 255f), 0, 255);
             int b = Mathf.Clamp(Mathf.RoundToInt(color.b * 255f), 0, 255);
             return (b << 16) | (g << 8) | r;
-        }
-
-        // 실행 인자 -glass desktopblur|wallpaperblur 로 유리 모드를 바꾼다. 화면을 밖에서 찍어 확인할 때
-        // 바탕화면만 읽는 쪽을 쓰면 뒤의 다른 창이 비치지 않는다.
-        void ReadOverrides()
-        {
-            string[] args = Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length - 1; i++)
-            {
-                if (args[i] != "-glass") continue;
-                if (Enum.TryParse(args[i + 1], true, out GlassMode parsed)) glass = parsed;
-                else Debug.LogWarning($"WindowController: 알 수 없는 -glass 값 {args[i + 1]}");
-            }
         }
 
         // ---- 내부 ----

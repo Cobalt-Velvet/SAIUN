@@ -27,7 +27,6 @@ namespace _SAIUN.Scripts.Data
             public const string TutorialCompleted = "tutorial.completed";
             public const string WeatherRandom = "weather.random";
             public const string WeatherFocusLinked = "weather.focusLinked";
-            public const string WindowGlass = "display.windowGlass";
             public const string IdleSkyCycle = "display.idleSkyCycle";
             public const string SkyPlace = "display.skyPlace";
         }
@@ -43,7 +42,6 @@ namespace _SAIUN.Scripts.Data
         public const bool DefaultTutorialCompleted = false;
         public const bool DefaultWeatherRandom = true;
         public const bool DefaultWeatherFocusLinked = true;
-        public const bool DefaultWindowGlass = false;
         public const bool DefaultIdleSkyCycle = false;
 
         private const int True = 1;
@@ -170,14 +168,6 @@ namespace _SAIUN.Scripts.Data
 
         // ---- 화면 ----
 
-        /// <summary>창 전체 유리: 켜면 하늘빛 없이 바탕화면이 창 전체에 흐리게 비치고 구름만 뜬다.
-        /// 끄면 위는 하늘, 지평선 아래는 바다다.</summary>
-        public static bool WindowGlass
-        {
-            get => GetBool(Keys.WindowGlass, DefaultWindowGlass);
-            set => SetBool(Keys.WindowGlass, value);
-        }
-
         /// <summary>시계 하늘을 셈할 도시 이름(SkyPlaces). 비어 있으면 컴퓨터의 시간대를 쓰는 도시로 본다.</summary>
         public static string SkyPlace
         {
@@ -216,7 +206,6 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.TutorialCompleted);
             PlayerPrefs.DeleteKey(Keys.WeatherRandom);
             PlayerPrefs.DeleteKey(Keys.WeatherFocusLinked);
-            PlayerPrefs.DeleteKey(Keys.WindowGlass);
             PlayerPrefs.DeleteKey(Keys.IdleSkyCycle);
             PlayerPrefs.DeleteKey(Keys.SkyPlace);
             PlayerPrefs.Save();
