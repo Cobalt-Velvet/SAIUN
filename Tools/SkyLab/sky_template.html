@@ -1,0 +1,241 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SAIUN sky lookdev</title>
+<style>
+  html,body{margin:0;background:#111;color:#ccc;font:12px sans-serif}
+  #wrap{position:relative;width:480px;height:680px}
+  canvas{display:block;width:480px;height:680px}
+  #clock{position:absolute;left:0;right:0;top:108px;text-align:center;font:300 92px "Segoe UI",sans-serif;color:#fbf3dc;letter-spacing:1px;pointer-events:none}
+  #status{padding:4px}
+</style></head>
+<body>
+<div id="wrap"><canvas id="c" width="480" height="680"></canvas><div id="clock"></div></div>
+<div id="status">…</div>
+
+<script id="fs" type="x-shader/x-fragment">@@FS@@
+</script>
+<script id="sea" type="x-shader/x-fragment">@@SEA@@
+</script>
+<script>
+window.addEventListener("load", () => {
+const P = new URLSearchParams(location.search);
+const num = (k, d) => P.has(k) ? parseFloat(P.get(k)) : d;
+const params = {
+  progress: num('progress', 0.5), growth: num('growth', 1), storm: num('storm', 0),
+  seed: num('seed', 3), time: num('time', 40), cap: num('cap', 1), lens: num('lens', 0),
+  sunAz: num('sunaz', NaN), sunEl: num('sunel', NaN),
+  exposure: num('exposure', 1.0), clock: P.get('clock') ?? '',
+  name: P.get('name') ?? '',
+};
+document.getElementById('clock').textContent = params.clock;
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false, alpha: true, premultipliedAlpha: false });
+
+// ---- 3D 노이즈 텍스처(타일): R = 값 노이즈 fbm(큰 덩어리), G = 뒤집은 워리 fbm(콜리플라워 혹) ----
+const N = 64;
+function hash3(x, y, z, s) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(z, 1440662683) + Math.imul(s, 1274126177) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967295;
+}
+const wrap = (i, f) => ((i % f) + f) % f;
+function valueNoise(x, y, z, f, s) {
+  const X = x * f, Y = y * f, Z = z * f;
+  const xi = Math.floor(X), yi = Math.floor(Y), zi = Math.floor(Z);
+  let fx = X - xi, fy = Y - yi, fz = Z - zi;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy); fz = fz * fz * (3 - 2 * fz);
+  const v = (dx, dy, dz) => hash3(wrap(xi + dx, f), wrap(yi + dy, f), wrap(zi + dz, f), s);
+  const l = (a, b, t) => a + (b - a) * t;
+  return l(l(l(v(0,0,0), v(1,0,0), fx), l(v(0,1,0), v(1,1,0), fx), fy),
+           l(l(v(0,0,1), v(1,0,1), fx), l(v(0,1,1), v(1,1,1), fx), fy), fz);
+}
+function worley(x, y, z, f, s) {
+  const X = x * f, Y = y * f, Z = z * f;
+  const xi = Math.floor(X), yi = Math.floor(Y), zi = Math.floor(Z);
+  let best = 9;
+  for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const cx = xi + dx, cy = yi + dy, cz = zi + dz;
+    const wx = wrap(cx, f), wy = wrap(cy, f), wz = wrap(cz, f);
+    const px = cx + hash3(wx, wy, wz, s), py = cy + hash3(wx, wy, wz, s + 17), pz = cz + hash3(wx, wy, wz, s + 31);
+    const d = (px - X) ** 2 + (py - Y) ** 2 + (pz - Z) ** 2;
+    if (d < best) best = d;
+  }
+  return Math.min(1, Math.sqrt(best));
+}
+function buildNoise() {
+  const data = new Uint8Array(N * N * N * 4);
+  let i = 0;
+  for (let z = 0; z < N; z++) for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = (x + 0.5) / N, v = (y + 0.5) / N, w = (z + 0.5) / N;
+    const r = (valueNoise(u, v, w, 4, 1) * 0.5 + valueNoise(u, v, w, 8, 2) * 0.25 + valueNoise(u, v, w, 16, 3) * 0.15 + valueNoise(u, v, w, 32, 4) * 0.1);
+    // 워리는 크기마다 따로 둔다(섞으면 송이가 뭉개진다): G 4칸, B 8칸, A 16칸.
+    const g = 1 - worley(u, v, w, 4, 5);
+    const b = 1 - worley(u, v, w, 8, 9);
+    const a = 1 - worley(u, v, w, 16, 13);
+    data[i++] = Math.round(r * 255); data[i++] = Math.round(g * 255); data[i++] = Math.round(b * 255); data[i++] = Math.round(a * 255);
+  }
+  return data;
+}
+
+const vs = `#version 300 es
+in vec2 pos; void main(){ gl_Position = vec4(pos, 0.0, 1.0); }`;
+const fs = document.getElementById('fs').textContent;
+function compile(type, src) {
+  const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { document.getElementById('status').textContent = gl.getShaderInfoLog(s); throw new Error(gl.getShaderInfoLog(s)); }
+  return s;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'pos');
+gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const tex = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_3D, tex);
+gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, N, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildNoise());
+gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+for (const w of [gl.TEXTURE_WRAP_S, gl.TEXTURE_WRAP_T, gl.TEXTURE_WRAP_R]) gl.texParameteri(gl.TEXTURE_3D, w, gl.REPEAT);
+
+const U = n => gl.getUniformLocation(prog, n);
+gl.uniform2f(U('uRes'), canvas.width, canvas.height);
+const vec = (k, d) => P.has(k) ? P.get(k).split(',').map(parseFloat) : d;
+gl.uniform1f(U('_SkyTime'), params.time);
+// 눈: 올려다보는 각·초점(사이드바 시안은 쿼리로 바꾼다)
+window.view = vec('view', [14, 0.95, 0]);
+gl.uniform4f(U('_View'), window.view[0], window.view[1], window.view[2] || 0, 0);
+gl.uniform1f(U('_Progress'), params.progress);
+gl.uniform1f(U('_Growth'), params.growth);
+gl.uniform1f(U('_Storm'), params.storm);
+gl.uniform1f(U('_Seed'), params.seed);
+gl.uniform1f(U('_Cap'), params.cap);
+gl.uniform1f(U('_Exposure'), params.exposure);
+gl.uniform4fv(U('_High'), vec('hi', [0, 0, 0, 0]));
+gl.uniform4fv(U('_Mid'), vec('mid', [0, 0, params.lens, 0]));
+gl.uniform4fv(U('_Low'), vec('low', [0, 0, 0, 0]));
+gl.uniform4fv(U('_Special'), vec('sp', [0, 0, 0, 0]));
+gl.uniform4fv(U('_Extra'), vec('ex', [0, 0, 1, 0]));
+gl.uniform4fv(U('_VeilPlace'), vec('lp', [0, 0, 1, 0]));
+gl.uniform1f(U('_VeilForm'), num('form', 0));
+// 구름층 높이(km): 권운·권적운·권층운 / 고적운·고층운·층적운·적운 밑면
+gl.uniform4fv(U('_AltHigh'), vec('althi', [9.0, 7.6, 8.4, 0]));
+gl.uniform4fv(U('_AltLow'), vec('altlo', [4.2, 4.8, 1.7, 1.3]));
+gl.uniform1i(U('_Noise'), 0);
+// 해 방향: 정원의 해(수평각 70 → −70°)를 카메라(45° 돌린 등각)에서 본 방위로 옮기고,
+// 고도는 해 뜰 때·질 때 1.5°, 한낮 62°, 박명이면 지평선 아래로 내린다(SkyView와 같은 식).
+{
+  const p = params.progress, tw = num('tw', 0);
+  // 해 궤도: 아침 등 뒤(180°) → 한낮 왼쪽 → 해 질 녘 앞바다 조금 왼쪽(−10°)
+  const az = isNaN(params.sunAz) ? 180 + 170 * p : params.sunAz;
+  window.sunAz = az;
+  const start = p < 0.5 ? 6 : 0.8;
+  const el = start + (62 - start) * Math.sin(Math.PI * p) - 8.3 * tw - 10.5 * num('night', 0);
+  const a = az * Math.PI / 180, e = el * Math.PI / 180;
+  window.sunEl = el;
+  gl.uniform4f(U('_SunDir'), Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e), 0);
+  // 달: 방위·고도(도)·찬 정도
+  const mo = vec('moon', [0, -30, 0]);
+  const ma = mo[0] * Math.PI / 180, me = mo[1] * Math.PI / 180;
+  window.moon = [Math.sin(ma) * Math.cos(me), Math.sin(me), Math.cos(ma) * Math.cos(me), mo[2]];
+  gl.uniform4f(U('_Moon'), window.moon[0], window.moon[1], window.moon[2], window.moon[3]);
+  window.extra = vec('ex', [0, 0, 1, 0]);
+  window.extra[3] = num('night', window.extra[3] || 0);
+  gl.uniform4fv(U('_Extra'), window.extra);
+  // 층마다 흘러간 거리(km): 시안에서는 시간에 비례해 준다(낮은 층 < 중층 < 높은 층).
+  const tm = params.time;
+  gl.uniform4f(U('_Drift'), tm * 0.03, tm * 0.01, tm * 0.05, -tm * 0.02);
+  gl.uniform4f(U('_DriftHigh'), tm * 0.12, tm * 0.05, 0, 0);
+}
+
+// 하늘은 텍스처에 그린다(바다 패스가 거울 방향으로 읽는다).
+const skyTex = gl.createTexture();
+gl.activeTexture(gl.TEXTURE1);
+gl.bindTexture(gl.TEXTURE_2D, skyTex);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.activeTexture(gl.TEXTURE0);
+const fbo = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, skyTex, 0);
+
+// 한 번에 그리면 GPU 제한 시간에 걸릴 수 있어 띠로 나눠 여러 프레임에 그린다.
+const strips = 24;
+gl.enable(gl.SCISSOR_TEST);
+const t0 = performance.now();
+const h = Math.ceil(canvas.height / strips);
+for (let strip = 0; strip < strips; strip++) {
+  gl.scissor(0, strip * h, canvas.width, h);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.finish();
+}
+gl.disable(gl.SCISSOR_TEST);
+gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+// 바다 패스: 하늘 텍스처를 읽어 지평선 아래를 바다로 채운다.
+const seaProg = gl.createProgram();
+gl.attachShader(seaProg, compile(gl.VERTEX_SHADER, vs));
+gl.attachShader(seaProg, compile(gl.FRAGMENT_SHADER, document.getElementById('sea').textContent));
+gl.linkProgram(seaProg);
+gl.useProgram(seaProg);
+{
+  const S = n => gl.getUniformLocation(seaProg, n);
+  const sl = gl.getAttribLocation(seaProg, 'pos');
+  gl.enableVertexAttribArray(sl); gl.vertexAttribPointer(sl, 2, gl.FLOAT, false, 0, 0);
+  gl.uniform2f(S('uRes'), canvas.width, canvas.height);
+  gl.uniform1i(S('_Noise'), 0);
+  gl.uniform1i(S('uSky'), 1);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, skyTex); gl.activeTexture(gl.TEXTURE0);
+  gl.uniform4f(S('_SkySize'), canvas.width, canvas.height, 0, 0);
+  gl.uniform4f(S('_View'), window.view[0], window.view[1], window.view[2] || 0, 0);
+  const pr = params.progress, tw = num('tw', 0);
+  const az = window.sunAz * Math.PI / 180;
+  const el = window.sunEl, e = el * Math.PI / 180;
+  gl.uniform4f(S('_SunDir'), Math.sin(az) * Math.cos(e), Math.sin(e), Math.cos(az) * Math.cos(e), 0);
+  gl.uniform4f(S('_Moon'), window.moon[0], window.moon[1], window.moon[2], window.moon[3]);
+  gl.uniform4fv(S('_Extra'), window.extra);
+  gl.uniform1f(S('_Storm'), params.storm);
+  gl.uniform4fv(S('_Low'), vec('low', [0, 0, 0, 0]));
+  gl.uniform1f(S('_Exposure'), params.exposure);
+  gl.uniform1f(S('_SeaTime'), num('seatime', 5));
+  // 잔물결이 바람을 따라 흘러간 거리(km)와 바람 세기
+  const wv = vec('seawind', [0.0, 0.0, 0.5]);
+  gl.uniform4f(S('_SeaWind'), wv[0], wv[1], wv[2], 0);
+  // 대기를 지난 해 빛깔(카스텐-영 공기 질량, 레일리·미·오존 연직 광학 두께)
+  // 깊은 밤(밤 > 0.5)이면 물을 비추는 빛은 달이다.
+  const lightEl = window.extra[3] > 0.5 ? Math.asin(window.moon[1]) * 180 / Math.PI : el;
+  const ee = Math.max(lightEl, 0);
+  const am = 1 / (Math.sin(ee * Math.PI / 180) + 0.50572 * Math.pow(ee + 6.07995, -1.6364));
+  const tau = [0.069, 0.162, 0.274];
+  gl.uniform4f(S('_SunColor'), Math.exp(-tau[0] * am), Math.exp(-tau[1] * am), Math.exp(-tau[2] * am), 0);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.finish();
+}
+const px = new Uint8Array(4);
+gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+const ms = Math.round(performance.now() - t0);
+if (P.has('bench')) {
+  gl.disable(gl.SCISSOR_TEST);
+  const scale = parseFloat(P.get('bench'));
+  const b0 = performance.now();
+  for (let k = 0; k < 10; k++) { gl.viewport(0, 0, canvas.width * scale, canvas.height * scale); gl.uniform2f(U('uRes'), canvas.width * scale, canvas.height * scale); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); }
+  document.getElementById('status').textContent = 'bench ' + scale + ': ' + ((performance.now() - b0) / 10).toFixed(1) + ' ms/frame';
+  document.title = 'done';
+  return;
+}
+if (params.name) {
+  canvas.toBlob(b => fetch('/save?name=' + encodeURIComponent(params.name), { method: 'POST', body: b })
+    .then(() => { document.getElementById('status').textContent = `saved ${params.name} (${ms} ms)`; document.title = 'done'; }), 'image/png');
+} else { document.getElementById('status').textContent = `done (${ms} ms)`; document.title = 'done'; }
+});
+</script>
+</body></html>

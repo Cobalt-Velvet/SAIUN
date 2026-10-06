@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><title>runner</title></head><body>
+<div id="s">…</div><iframe id="f" width="480" height="700" style="border:0"></iframe>
+<script>
+// variants.txt의 줄마다(이름 쿼리) sky.html을 차례로 그려 저장한다.
+(async () => {
+  const txt = await (await fetch('variants.txt?' + Date.now())).text();
+  const lines = txt.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+  const f = document.getElementById('f');
+  for (const line of lines) {
+    const [name, query] = line.split(/\s+/, 2);
+    document.getElementById('s').textContent = name;
+    f.src = 'sky.html?name=' + name + '&' + (query || '') + '&r=' + Date.now();
+    await new Promise(r => { const iv = setInterval(() => { try { if (f.contentDocument && f.contentDocument.title === 'done') { clearInterval(iv); r(); } } catch (e) {} }, 100); });
+  }
+  document.title = 'all done';
+  document.getElementById('s').textContent = 'all done ' + lines.length;
+})();
+</script></body></html>
