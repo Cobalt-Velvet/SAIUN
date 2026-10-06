@@ -12,12 +12,13 @@ namespace _SAIUN.Scripts.Weather
     }
 
     /// <summary>
-    /// 창 모양에 맞춰 정원 카메라와 하늘의 눈을 함께 맞춘다(카드·사이드바).
+    /// 창 모양에 맞춰 정원 카메라와 하늘의 눈을 함께 맞춘다(카드·사이드바, 끌어서 바꾼 어떤 크기든).
     ///  - 화소당 각도는 카드와 같게 두고(초점 약 646 논리 화소), 지평선은 창 아래에서 같은 높이(약 179 논리 화소)에 둔다.
-    ///    창이 길어지면 하늘이 위로 더 열리고, 바다·정원·하단 바는 아래에서 카드와 같은 자리다.
-    ///  - 폭이 좁아지면 좁아진 절반만큼 오른쪽으로 돌아, 탑·윤슬·화분이 창 오른쪽 가장자리에서 카드와 같은 거리에 선다.
-    ///    하늘과 정원 카메라를 같은 각만큼 돌리므로 둘은 여전히 한 눈이다.
-    ///  - 하늘 텍스처는 논리 크기로 그리되 화소 수에 상한을 둔다(큰 화면·높은 배율에서 GPU를 아낀다).
+    ///    창을 키우면 그림을 늘리지 않고 초광각 렌즈처럼 더 넓게 본다: 길어지면 하늘이 위로 더 열리고,
+    ///    넓어지면 바다와 하늘이 양옆으로 열린다. 바다·정원·하단 바는 아래에서 카드와 같은 자리다.
+    ///  - 카드보다 좁아지면 좁아진 절반만큼 오른쪽으로 돌아, 탑·윤슬·화분이 창 오른쪽 가장자리에서 카드와 같은 거리에 선다.
+    ///    넓어질 때는 돌지 않아 양옆으로 고르게 열린다. 하늘과 정원 카메라를 같은 각만큼 돌리므로 둘은 여전히 한 눈이다.
+    ///  - 하늘 텍스처는 논리 크기로 그리되 화소 수에 상한을 둔다(큰 창·높은 배율에서 GPU를 아낀다).
     /// </summary>
     public class ViewRig : MonoBehaviour
     {
@@ -29,7 +30,7 @@ namespace _SAIUN.Scripts.Weather
         [SerializeField] private RainEffect rain;
 
         [Tooltip("하늘 텍스처 화소 수 상한")]
-        [SerializeField, Min(10000)] private int maxSkyPixels = 450000;
+        [SerializeField, Min(10000)] private int maxSkyPixels = 800000;
 
         /// <summary>지금 눈.</summary>
         public EyeView Current { get; private set; } = ViewFor(new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight));
@@ -55,7 +56,7 @@ namespace _SAIUN.Scripts.Weather
                                       - SceneMetrics.CameraFocal * Mathf.Tan(SceneMetrics.CameraTiltUpDegrees * Mathf.Deg2Rad) * SceneMetrics.WindowHeight;
             float height = Mathf.Max(1, logical.y);
             float focal = focalPixels / height;
-            float shift = (SceneMetrics.WindowWidth - logical.x) / 2f;
+            float shift = Mathf.Max(0f, (SceneMetrics.WindowWidth - logical.x) / 2f);
             return new EyeView
             {
                 TiltUp = Mathf.Atan((0.5f - horizonFromBottom / height) / focal) * Mathf.Rad2Deg,

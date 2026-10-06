@@ -163,7 +163,6 @@ namespace _SAIUN.Scripts.UI
             if (weatherFocusToggle != null) weatherFocusToggle.SetIsOnWithoutNotify(SettingsStore.WeatherFocusLinked);
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.SetIsOnWithoutNotify(SettingsStore.AlwaysOnTop);
             if (windowSidebarToggle != null) windowSidebarToggle.SetIsOnWithoutNotify(SettingsStore.WindowSidebar);
-            RefreshResetPosition();
             if (idleSkyCycleToggle != null) idleSkyCycleToggle.SetIsOnWithoutNotify(SettingsStore.IdleSkyCycle);
             if (soundToggle != null) soundToggle.SetIsOnWithoutNotify(SettingsStore.SoundEnabled);
             RefreshPlace();
@@ -253,11 +252,7 @@ namespace _SAIUN.Scripts.UI
             if (weatherRandomToggle != null) weatherRandomToggle.onValueChanged.AddListener(gameManager.RequestSetWeatherRandom);
             if (weatherFocusToggle != null) weatherFocusToggle.onValueChanged.AddListener(gameManager.RequestSetWeatherFocusLinked);
             if (alwaysOnTopToggle != null) alwaysOnTopToggle.onValueChanged.AddListener(gameManager.RequestSetAlwaysOnTop);
-            if (windowSidebarToggle != null)
-            {
-                windowSidebarToggle.onValueChanged.AddListener(gameManager.RequestSetWindowSidebar);
-                windowSidebarToggle.onValueChanged.AddListener(_ => RefreshResetPosition());
-            }
+            if (windowSidebarToggle != null) windowSidebarToggle.onValueChanged.AddListener(gameManager.RequestSetWindowSidebar);
             if (idleSkyCycleToggle != null) idleSkyCycleToggle.onValueChanged.AddListener(gameManager.RequestSetIdleSkyCycle);
             if (placeDropdown != null) placeDropdown.onValueChanged.AddListener(index => gameManager.RequestSetSkyPlace(SkyPlaces.All[index].Name));
             if (soundToggle != null) soundToggle.onValueChanged.AddListener(gameManager.RequestSetSoundEnabled);
@@ -292,12 +287,6 @@ namespace _SAIUN.Scripts.UI
             string trimmed = processName?.Trim() ?? string.Empty;
             if (BlacklistStore.Normalize(trimmed).Length == 0) return string.Empty;
             return trimmed.EndsWith(ExecutableSuffix, StringComparison.OrdinalIgnoreCase) ? trimmed : trimmed + ExecutableSuffix;
-        }
-
-        // 창 위치 초기화는 떠 있는 카드를 옮긴다. 사이드바로 붙어 있는 동안에는 할 일이 없어 누를 수 없게 한다.
-        private void RefreshResetPosition()
-        {
-            if (resetPositionButton != null) resetPositionButton.interactable = !SettingsStore.WindowSidebar;
         }
 
         // 도시 목록을 채우고 지금 쓰는 곳(고르지 않았으면 컴퓨터 시간대의 도시)을 고른다.

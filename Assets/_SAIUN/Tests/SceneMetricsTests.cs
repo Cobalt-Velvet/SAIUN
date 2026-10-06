@@ -136,5 +136,69 @@ namespace _SAIUN.Tests
             Assert.AreEqual(Mathf.RoundToInt(380 * tall), big.Physical.width, "폭도 같은 비율로 커진다");
             Assert.AreEqual(1.5f, WindowLayout.SidebarScale(1.5f, 1392, 1100), 0.0001f, "보통 모니터는 화면 배율 그대로");
         }
+
+        [Test]
+        public void 넓고_큰_창은_초광각처럼_양옆과_위로_더_넓게_본다()
+        {
+            EyeView card = ViewRig.ViewFor(new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight));
+            var size = new Vector2Int(1200, 900);
+            EyeView wide = ViewRig.ViewFor(size);
+            Assert.AreEqual(0f, wide.Yaw, 0.0001f, "넓어질 때는 돌지 않아 양옆으로 고르게 열린다");
+            Assert.AreEqual(card.Focal * SceneMetrics.WindowHeight, wide.Focal * size.y, 0.01f, "화소당 각도가 같다(그림을 늘리지 않는다)");
+            float Horizon(EyeView view, int height) => (0.5f - view.Focal * Mathf.Tan(view.TiltUp * Mathf.Deg2Rad)) * height;
+            Assert.AreEqual(Horizon(card, SceneMetrics.WindowHeight), Horizon(wide, size.y), 0.05f, "지평선은 창 아래에서 같은 높이");
+
+            float HorizontalFov(EyeView view, Vector2Int s) => 2f * Mathf.Atan(0.5f * s.x / s.y / view.Focal) * Mathf.Rad2Deg;
+            var cardSize = new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
+            Assert.Greater(HorizontalFov(wide, size), HorizontalFov(card, cardSize) * 2f, "가로 화각이 두 배 넘게 넓다");
+
+            WindowLayout layout = WindowLayout.Card(1.25f, size);
+            Assert.AreEqual(size, layout.Logical);
+            Assert.AreEqual(1500, layout.Physical.width);
+            Assert.AreEqual(1125, layout.Physical.height);
+        }
+
+        [Test]
+        public void 가장자리를_끌면_반대쪽은_제자리에_남고_크기는_범위로_잘린다()
+        {
+            var start = new RectInt(1000, 200, 480, 680);
+            var min = new Vector2Int(340, 480);
+            var max = new Vector2Int(2560, 1392);
+
+            RectInt right = WindowController.ResizedRect(start, WindowController.ResizeEdge.Right, new Vector2Int(300, 50), min, max);
+            Assert.AreEqual(new RectInt(1000, 200, 780, 680), right, "오른쪽만 늘어난다");
+
+            var leftTop = WindowController.ResizeEdge.Left | WindowController.ResizeEdge.Top;
+            RectInt corner = WindowController.ResizedRect(start, leftTop, new Vector2Int(-200, -100), min, max);
+            Assert.AreEqual(new RectInt(800, 100, 680, 780), corner, "왼쪽 위를 끌면 오른쪽 아래가 제자리다");
+
+            RectInt tiny = WindowController.ResizedRect(start, leftTop, new Vector2Int(400, 400), min, max);
+            Assert.AreEqual(min.x, tiny.width);
+            Assert.AreEqual(min.y, tiny.height);
+            Assert.AreEqual(start.xMax, tiny.xMax, "줄여도 반대쪽은 그대로다");
+            Assert.AreEqual(start.yMax, tiny.yMax);
+
+            RectInt huge = WindowController.ResizedRect(start, WindowController.ResizeEdge.Bottom, new Vector2Int(0, 5000), min, max);
+            Assert.AreEqual(max.y, huge.height, "작업 영역보다 커지지 않는다");
+        }
+
+        [Test]
+        public void 가장자리_띠와_모서리를_알아본다()
+        {
+            var rect = new RectInt(100, 100, 480, 680);
+            const int band = 7;
+            WindowController.ResizeEdge At(int x, int y, bool leftOnly = false) =>
+                WindowController.EdgeAt(rect, new Vector2Int(x, y), band, leftOnly);
+
+            Assert.AreEqual(WindowController.ResizeEdge.None, At(340, 400), "가운데는 끌어 옮긴다");
+            Assert.AreEqual(WindowController.ResizeEdge.Left, At(102, 400));
+            Assert.AreEqual(WindowController.ResizeEdge.Right, At(578, 400));
+            Assert.AreEqual(WindowController.ResizeEdge.Top, At(340, 103));
+            Assert.AreEqual(WindowController.ResizeEdge.Bottom, At(340, 777));
+            Assert.AreEqual(WindowController.ResizeEdge.Right | WindowController.ResizeEdge.Bottom, At(570, 770), "모서리는 두 배 폭으로 잡힌다");
+            Assert.AreEqual(WindowController.ResizeEdge.None, At(50, 400), "창 밖");
+            Assert.AreEqual(WindowController.ResizeEdge.Left, At(102, 103, leftOnly: true), "사이드바는 왼쪽만");
+            Assert.AreEqual(WindowController.ResizeEdge.None, At(578, 400, leftOnly: true));
+        }
     }
 }

@@ -239,7 +239,7 @@ namespace _SAIUN.Editor
             Section(content, "창");
             Toggle alwaysOnTop = ToggleRow(content, "AlwaysOnTop", "항상 위");
             Toggle windowSidebar = ToggleRow(content, "WindowSidebar", "화면 오른쪽에 세로로 붙이기");
-            Button resetPosition = WideButton(content, "ResetPosition", "창 위치 초기화", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
+            Button resetPosition = WideButton(content, "ResetPosition", "창 위치·크기 초기화", SaiunPalette.MainPoint, SaiunPalette.OnMainPoint);
 
             Section(content, "사운드");
             Toggle sound = ToggleRow(content, "Sound", "효과음");

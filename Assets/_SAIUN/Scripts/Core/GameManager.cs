@@ -91,12 +91,23 @@ namespace _SAIUN.Scripts.Core
             QualitySettings.vSyncCount = 0;
             CurrentConfig = SettingsStore.LoadSessionConfig();
             if (watcher != null) watcher.GraceSeconds = SettingsStore.GraceSeconds;
+
+            // 창이 처음 만들어질 때(WindowController.Start 다음 프레임) 이 크기로 열리도록 Awake에서 넘긴다.
+            if (windowController != null)
+            {
+                if (SettingsStore.HasCardSize) windowController.SetCardSize(SettingsStore.LoadCardSize());
+                if (SettingsStore.HasSidebarWidth) windowController.SetSidebarWidth(SettingsStore.SidebarWidth);
+            }
         }
 
         private void OnEnable()
         {
             if (stateMachine != null) stateMachine.OnStateChanged += HandleStateChanged;
-            if (windowController != null) windowController.OnMoved += HandleWindowMoved;
+            if (windowController != null)
+            {
+                windowController.OnMoved += HandleWindowMoved;
+                windowController.OnResized += HandleWindowResized;
+            }
         }
 
         private void Start()
@@ -115,6 +126,7 @@ namespace _SAIUN.Scripts.Core
             if (windowController != null)
             {
                 windowController.OnMoved -= HandleWindowMoved;
+                windowController.OnResized -= HandleWindowResized;
                 windowController.OnReady -= RestoreWindow;
             }
         }
@@ -200,11 +212,15 @@ namespace _SAIUN.Scripts.Core
             if (windowController != null) windowController.SetAlwaysOnTop(alwaysOnTop);
         }
 
-        /// <summary>창을 우측 상단 기본 위치로 옮기고, 저장된 위치를 지운다.</summary>
+        /// <summary>창을 기본 크기로 되돌리고 우측 상단 기본 위치로 옮긴다. 저장된 위치·크기를 지운다.</summary>
         public void RequestResetWindowPosition()
         {
             SettingsStore.ClearWindowPosition();
-            if (windowController != null) windowController.MoveToDefaultPosition();
+            SettingsStore.ClearWindowSize();
+            if (windowController == null) return;
+            windowController.SetCardSize(new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight));
+            windowController.SetSidebarWidth(windowController.DefaultSidebarWidth);
+            windowController.MoveToDefaultPosition();
         }
 
         /// <summary>유예 시간을 바꾸고 저장한다. 범위 밖 값은 5~30초로 자른다.</summary>
@@ -379,6 +395,12 @@ namespace _SAIUN.Scripts.Core
         private void HandleWindowMoved(Vector2Int position)
         {
             SettingsStore.SaveWindowPosition(position.x, position.y);
+        }
+
+        private void HandleWindowResized(WindowLayout layout)
+        {
+            if (layout.Sidebar) SettingsStore.SidebarWidth = layout.Logical.x;
+            else SettingsStore.SaveCardSize(layout.Logical);
         }
 
         private void ApplyFrameRate()

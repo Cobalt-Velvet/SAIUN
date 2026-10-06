@@ -9,12 +9,14 @@ using UnityEngine.EventSystems;
 namespace _SAIUN.Scripts.Core
 {
     /// <summary>
-    /// Win32 테두리 없는 창·항상 위·드래그 이동·창 모양(떠 있는 카드 / 오른쪽 세로 전체 사이드바).
+    /// Win32 테두리 없는 창·항상 위·드래그 이동·가장자리를 끌어 크기 바꾸기·창 모양(떠 있는 카드 / 오른쪽 세로 전체 사이드바).
     /// 화면 녹화·스크린샷(OBS 등)에 그대로 잡힌다.
     /// Win32 의존부는 이 클래스에만 둔다. 창 위치 저장·복원은 GameManager가 이 클래스의 API로 배선한다.
     /// 사이드바는 창이 있는 모니터의 오른쪽 가장자리에 붙어 작업 영역 세로 전체를 채운다. 다른 창 위에 떠 있을 뿐
     /// 화면 공간을 예약하지는 않는다. 화면 배율(DPI)만큼 창을 키우고 UI·하늘은 논리 크기로 짠다.
     /// 모니터 구성이나 배율이 바뀌면 몇 초 안에 다시 붙는다. 사이드바에서는 끌어 옮기지 않는다.
+    /// 카드는 네 가장자리·모서리를, 사이드바는 왼쪽 가장자리를 끌어 크기를 바꾼다. 커진 창은 그림을 늘리지 않고
+    /// 더 넓게 본다(ViewRig). 크기 저장·복원도 GameManager가 배선한다.
     /// GameManager.Start가 위치를 복원하기 전에 창 핸들이 준비돼야 하므로 실행 순서를 앞당긴다.
     /// </summary>
     [DefaultExecutionOrder(-100)]
@@ -80,7 +82,9 @@ namespace _SAIUN.Scripts.Core
 
         [Header("창 테두리")]
         [Tooltip("창 모서리를 둥글게 깎는다. Windows 11에서만 동작한다.")]
+#pragma warning disable CS0414
         [SerializeField] private bool roundedCorners = true;
+#pragma warning restore CS0414
 
         [Tooltip("DWM이 그리는 1픽셀 테두리 색. 카드 가장자리를 또렷하게 만든다.")]
         [SerializeField] private Color borderColor = SaiunPalette.Sand;
@@ -90,7 +94,26 @@ namespace _SAIUN.Scripts.Core
         [SerializeField, Min(200)] private int sidebarWidth = 380;
 
         [Tooltip("사이드바 논리 높이 상한. 이보다 높은 모니터에서는 사이드바 전체를 키운다(하늘 구도가 무너지지 않게).")]
+#pragma warning disable CS0414
         [SerializeField, Min(680)] private int maxSidebarHeight = 1100;
+#pragma warning restore CS0414
+
+        [Header("크기 바꾸기")]
+        [Tooltip("창 가장자리에서 끌어 크기를 바꾸는 띠의 폭(논리 화소). 모서리는 두 배 폭으로 잡힌다.")]
+#pragma warning disable CS0414   // 에디터 컴파일에서는 Win32 경로가 빠져 읽는 곳이 없다(아래 같은 표시도 같은 까닭).
+        [SerializeField, Min(2)] private int resizeBorder = 7;
+#pragma warning restore CS0414
+
+        [Tooltip("떠 있는 카드의 가장 작은 크기(논리 화소). 하단 바·시계가 들어갈 만큼.")]
+        [SerializeField] private Vector2Int minCardSize = new Vector2Int(340, 480);
+
+        [Tooltip("사이드바 폭의 범위(논리 화소)")]
+        [SerializeField] private Vector2Int sidebarWidthRange = new Vector2Int(300, 960);
+
+        [Tooltip("크기를 바꾸는 동안 하늘·UI를 다시 맞추는 간격(초). 매 프레임 맞추면 하늘을 너무 자주 새로 그린다.")]
+#pragma warning disable CS0414   // 에디터 컴파일에서는 Win32 경로가 빠져 읽는 곳이 없다.
+        [SerializeField, Min(0f)] private float resizeLayoutSeconds = 0.15f;
+#pragma warning restore CS0414
 
         [Tooltip("사이드바일 때 모니터 구성·배율이 바뀌었는지 살피는 간격(초)")]
 #pragma warning disable CS0414   // 에디터 컴파일에서는 Win32 경로가 빠져 읽는 곳이 없다.
@@ -103,8 +126,22 @@ namespace _SAIUN.Scripts.Core
         /// <summary>지금 창 모양(카드·사이드바, 논리 크기, 배율).</summary>
         public WindowLayout Layout { get; private set; } = WindowLayout.Card(1f);
 
-        /// <summary>창 모양이 바뀌었을 때(처음 준비됐을 때 포함) 발행.</summary>
+        /// <summary>창 모양이 바뀌었을 때(처음 준비됐을 때, 끌어서 크기를 바꾸는 동안 포함) 발행.</summary>
         public event Action<WindowLayout> OnLayoutChanged;
+
+        /// <summary>떠 있는 카드의 논리 크기. 카드로 돌아갈 때 이 크기다.</summary>
+        public Vector2Int CardSize { get; private set; } = new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
+
+        /// <summary>사이드바의 논리 폭.</summary>
+        public int SidebarWidth { get; private set; }
+
+        /// <summary>끌어 바꾸기 전 사이드바의 기본 논리 폭.</summary>
+        public int DefaultSidebarWidth => sidebarWidth;
+
+        /// <summary>가장자리를 끌어 크기 바꾸기를 마쳤을 때 발행(저장용). 인자는 바뀐 창 모양. 에디터 컴파일에서는 발행 지점이 없다.</summary>
+#pragma warning disable CS0067
+        public event Action<WindowLayout> OnResized;
+#pragma warning restore CS0067
 
         /// <summary>창 설정이 끝나 MoveTo 등을 호출해도 되는 상태인지.</summary>
         public bool IsReady { get; private set; }
@@ -117,10 +154,29 @@ namespace _SAIUN.Scripts.Core
         public event Action<Vector2Int> OnMoved;
 #pragma warning restore CS0067
 
+        /// <summary>끌어 잡은 가장자리. 모서리는 두 방향을 함께 갖는다.</summary>
+        [Flags]
+        internal enum ResizeEdge
+        {
+            None = 0,
+            Left = 1,
+            Right = 2,
+            Top = 4,
+            Bottom = 8,
+        }
+
         IntPtr _hwnd;
         bool _wasDown;
-        bool _dragging;
         bool _changing;
+#pragma warning disable CS0169, CS0649, CS0414   // 에디터 컴파일에서는 Win32 경로가 빠져 쓰는 곳이 없다.
+        bool _dragging;
+        bool _resizing;
+        ResizeEdge _resizeEdge;
+        ResizeEdge _cursorEdge;
+        RectInt _resizeStart;
+        RectInt _resizeLimit;
+        float _sinceResizeLayout;
+#pragma warning restore CS0169, CS0649, CS0414
         Vector2Int _cardPosition;
 #if !UNITY_EDITOR
         bool _alwaysOnTop = true;
@@ -129,6 +185,11 @@ namespace _SAIUN.Scripts.Core
 #endif
         Vector2Int _dragCursorStart;
         Vector2Int _dragWindowStart;
+
+        void Awake()
+        {
+            if (SidebarWidth == 0) SidebarWidth = ClampSidebarWidth(sidebarWidth);
+        }
 
         void Start()
         {
@@ -157,8 +218,8 @@ namespace _SAIUN.Scripts.Core
                 yield break;
             }
 
-            // 화면 배율만큼 카드를 키운다(배율 100%면 480×680 그대로다).
-            WindowLayout card = WindowLayout.Card(DpiScale());
+            // 화면 배율만큼 카드를 키운다(배율 100%·기본 크기면 480×680 그대로다).
+            WindowLayout card = WindowLayout.Card(DpiScale(), FitCard(CardSize));
             yield return ApplyPhysical(card.Physical, move: false);
             Layout = card;
 
@@ -221,7 +282,8 @@ namespace _SAIUN.Scripts.Core
             float dpiScale = scale;
             scale = WindowLayout.SidebarScale(dpiScale, work.bottom - work.top, maxSidebarHeight);
             // 작업 표시줄을 오른쪽에 둔 경우에도 그 왼쪽에 붙도록 작업 영역의 오른쪽을 쓴다.
-            WindowLayout layout = WindowLayout.Dock(scale, work.right, work.top, work.bottom, sidebarWidth);
+            int width = Mathf.Min(SidebarWidth, Mathf.FloorToInt((work.right - work.left) / scale));
+            WindowLayout layout = WindowLayout.Dock(scale, work.right, work.top, work.bottom, width);
             yield return ApplyPhysical(layout.Physical, move: true);
             _dockedDisplay = new Vector4(monitor.left, monitor.right, work.top * 10000f + work.bottom, dpiScale);
             Layout = layout;
@@ -233,13 +295,32 @@ namespace _SAIUN.Scripts.Core
         System.Collections.IEnumerator Undock()
         {
             _changing = true;
-            WindowLayout card = WindowLayout.Card(DpiScale());
+            WindowLayout card = WindowLayout.Card(DpiScale(), FitCard(CardSize));
             yield return ApplyPhysical(card.Physical, move: false);
             Layout = card;
             SetWindowPos(_hwnd, IntPtr.Zero, _cardPosition.x, _cardPosition.y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
             RefreshPosition();
             _changing = false;
             OnLayoutChanged?.Invoke(Layout);
+        }
+
+        // 카드 크기를 지금 바꾼다(자리는 그대로).
+        System.Collections.IEnumerator ResizeCard()
+        {
+            _changing = true;
+            WindowLayout card = WindowLayout.Card(DpiScale(), FitCard(CardSize));
+            yield return ApplyPhysical(card.Physical, move: false);
+            Layout = card;
+            _changing = false;
+            OnLayoutChanged?.Invoke(Layout);
+        }
+
+        // 저장해 둔 카드 크기가 지금 모니터 작업 영역보다 크면 맞춘다.
+        Vector2Int FitCard(Vector2Int logical)
+        {
+            if (!ReadDisplay(out _, out RECT work, out float scale)) return logical;
+            var area = new Vector2Int(Mathf.FloorToInt((work.right - work.left) / scale), Mathf.FloorToInt((work.bottom - work.top) / scale));
+            return Vector2Int.Max(Vector2Int.Min(logical, area), Vector2Int.one);
         }
 
         bool ReadDisplay(out RECT monitor, out RECT work, out float scale)
@@ -273,17 +354,47 @@ namespace _SAIUN.Scripts.Core
         }
 #endif
 
+        /// <summary>떠 있는 카드의 크기(논리)를 정한다. 작은 크기 아래로는 자른다. 카드로 떠 있으면 곧바로 바꾼다.</summary>
+        public void SetCardSize(Vector2Int logical)
+        {
+            CardSize = Vector2Int.Max(logical, minCardSize);
+            if (Layout.Sidebar || !IsReady || _changing || _resizing) return;
+#if !UNITY_EDITOR
+            if (_hwnd == IntPtr.Zero) return;
+            StartCoroutine(ResizeCard());
+#else
+            Layout = WindowLayout.Card(1f, CardSize);
+            OnLayoutChanged?.Invoke(Layout);
+#endif
+        }
+
+        /// <summary>사이드바 폭(논리)을 정한다. 범위 밖이면 자른다. 사이드바로 붙어 있으면 곧바로 다시 붙는다.</summary>
+        public void SetSidebarWidth(int logical)
+        {
+            SidebarWidth = ClampSidebarWidth(logical);
+            if (!Layout.Sidebar || !IsReady || _changing || _resizing) return;
+#if !UNITY_EDITOR
+            if (_hwnd == IntPtr.Zero) return;
+            StartCoroutine(Dock());
+#else
+            Layout = WindowLayout.Dock(1f, 0, 0, EditorSidebarHeight, SidebarWidth);
+            OnLayoutChanged?.Invoke(Layout);
+#endif
+        }
+
+        int ClampSidebarWidth(int logical) => Mathf.Clamp(logical, sidebarWidthRange.x, Mathf.Max(sidebarWidthRange.x, sidebarWidthRange.y));
+
         /// <summary>
         /// 사이드바(화면 오른쪽 세로 전체)로 붙이거나 떠 있는 카드로 돌아간다. 바꾸는 중에 다시 부르면 무시한다.
         /// </summary>
         public void SetSidebar(bool on)
         {
-            if (on == Layout.Sidebar || _changing) return;
+            if (on == Layout.Sidebar || _changing || _resizing) return;
 #if !UNITY_EDITOR
             if (_hwnd == IntPtr.Zero) return;
             StartCoroutine(on ? Dock() : Undock());
 #else
-            Layout = on ? WindowLayout.Dock(1f, 0, 0, EditorSidebarHeight, sidebarWidth) : WindowLayout.Card(1f);
+            Layout = on ? WindowLayout.Dock(1f, 0, 0, EditorSidebarHeight, SidebarWidth) : WindowLayout.Card(1f, CardSize);
             OnLayoutChanged?.Invoke(Layout);
 #endif
         }
@@ -298,18 +409,26 @@ namespace _SAIUN.Scripts.Core
             // GetAsyncKeyState는 최상위 비트가 눌림 상태다.
             bool isDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
 
-            // 사이드바는 화면 가장자리에 붙어 있으므로 끌어 옮기지 않는다.
-            if (isDown && !_wasDown && !Layout.Sidebar && IsCursorInsideWindow() && !IsPointerOverUI())
+            if (_resizing)
             {
-                BeginDrag();
-            }
-            else if (_dragging && isDown)
-            {
-                ContinueDrag();
+                if (isDown) ContinueResize();
+                else EndResize();
             }
             else if (_dragging)
             {
-                EndDrag();
+                if (isDown) ContinueDrag();
+                else EndDrag();
+            }
+            else if (!_changing)
+            {
+                // 가장자리는 버튼보다 먼저 잡는다. 사이드바는 화면 가장자리에 붙어 있으므로 끌어 옮기지 않는다.
+                ResizeEdge edge = EdgeUnderCursor();
+                ShowResizeCursor(edge);
+                if (isDown && !_wasDown && IsCursorInsideWindow())
+                {
+                    if (edge != ResizeEdge.None) BeginResize(edge);
+                    else if (!Layout.Sidebar && !IsPointerOverUI()) BeginDrag();
+                }
             }
 
             _wasDown = isDown;
@@ -349,6 +468,153 @@ namespace _SAIUN.Scripts.Core
             RefreshPosition();
             OnMoved?.Invoke(Position);
         }
+
+        // ---- 크기 바꾸기 ----
+        //
+        // 이동과 같은 까닭으로 운영체제의 크기 바꾸기(WM_NCHITTEST 가장자리)를 쓰지 않고 직접 바꾼다.
+        // 창은 매 프레임 따라 커지고, 하늘·UI는 resizeLayoutSeconds마다(그리고 놓을 때) 새 크기에 맞춘다.
+
+        /// <summary>
+        /// 처음 자리 start(스크린 화소)에서 잡은 가장자리를 delta만큼 끌었을 때의 자리. 크기는 min~max로 자르고,
+        /// 왼쪽·위를 잡았으면 반대쪽 가장자리가 제자리에 남는다.
+        /// </summary>
+        internal static RectInt ResizedRect(RectInt start, ResizeEdge edge, Vector2Int delta, Vector2Int min, Vector2Int max)
+        {
+            int left = start.xMin;
+            int right = start.xMax;
+            int top = start.yMin;
+            int bottom = start.yMax;
+            if ((edge & ResizeEdge.Left) != 0) left += delta.x;
+            if ((edge & ResizeEdge.Right) != 0) right += delta.x;
+            if ((edge & ResizeEdge.Top) != 0) top += delta.y;
+            if ((edge & ResizeEdge.Bottom) != 0) bottom += delta.y;
+
+            int width = Mathf.Clamp(right - left, min.x, Mathf.Max(min.x, max.x));
+            int height = Mathf.Clamp(bottom - top, min.y, Mathf.Max(min.y, max.y));
+            if ((edge & ResizeEdge.Left) != 0) left = start.xMax - width;
+            if ((edge & ResizeEdge.Top) != 0) top = start.yMax - height;
+            return new RectInt(left, top, width, height);
+        }
+
+        /// <summary>창 rect(스크린 화소) 안의 점 p가 잡는 가장자리. 띠 폭은 band, 모서리는 그 두 배로 잡는다.</summary>
+        internal static ResizeEdge EdgeAt(RectInt rect, Vector2Int p, int band, bool leftOnly)
+        {
+            if (p.x < rect.xMin || p.x >= rect.xMax || p.y < rect.yMin || p.y >= rect.yMax) return ResizeEdge.None;
+            if (leftOnly) return p.x < rect.xMin + band ? ResizeEdge.Left : ResizeEdge.None;
+
+            int corner = band * 2;
+            bool nearX = p.x < rect.xMin + corner || p.x >= rect.xMax - corner;
+            bool nearY = p.y < rect.yMin + corner || p.y >= rect.yMax - corner;
+            int reachX = nearY ? corner : band;
+            int reachY = nearX ? corner : band;
+            var edge = ResizeEdge.None;
+            if (p.x < rect.xMin + reachX) edge |= ResizeEdge.Left;
+            else if (p.x >= rect.xMax - reachX) edge |= ResizeEdge.Right;
+            if (p.y < rect.yMin + reachY) edge |= ResizeEdge.Top;
+            else if (p.y >= rect.yMax - reachY) edge |= ResizeEdge.Bottom;
+            // 모서리 넓은 띠는 두 방향이 함께일 때만 쓴다. 한 방향뿐이면 보통 띠 안이어야 한다.
+            if (edge == ResizeEdge.Left && p.x >= rect.xMin + band) return ResizeEdge.None;
+            if (edge == ResizeEdge.Right && p.x < rect.xMax - band) return ResizeEdge.None;
+            if (edge == ResizeEdge.Top && p.y >= rect.yMin + band) return ResizeEdge.None;
+            if (edge == ResizeEdge.Bottom && p.y < rect.yMax - band) return ResizeEdge.None;
+            return edge;
+        }
+
+        ResizeEdge EdgeUnderCursor()
+        {
+#if !UNITY_EDITOR
+            if (!GetCursorPos(out POINT p) || !GetWindowRect(_hwnd, out RECT r)) return ResizeEdge.None;
+            var rect = new RectInt(r.left, r.top, r.right - r.left, r.bottom - r.top);
+            int band = Mathf.Max(2, Mathf.RoundToInt(resizeBorder * Layout.Scale));
+            return EdgeAt(rect, new Vector2Int(p.x, p.y), band, Layout.Sidebar);
+#else
+            return ResizeEdge.None;
+#endif
+        }
+
+        // 가장자리 위에서는 양쪽 화살표 커서를 보인다. 바뀔 때만 다시 입힌다.
+        void ShowResizeCursor(ResizeEdge edge)
+        {
+            if (edge == _cursorEdge) return;
+            _cursorEdge = edge;
+            if (edge == ResizeEdge.None)
+            {
+                Cursor.SetCursor(null, Vector2.zero, CursorMode.Auto);
+                return;
+            }
+            bool horizontal = (edge & (ResizeEdge.Left | ResizeEdge.Right)) != 0;
+            bool vertical = (edge & (ResizeEdge.Top | ResizeEdge.Bottom)) != 0;
+            bool falling = edge == (ResizeEdge.Left | ResizeEdge.Top) || edge == (ResizeEdge.Right | ResizeEdge.Bottom);
+            Cursor.SetCursor(ResizeCursors.For(horizontal, vertical, falling), ResizeCursors.Hotspot, CursorMode.Auto);
+        }
+
+        void BeginResize(ResizeEdge edge)
+        {
+#if !UNITY_EDITOR
+            if (!GetCursorPos(out POINT cursor) || !GetWindowRect(_hwnd, out RECT rect)) return;
+            if (!ReadDisplay(out _, out RECT work, out _)) return;
+            float scale = Layout.Scale;
+            _resizing = true;
+            _resizeEdge = edge;
+            _dragCursorStart = new Vector2Int(cursor.x, cursor.y);
+            _resizeStart = new RectInt(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+            _sinceResizeLayout = 0f;
+            var area = new Vector2Int(work.right - work.left, work.bottom - work.top);
+            _resizeLimit = Layout.Sidebar
+                ? new RectInt(Mathf.RoundToInt(sidebarWidthRange.x * scale), _resizeStart.height,
+                    Mathf.Min(area.x, Mathf.RoundToInt(sidebarWidthRange.y * scale)), _resizeStart.height)
+                : new RectInt(Mathf.RoundToInt(minCardSize.x * scale), Mathf.RoundToInt(minCardSize.y * scale), area.x, area.y);
+#endif
+        }
+
+        void ContinueResize()
+        {
+#if !UNITY_EDITOR
+            if (!GetCursorPos(out POINT cursor)) return;
+            RectInt rect = CurrentResize(cursor);
+            SetWindowPos(_hwnd, IntPtr.Zero, rect.x, rect.y, rect.width, rect.height, SWP_NOZORDER | SWP_NOACTIVATE);
+            _sinceResizeLayout += Time.unscaledDeltaTime;
+            if (_sinceResizeLayout < resizeLayoutSeconds) return;
+            _sinceResizeLayout = 0f;
+            ApplyResized(rect);
+#endif
+        }
+
+        void EndResize()
+        {
+#if !UNITY_EDITOR
+            _resizing = false;
+            if (GetCursorPos(out POINT cursor))
+            {
+                RectInt rect = CurrentResize(cursor);
+                SetWindowPos(_hwnd, IntPtr.Zero, rect.x, rect.y, rect.width, rect.height, SWP_NOZORDER | SWP_NOACTIVATE);
+                ApplyResized(rect);
+            }
+            if (Layout.Sidebar) SidebarWidth = Layout.Logical.x;
+            else CardSize = Layout.Logical;
+            RefreshPosition();
+            if (!Layout.Sidebar) OnMoved?.Invoke(Position);   // 왼쪽·위를 끌었으면 자리도 바뀌었다
+            OnResized?.Invoke(Layout);
+#endif
+        }
+
+#if !UNITY_EDITOR
+        RectInt CurrentResize(POINT cursor)
+        {
+            var delta = new Vector2Int(cursor.x - _dragCursorStart.x, cursor.y - _dragCursorStart.y);
+            return ResizedRect(_resizeStart, _resizeEdge, delta, _resizeLimit.position, _resizeLimit.size);
+        }
+
+        // 끌어 바꾼 창 자리로 창 모양을 맞추고 알린다(하늘·UI가 따라온다).
+        void ApplyResized(RectInt rect)
+        {
+            float scale = Layout.Scale;
+            Layout = Layout.Sidebar
+                ? WindowLayout.Dock(scale, rect.xMax, rect.yMin, rect.yMax, Mathf.RoundToInt(rect.width / scale))
+                : WindowLayout.Card(scale, new Vector2Int(Mathf.RoundToInt(rect.width / scale), Mathf.RoundToInt(rect.height / scale)));
+            OnLayoutChanged?.Invoke(Layout);
+        }
+#endif
 
         // ---- 공개 API ----
 

@@ -4,8 +4,10 @@ namespace _SAIUN.Scripts.Core
 {
     /// <summary>
     /// 창 모양: 떠 있는 카드, 또는 화면을 감지해 오른쪽 세로 전체를 채우는 사이드바.
-    ///  - 떠 있는 카드: 사양서 8장 480×680, 끌어 옮길 수 있다.
+    ///  - 떠 있는 카드: 기본은 사양서 8장 480×680. 끌어 옮기고, 가장자리를 끌어 크기를 바꾼다.
     ///  - 사이드바: 창이 있는 모니터의 오른쪽 가장자리에 붙어 작업 영역(작업 표시줄 제외) 세로 전체를 채운다.
+    ///    왼쪽 가장자리를 끌어 폭을 바꾼다.
+    /// 창이 커지면 그림을 늘리지 않고 더 넓게 본다(화소당 각도를 지키는 초광각, ViewRig).
     /// 논리 크기는 화면 배율 100% 기준 화소이고, 실제 창은 배율(DPI/96)만큼 크다. UI와 하늘은 논리 크기로 짠다.
     /// </summary>
     public struct WindowLayout
@@ -22,10 +24,16 @@ namespace _SAIUN.Scripts.Core
         /// <summary>실제 창 자리(스크린 화소). 카드는 크기만 쓴다.</summary>
         public RectInt Physical;
 
-        /// <summary>떠 있는 카드. 자리는 끌어 옮긴 곳을 지키므로 크기만 정한다.</summary>
+        /// <summary>기본 크기(480×680)의 떠 있는 카드.</summary>
         public static WindowLayout Card(float scale)
         {
-            var logical = new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight);
+            return Card(scale, new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight));
+        }
+
+        /// <summary>떠 있는 카드. 자리는 끌어 옮긴 곳을 지키므로 크기만 정한다.</summary>
+        public static WindowLayout Card(float scale, Vector2Int logical)
+        {
+            logical = Vector2Int.Max(logical, Vector2Int.one);
             return new WindowLayout
             {
                 Sidebar = false,

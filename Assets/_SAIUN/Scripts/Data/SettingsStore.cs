@@ -20,6 +20,9 @@ namespace _SAIUN.Scripts.Data
             public const string WindowPosY = "window.posY";
             public const string WindowAlwaysOnTop = "window.alwaysOnTop";
             public const string WindowSidebar = "window.sidebar";
+            public const string WindowCardWidth = "window.cardWidth";
+            public const string WindowCardHeight = "window.cardHeight";
+            public const string WindowSidebarWidth = "window.sidebarWidth";
             public const string SoundEnabled = "sound.enabled";
             public const string SoundVolume = "sound.volume";
             public const string DistractionGraceSeconds = "distraction.graceSeconds";
@@ -93,6 +96,44 @@ namespace _SAIUN.Scripts.Data
         {
             PlayerPrefs.DeleteKey(Keys.WindowPosX);
             PlayerPrefs.DeleteKey(Keys.WindowPosY);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>끌어서 바꾼 카드 크기(논리 화소)가 저장돼 있는지. 없으면 기본 크기(480×680)다.</summary>
+        public static bool HasCardSize =>
+            PlayerPrefs.HasKey(Keys.WindowCardWidth) && PlayerPrefs.HasKey(Keys.WindowCardHeight);
+
+        public static Vector2Int LoadCardSize()
+        {
+            return new Vector2Int(PlayerPrefs.GetInt(Keys.WindowCardWidth), PlayerPrefs.GetInt(Keys.WindowCardHeight));
+        }
+
+        public static void SaveCardSize(Vector2Int logical)
+        {
+            PlayerPrefs.SetInt(Keys.WindowCardWidth, logical.x);
+            PlayerPrefs.SetInt(Keys.WindowCardHeight, logical.y);
+            PlayerPrefs.Save();
+        }
+
+        /// <summary>끌어서 바꾼 사이드바 폭(논리 화소)이 저장돼 있는지. 없으면 기본 폭이다.</summary>
+        public static bool HasSidebarWidth => PlayerPrefs.HasKey(Keys.WindowSidebarWidth);
+
+        public static int SidebarWidth
+        {
+            get => PlayerPrefs.GetInt(Keys.WindowSidebarWidth);
+            set
+            {
+                PlayerPrefs.SetInt(Keys.WindowSidebarWidth, value);
+                PlayerPrefs.Save();
+            }
+        }
+
+        /// <summary>끌어서 바꾼 카드 크기와 사이드바 폭을 지워 기본 크기로 돌아가게 한다.</summary>
+        public static void ClearWindowSize()
+        {
+            PlayerPrefs.DeleteKey(Keys.WindowCardWidth);
+            PlayerPrefs.DeleteKey(Keys.WindowCardHeight);
+            PlayerPrefs.DeleteKey(Keys.WindowSidebarWidth);
             PlayerPrefs.Save();
         }
 
@@ -196,6 +237,9 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.WindowPosY);
             PlayerPrefs.DeleteKey(Keys.WindowAlwaysOnTop);
             PlayerPrefs.DeleteKey(Keys.WindowSidebar);
+            PlayerPrefs.DeleteKey(Keys.WindowCardWidth);
+            PlayerPrefs.DeleteKey(Keys.WindowCardHeight);
+            PlayerPrefs.DeleteKey(Keys.WindowSidebarWidth);
             PlayerPrefs.DeleteKey(Keys.SoundEnabled);
             PlayerPrefs.DeleteKey(Keys.SoundVolume);
             PlayerPrefs.DeleteKey(Keys.DistractionGraceSeconds);

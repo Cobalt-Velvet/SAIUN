@@ -199,6 +199,37 @@ namespace _SAIUN.Tests
         }
 
         [Test]
+        public void 카드_크기를_바꾸면_더_넓게_보고_저장되며_초기화로_되돌아간다()
+        {
+            var window = Find<WindowController>();
+            var sky = Find<SkyView>();
+            var rig = Find<ViewRig>();
+            Camera eye = Camera.main;
+            float cardFov = eye.fieldOfView;
+            var uiCard = (RectTransform)GameObject.Find("UICanvas").transform.Find("Card");
+
+            var size = new Vector2Int(900, 820);
+            window.SetCardSize(size);
+            Assert.AreEqual(size, window.Layout.Logical);
+            Assert.AreEqual(size.y, uiCard.sizeDelta.y, 0.01f, "UI 카드가 창 높이를 따른다");
+            Assert.AreEqual(size.y, sky.Target.height, "하늘도 새 크기로 그린다");
+            Assert.Greater(eye.fieldOfView, cardFov, "그림을 늘리지 않고 더 넓게 본다");
+            Assert.AreEqual(0f, rig.Current.Yaw, 0.0001f);
+
+            // 끌어 바꾸기를 마치면 저장한다(이벤트는 Win32 경로에서만 나므로 받는 쪽을 직접 부른다).
+            typeof(GameManager).GetMethod("HandleWindowResized", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .Invoke(Gm, new object[] { window.Layout });
+            Assert.IsTrue(SettingsStore.HasCardSize);
+            Assert.AreEqual(size, SettingsStore.LoadCardSize());
+
+            OpenSettings();
+            Button(_settings, "resetPositionButton").onClick.Invoke();
+            Assert.IsFalse(SettingsStore.HasCardSize, "초기화하면 저장한 크기를 지운다");
+            Assert.AreEqual(new Vector2Int(SceneMetrics.WindowWidth, SceneMetrics.WindowHeight), window.Layout.Logical);
+            Assert.AreEqual(cardFov, eye.fieldOfView, 0.01f);
+        }
+
+        [Test]
         public void 데이터_항목에_누적_기록이_보인다()
         {
             Gm.Database.InsertSession(new SessionRecord
