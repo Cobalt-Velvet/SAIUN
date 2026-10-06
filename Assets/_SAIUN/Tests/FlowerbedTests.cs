@@ -7,7 +7,7 @@ namespace _SAIUN.Tests
 {
     /// <summary>
     /// P2-02: 화단은 6×2 그리드이고, 칸 좌표가 화단 원점 기준으로 균일하게 놓인다.
-    /// 외형은 둥근 테두리 화분과 둔덕·고랑이 있는 흙 면 메시다.
+    /// 외형은 나무 판자 상자와 둔덕·고랑이 있는 흙 면 메시, 그리고 집중할 때 놓이는 토분이다.
     /// </summary>
     public class FlowerbedTests
     {
@@ -129,7 +129,7 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 풍향계_자리는_뒤_모서리_테두리_윗면이다()
+        public void 풍향계는_뒤_모서리_테두리를_꿰뚫고_데크에_선다()
         {
             Vector3 corner = _bed.RimCorner;
             Vector2 grid = _bed.GridSize;
@@ -138,6 +138,43 @@ namespace _SAIUN.Tests
             Assert.Greater(corner.z, grid.y / 2f);
             Assert.Less(corner.x, grid.x / 2f + _bed.RimWidth);
             Assert.Less(corner.z, grid.y / 2f + _bed.RimWidth);
+
+            Vector3 vane = _bed.VaneBase;
+            Assert.AreEqual(0f, vane.y, 0.0001f, "상자를 토분으로 바꿔도 서 있게 데크에 박힌다");
+            Assert.AreEqual(corner.x, vane.x, 0.0001f);
+            Assert.AreEqual(corner.z, vane.z, 0.0001f);
+        }
+
+        [Test]
+        public void 토분은_상자_가운데_데크_위에_서고_집중_작물은_흙_가운데에_선다()
+        {
+            var pot = new GameObject("Pot", typeof(MeshFilter));
+            var potSoil = new GameObject("PotSoil", typeof(MeshFilter));
+            pot.transform.SetParent(_go.transform, false);
+            potSoil.transform.SetParent(_go.transform, false);
+            var so = new System.Collections.Generic.Dictionary<string, Transform> { { "pot", pot.transform }, { "potSoil", potSoil.transform } };
+            foreach (var pair in so)
+            {
+                typeof(Flowerbed).GetField(pair.Key, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                    .SetValue(_bed, pair.Value);
+            }
+            _go.transform.position = new Vector3(2f, 0f, -1f);
+            _bed.FitVisuals();
+
+            Bounds bounds = pot.GetComponent<MeshFilter>().sharedMesh.bounds;
+            Assert.AreEqual(0f, bounds.min.y, 0.0001f, "데크 윗면에 놓인다");
+            Assert.AreEqual(_bed.PotRadius, bounds.extents.x, 0.001f);
+            Assert.Less(_bed.PotRadius, _bed.GridSize.y / 2f + _bed.RimWidth, "상자 자리 안에 들어간다");
+
+            Vector3 plant = _bed.PotPlantPosition;
+            Assert.AreEqual(2f, plant.x, 0.0001f, "상자 가운데");
+            Assert.AreEqual(-1f, plant.z, 0.0001f);
+            Assert.Greater(plant.y, bounds.max.y * 0.8f, "흙은 토분 위쪽까지 차오른다");
+            Assert.Less(plant.y, bounds.max.y, "흙은 테두리보다 낮다");
+
+            Bounds soil = potSoil.GetComponent<MeshFilter>().sharedMesh.bounds;
+            Assert.AreEqual(plant.y, soil.max.y, 0.005f, "작물은 흙 가운데 꼭대기에 선다");
+            Assert.Less(soil.extents.x, _bed.PotRadius, "흙은 토분 안에 있다");
         }
 
         [Test]

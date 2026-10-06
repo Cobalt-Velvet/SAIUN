@@ -40,7 +40,7 @@ namespace _SAIUN.Tests
 
             Assert.AreEqual("다음", label.text);
             next.onClick.Invoke();
-            Assert.AreEqual("작물 심기", Get<TMP_Text>(_tutorial, "titleText").text);
+            Assert.AreEqual("올리브 키우기", Get<TMP_Text>(_tutorial, "titleText").text);
             next.onClick.Invoke();
             Assert.AreEqual("포모도로 시작", Get<TMP_Text>(_tutorial, "titleText").text);
             Assert.AreEqual("시작하기", label.text, "마지막 단계에서는 시작하기");

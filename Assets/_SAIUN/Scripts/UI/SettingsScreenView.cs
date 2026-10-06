@@ -378,18 +378,25 @@ namespace _SAIUN.Scripts.UI
             if (inventoryText != null) inventoryText.text = InventorySummary(database.GetInventory());
         }
 
-        // "쌀 3 · 밀 1"처럼 작물 목록 순서대로 적는다. 목록에 없는 작물은 id로 적는다.
+        // "올리브 3 · 쌀 1"처럼 집중 작물을 먼저, 이어서 작물 목록 순서대로 적는다. 목록에 없는 작물은 id로 적는다.
+        // (예전에는 세션마다 작물을 골라 심어 다른 작물의 수확 기록도 남아 있다.)
         private string InventorySummary(List<InventoryRecord> inventory)
         {
             if (inventory.Count == 0) return inventoryEmpty;
 
             CropCatalog catalog = gameManager.CropCatalog;
             var builder = new StringBuilder();
-            IEnumerable<CropDefinition> order = catalog != null ? catalog.Crops : Array.Empty<CropDefinition>();
+            var order = new List<CropDefinition>();
+            if (catalog != null)
+            {
+                if (catalog.FocusCrop != null) order.Add(catalog.FocusCrop);
+                order.AddRange(catalog.Crops);
+            }
             var written = new HashSet<string>();
 
             foreach (CropDefinition crop in order)
             {
+                if (crop == null) continue;
                 InventoryRecord item = inventory.Find(r => r.CropType == crop.Id);
                 if (item == null || item.Quantity <= 0) continue;
                 Append(builder, crop.DisplayName, item.Quantity);

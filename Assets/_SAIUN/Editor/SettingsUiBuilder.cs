@@ -39,9 +39,7 @@ namespace _SAIUN.Editor
         private const float IconButtonSize = 32f;
         private const float IconMargin = 8f;
         private const float HeaderHeight = 48f;
-        private const float SessionPanelHeight = 332f;
-        private const float CropButtonHeight = 52f;
-        private const int CropColumns = 4;
+        private const float SessionPanelHeight = 220f;
         private const float ToggleBoxSize = 22f;
         private const float ScrollbarWidth = 6f;
         private const float ScrollSensitivity = 30f;
@@ -155,20 +153,6 @@ namespace _SAIUN.Editor
             SliderField longBreak = SliderRow(panel, "LongBreak");
             SliderField sets = SliderRow(panel, "Sets");
 
-            Size(Text(panel, "CropLabel", "작물", SmallFontSize + 1f, SaiunPalette.SubtleText), height: 18f);
-            RectTransform grid = NewUi("CropGrid", panel);
-            var gridLayout = grid.gameObject.AddComponent<GridLayoutGroup>();
-            float cropWidth = (SceneMetrics.WindowWidth - Padding * 2 - Spacing * (CropColumns - 1)) / CropColumns;
-            gridLayout.cellSize = new Vector2(cropWidth, CropButtonHeight);
-            gridLayout.spacing = new Vector2(Spacing, Spacing);
-            gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-            gridLayout.constraintCount = CropColumns;
-            grid.gameObject.AddComponent<GridColumnFitter>();   // 사이드바처럼 폭이 좁아지면 칸 폭을 맞춘다
-            Size(grid, height: CropButtonHeight);
-            Button cropTemplate = CropButtonTemplate(grid);
-
-            TMP_Text hint = Size(Text(panel, "Hint", string.Empty, SmallFontSize, SaiunPalette.SubtleText), height: 18f);
-
             var so = new SerializedObject(view);
             so.FindProperty("gameManager").objectReferenceValue = gameManager;
             so.FindProperty("panel").objectReferenceValue = panel.gameObject;
@@ -177,28 +161,10 @@ namespace _SAIUN.Editor
             so.FindProperty("shortBreakField").objectReferenceValue = shortBreak;
             so.FindProperty("longBreakField").objectReferenceValue = longBreak;
             so.FindProperty("setsField").objectReferenceValue = sets;
-            so.FindProperty("cropGrid").objectReferenceValue = grid;
-            so.FindProperty("cropTemplate").objectReferenceValue = cropTemplate;
-            so.FindProperty("hintText").objectReferenceValue = hint;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             panel.gameObject.SetActive(false);
             return view;
-        }
-
-        private static Button CropButtonTemplate(Transform grid)
-        {
-            Button button = ColoredButton(grid, "CropTemplate", string.Empty, BodyFontSize, RowColor, SaiunPalette.Sand);
-            // 기본 버튼의 글자 하나를 이름·조건 두 줄로 바꾼다.
-            Object.DestroyImmediate(button.GetComponentInChildren<TMP_Text>().gameObject);
-
-            TMP_Text name = Text(button.transform, "Name", string.Empty, BodyFontSize, SaiunPalette.Sand, TextAlignmentOptions.Center);
-            Anchor(name.rectTransform, new Vector2(0f, 0.45f), new Vector2(1f, 1f));
-            TMP_Text detail = Text(button.transform, "Detail", string.Empty, SmallFontSize - 1f, SaiunPalette.Sand, TextAlignmentOptions.Center);
-            Anchor(detail.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.48f));
-
-            button.gameObject.SetActive(false);
-            return button;
         }
 
         // ---- 시스템 설정 화면 (12-2) ----
@@ -453,10 +419,10 @@ namespace _SAIUN.Editor
             {
                 new TutorialStep("방해 앱 등록",
                     "오른쪽 위 기어 아이콘에서 집중을 방해하는 앱을 등록하세요.\n날씨·창·소리도 여기서 바꿀 수 있어요.", gear),
-                new TutorialStep("작물 심기",
-                    "시작 버튼을 누르면 세션 설정이 열려요.\n작물 목록에서 심을 작물을 고르세요.", start),
+                new TutorialStep("올리브 키우기",
+                    "쉬는 동안 상자에서는 텃밭 작물이 저절로 자라요.\n집중을 시작하면 화분에 올리브를 심고, 세트를 마칠수록 자라 열매가 익어요.", start),
                 new TutorialStep("포모도로 시작",
-                    "집중 시간과 세트 수를 정하고 시작하세요.\n집중 중에 방해 앱으로 넘어가 유예 시간 안에 돌아오지 않으면 작물이 시들어요.", start),
+                    "집중 시간과 세트 수를 정하고 시작하세요.\n집중 중에 방해 앱으로 넘어가 유예 시간 안에 돌아오지 않으면 올리브가 시들어요.", start),
             };
 
             var so = new SerializedObject(view);

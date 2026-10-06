@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 58c5a40e2bd3160459ab51147b2d55e8, type: 3}
+  m_Name: olive
+  m_EditorClassIdentifier: _SAIUN.Scripts::_SAIUN.Scripts.Crop.CropDefinition
+  id: olive
+  displayName: "\uC62C\uB9AC\uBE0C"
+  stagePrefabs:
+  - {fileID: 8305451133707176741, guid: 7302272a11819dd4a81c66c1ed6884f9, type: 3}
+  - {fileID: 7902250165440672734, guid: 81f41c1c2cf23c7479b8fadd5ba872f1, type: 3}
+  - {fileID: 6611133091212415310, guid: 977482ef45943684f8d5e0da7edd8d7e, type: 3}
+  - {fileID: 834989214323222741, guid: 5ba58742085f0444699e5e8744488930, type: 3}
+  - {fileID: 3318351613541584713, guid: 6a093b2c00482f74a8397af1c342d1e6, type: 3}

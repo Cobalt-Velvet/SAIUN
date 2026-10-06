@@ -20,7 +20,3 @@ MonoBehaviour:
   - {fileID: 842788192486993444, guid: aea311d53f280674eaa0aba78ca81e61, type: 3}
   - {fileID: 5163732063327480346, guid: a3e0c3c8ea8ae154ea7de8d8031da262, type: 3}
   - {fileID: 6811365827146101042, guid: 44a1f5e182e3cfa43befb798b089db7e, type: 3}
-  requiredFocusMinutes: 25
-  requiredSets: 4
-  unlockCondition: 0
-  unlockThreshold: 0

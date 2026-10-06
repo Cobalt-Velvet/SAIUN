@@ -1,7 +1,7 @@
 using SQLite;
 
-// 사양서 7장 SQLite 스키마의 4개 테이블 모델.
-// 파일당 공개 클래스 1개 규칙의 예외로, 사양서 3장이 이 파일에 4개 모델을 함께 두도록 지정했다.
+// 사양서 7장 SQLite 스키마의 테이블 모델(해금이 없어져 unlocks 테이블은 쓰지 않는다).
+// 파일당 공개 클래스 1개 규칙의 예외로, 사양서 3장이 이 파일에 모델을 함께 두도록 지정했다.
 // 시각 컬럼은 모두 DateTime.Now.ToString("o") 형식의 문자열이다.
 namespace _SAIUN.Scripts.Data
 {
@@ -59,16 +59,5 @@ namespace _SAIUN.Scripts.Data
         public string CropType { get; set; }
 
         public int Quantity { get; set; }
-    }
-
-    /// <summary>해금된 아이템.</summary>
-    [Table("unlocks")]
-    public class UnlockRecord
-    {
-        [PrimaryKey]
-        public string ItemId { get; set; }
-
-        /// <summary>해금 시각(ISO8601).</summary>
-        public string UnlockedAt { get; set; }
     }
 }

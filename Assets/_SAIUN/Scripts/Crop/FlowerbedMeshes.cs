@@ -46,6 +46,22 @@ namespace _SAIUN.Scripts.Crop
         public float WoodRepeat;       // 나무 텍스처 한 장이 덮는 결 방향 길이(월드)
     }
 
+    /// <summary>토분 모양 값(화단 로컬). 가운데가 원점이고 데크 윗면(0)에 선다.</summary>
+    internal struct PotShape
+    {
+        // 흙이 차오른 높이(토분 높이 대비)
+        private const float SoilLevel = 0.86f;
+
+        public float Radius;   // 테두리 바깥 반지름
+        public float Height;   // 테두리 윗면 높이
+
+        /// <summary>흙 윗면 가장자리 높이. 작물은 가운데의 살짝 부푼 곳에 선다.</summary>
+        public float SoilEdgeHeight => Height * SoilLevel;
+
+        /// <summary>흙 윗면 가운데 높이(작물이 서는 높이).</summary>
+        public float SoilHeight => SoilEdgeHeight + Radius * FlowerbedMeshes.PotSoilDome;
+    }
+
     /// <summary>
     /// 화단 외형 메시를 코드로 만든다. 요소는 적게, 남은 것은 질감과 빛까지 다듬는다.
     /// 화분: 바닷바람에 바랜 나무 판자 상자. 벽마다 판자 두 장이 포개져 있고
@@ -54,6 +70,8 @@ namespace _SAIUN.Scripts.Crop
     ///       왼쪽 모서리를 덮는 옆판, 아래로 내려가는 기둥. 가까이 내려다보는 바닥이 생겨 먼 바다와 시점이 이어진다.
     /// 나무 UV: U는 결 방향 길이(WoodRepeat마다 한 장), V는 나무 텍스처의 판자 네 줄(WoodArtBuilder)이다.
     /// 흙: 칸마다 작물이 설 둔덕, 칸 사이 얕은 고랑, 잔 알갱이 요철이 있는 한 장의 면. 칸이 흙 모양으로 읽힌다.
+    /// 토분: 아래로 좁아지는 몸통 위에 두툼한 테두리 띠가 둘린 둥근 화분. 테두리 윗면과 안쪽 벽이 흙까지 이어진다.
+    ///       윤곽 마디마다 꼭짓점을 따로 두어 테두리 모서리가 또렷하다.
     ///     UV는 칸 단위(칸 하나 = 0~1)라 칸 텍스처가 칸마다 한 장씩 깔린다.
     /// 좌표는 화단 로컬(바닥 중심 원점, 열 X·행 Z)이다.
     /// </summary>
@@ -87,6 +105,121 @@ namespace _SAIUN.Scripts.Crop
         private const float HashX = 127.1f;
         private const float HashY = 311.7f;
         private const float HashScale = 43758.5453f;
+
+        // ---- 토분 ----
+
+        // 둘레를 나누는 수. 테두리가 각져 보이지 않을 만큼.
+        private const int PotSegments = 48;
+        // 토분 흙 가운데가 가장자리보다 부푼 높이(토분 반지름 대비)와 흙 면을 나누는 고리 수
+        internal const float PotSoilDome = 0.05f;
+        private const int PotSoilRings = 6;
+
+        // 토분 윤곽(반지름·높이를 각각 Radius·Height 대비로). 바깥 아래 → 몸통 → 테두리 띠 → 윗면 → 안쪽 벽 → 흙 높이.
+        private static readonly Vector2[] PotProfile =
+        {
+            new Vector2(0.70f, 0f),
+            new Vector2(0.72f, 0.03f),
+            new Vector2(0.86f, 0.74f),
+            new Vector2(0.87f, 0.765f),
+            new Vector2(1f, 0.785f),
+            new Vector2(1f, 0.97f),
+            new Vector2(0.985f, 1f),
+            new Vector2(0.9f, 1f),
+            new Vector2(0.885f, 0.975f),
+            new Vector2(0.85f, 0.86f),
+        };
+
+        /// <summary>토분: 윤곽을 둘레로 돌려 만든다. UV의 u는 둘레, v는 윤곽을 따라 잰 길이다.</summary>
+        public static Mesh BuildPot(PotShape shape)
+        {
+            var vertices = new List<Vector3>();
+            var normals = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var triangles = new List<int>();
+            float travelled = 0f;
+            for (int k = 0; k < PotProfile.Length - 1; k++)
+            {
+                var a = new Vector2(PotProfile[k].x * shape.Radius, PotProfile[k].y * shape.Height);
+                var b = new Vector2(PotProfile[k + 1].x * shape.Radius, PotProfile[k + 1].y * shape.Height);
+                Vector2 along = b - a;
+                // 윤곽을 따라 오르는 방향을 바깥으로 돌린 것이 면이 보는 쪽이다(안쪽 벽은 화분 안을 본다).
+                Vector2 facing = new Vector2(along.y, -along.x).normalized;
+                int first = vertices.Count;
+                for (int s = 0; s <= PotSegments; s++)
+                {
+                    float angle = s * Mathf.PI * 2f / PotSegments;
+                    float cos = Mathf.Cos(angle);
+                    float sin = Mathf.Sin(angle);
+                    var normal = new Vector3(facing.x * cos, facing.y, facing.x * sin);
+                    float u = s / (float)PotSegments;
+                    vertices.Add(new Vector3(a.x * cos, a.y, a.x * sin));
+                    vertices.Add(new Vector3(b.x * cos, b.y, b.x * sin));
+                    normals.Add(normal);
+                    normals.Add(normal);
+                    uvs.Add(new Vector2(u, travelled));
+                    uvs.Add(new Vector2(u, travelled + along.magnitude));
+                }
+                for (int s = 0; s < PotSegments; s++)
+                {
+                    int i = first + s * 2;
+                    Quad(triangles, vertices, normals, i, i + 1, i + 3, i + 2);
+                }
+                travelled += along.magnitude;
+            }
+            return Finish("Pot", vertices, normals, uvs, triangles, recalculateNormals: false);
+        }
+
+        /// <summary>토분 흙: 안쪽 벽에 닿는 둥근 면. 가운데가 살짝 부풀고 잔 알갱이 요철이 있다. UV는 흙 칸 텍스처 한 장이 꼭 맞는다.</summary>
+        public static Mesh BuildPotSoil(PotShape shape)
+        {
+            float radius = PotProfile[PotProfile.Length - 1].x * shape.Radius;
+            float grainSize = shape.Radius * 0.2f;
+            var vertices = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var triangles = new List<int>();
+            vertices.Add(new Vector3(0f, shape.SoilHeight, 0f));
+            uvs.Add(new Vector2(0.5f, 0.5f));
+            for (int ring = 1; ring <= PotSoilRings; ring++)
+            {
+                float t = ring / (float)PotSoilRings;
+                for (int s = 0; s < PotSegments; s++)
+                {
+                    float angle = s * Mathf.PI * 2f / PotSegments;
+                    float x = Mathf.Cos(angle) * radius * t;
+                    float z = Mathf.Sin(angle) * radius * t;
+                    float dome = shape.Radius * PotSoilDome * (Mathf.Cos(Mathf.PI * t) * 0.5f + 0.5f);
+                    // 가장자리는 벽에 꼭 붙도록 요철을 지운다.
+                    float grain = (ValueNoise(x / grainSize, z / grainSize) - 0.5f) * shape.Radius * 0.02f * (1f - t * t);
+                    vertices.Add(new Vector3(x, shape.SoilEdgeHeight + dome + grain, z));
+                    uvs.Add(new Vector2(x / (radius * 2f) + 0.5f, z / (radius * 2f) + 0.5f));
+                }
+            }
+
+            for (int s = 0; s < PotSegments; s++)
+            {
+                int next = (s + 1) % PotSegments;
+                // 위에서 봐서 앞면이 되게 감는다.
+                triangles.Add(0);
+                triangles.Add(1 + next);
+                triangles.Add(1 + s);
+            }
+            for (int ring = 1; ring < PotSoilRings; ring++)
+            {
+                int inner = 1 + (ring - 1) * PotSegments;
+                int outer = 1 + ring * PotSegments;
+                for (int s = 0; s < PotSegments; s++)
+                {
+                    int next = (s + 1) % PotSegments;
+                    triangles.Add(inner + s);
+                    triangles.Add(inner + next);
+                    triangles.Add(outer + next);
+                    triangles.Add(inner + s);
+                    triangles.Add(outer + next);
+                    triangles.Add(outer + s);
+                }
+            }
+            return Finish("PotSoil", vertices, null, uvs, triangles, recalculateNormals: true);
+        }
 
         // ---- 화분 ----
 

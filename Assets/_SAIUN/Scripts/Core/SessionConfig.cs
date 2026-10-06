@@ -29,7 +29,6 @@ namespace _SAIUN.Scripts.Core
         public const int MinTotalSets = 1;
         public const int MaxTotalSets = 12;
 
-        public const string DefaultCropType = "rice";
         public const int MaxTaskTextLength = 40;
 
         // ---- 직렬화 필드 ----
@@ -37,7 +36,6 @@ namespace _SAIUN.Scripts.Core
         [SerializeField] private int shortBreakMinutes = DefaultShortBreakMinutes;
         [SerializeField] private int longBreakMinutes = DefaultLongBreakMinutes;
         [SerializeField] private int totalSets = DefaultTotalSets;
-        [SerializeField] private string cropType = DefaultCropType;
         [SerializeField] private string taskText = string.Empty;
 
         // ---- 외부 노출 ----
@@ -70,13 +68,6 @@ namespace _SAIUN.Scripts.Core
             set => totalSets = Mathf.Clamp(value, MinTotalSets, MaxTotalSets);
         }
 
-        /// <summary>작물 종류 식별자. 비어 있으면 기본 작물로 대체된다.</summary>
-        public string CropType
-        {
-            get => cropType;
-            set => cropType = string.IsNullOrWhiteSpace(value) ? DefaultCropType : value.Trim();
-        }
-
         /// <summary>태스크 텍스트. 최대 길이를 넘는 부분은 잘린다.</summary>
         public string TaskText
         {
@@ -94,7 +85,6 @@ namespace _SAIUN.Scripts.Core
             ShortBreakMinutes = shortBreakMinutes;
             LongBreakMinutes = longBreakMinutes;
             TotalSets = totalSets;
-            CropType = cropType;
             TaskText = taskText;
         }
 
@@ -124,7 +114,7 @@ namespace _SAIUN.Scripts.Core
 
         public override string ToString()
         {
-            return $"Focus {focusMinutes}m / Short {shortBreakMinutes}m / Long {longBreakMinutes}m / Sets {totalSets} / Crop {cropType}";
+            return $"Focus {focusMinutes}m / Short {shortBreakMinutes}m / Long {longBreakMinutes}m / Sets {totalSets}";
         }
     }
 }

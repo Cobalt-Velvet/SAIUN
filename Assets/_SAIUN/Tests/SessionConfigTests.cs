@@ -21,7 +21,6 @@ namespace _SAIUN.Tests
             Assert.AreEqual(5, config.ShortBreakMinutes);
             Assert.AreEqual(15, config.LongBreakMinutes);
             Assert.AreEqual(4, config.TotalSets);
-            Assert.AreEqual("rice", config.CropType);
             Assert.AreEqual(string.Empty, config.TaskText);
         }
 
@@ -76,27 +75,16 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 빈_작물_종류는_기본_작물로_대체된다()
-        {
-            var config = new SessionConfig { CropType = "   " };
-            Assert.AreEqual(SessionConfig.DefaultCropType, config.CropType);
-
-            config.CropType = " wheat ";
-            Assert.AreEqual("wheat", config.CropType);
-        }
-
-        [Test]
         public void 직렬화를_거친_범위_밖_값도_보정된다()
         {
             // 인스펙터·JSON처럼 setter를 우회하는 경로를 JsonUtility로 흉내 낸다.
-            const string json = "{\"focusMinutes\":1,\"shortBreakMinutes\":99,\"longBreakMinutes\":2,\"totalSets\":50,\"cropType\":\"\",\"taskText\":\"\"}";
+            const string json = "{\"focusMinutes\":1,\"shortBreakMinutes\":99,\"longBreakMinutes\":2,\"totalSets\":50,\"taskText\":\"\"}";
             SessionConfig config = JsonUtility.FromJson<SessionConfig>(json);
 
             Assert.AreEqual(SessionConfig.MinFocusMinutes, config.FocusMinutes);
             Assert.AreEqual(SessionConfig.MaxShortBreakMinutes, config.ShortBreakMinutes);
             Assert.AreEqual(SessionConfig.MinLongBreakMinutes, config.LongBreakMinutes);
             Assert.AreEqual(SessionConfig.MaxTotalSets, config.TotalSets);
-            Assert.AreEqual(SessionConfig.DefaultCropType, config.CropType);
         }
 
         [Test]

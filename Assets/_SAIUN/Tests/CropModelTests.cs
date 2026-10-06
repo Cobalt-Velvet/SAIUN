@@ -56,13 +56,41 @@ namespace _SAIUN.Tests
             }
         }
 
+        [Test]
+        public void 올리브는_토분에서_단계마다_커지고_다_자라도_풍향계보다_낮다()
+        {
+            CropDefinition olive = Gm.CropCatalog.FocusCrop;
+            Assert.IsNotNull(olive, "집중 작물이 있어야 한다");
+            Assert.AreEqual("olive", olive.Id);
+            CollectionAssert.DoesNotContain(Gm.CropCatalog.Crops, olive, "텃밭에는 심지 않는다");
+
+            Vector3 root = _bed.PotPlantPosition;
+            Assert.GreaterOrEqual(StandingPixels(olive, CropStage.Seed, root), SeedMinPixels, "씨앗(어린 가지)");
+            for (int i = 1; i < GrowingOrder.Length; i++)
+            {
+                Assert.Greater(StandingPixels(olive, GrowingOrder[i], root), StandingPixels(olive, GrowingOrder[i - 1], root),
+                    $"올리브 {GrowingOrder[i - 1]} → {GrowingOrder[i]}");
+            }
+            Assert.AreEqual(StandingPixels(olive, CropStage.Fruiting, root), StandingPixels(olive, CropStage.Harvestable, root), 0.5f,
+                "익어도 같은 나무다(열매 빛깔만 바뀐다)");
+
+            Transform arrow = _bed.transform.Find("WeatherVane/Vane");
+            Assert.IsNotNull(arrow, "풍향계 화살표");
+            float treeTop = root.y + olive.GetStagePrefab(CropStage.Fruiting).GetComponent<MeshFilter>().sharedMesh.bounds.max.y;
+            Assert.Less(treeTop, arrow.position.y, "풍향계보다 낮다");
+        }
+
         // 앞줄 가운데 칸에 심은 모델이 흙(뿌리 높이) 위로 창에서 차지하는 키. 흙 속 부분은 보이지 않으므로 뺀다.
         private float StandingPixels(CropDefinition crop, CropStage stage)
+        {
+            return StandingPixels(crop, stage, _bed.CellPosition(FrontColumn, FrontRow));
+        }
+
+        private static float StandingPixels(CropDefinition crop, CropStage stage, Vector3 root)
         {
             GameObject prefab = crop.GetStagePrefab(stage);
             Assert.IsNotNull(prefab, $"{crop.Id} {stage} 모델이 없다");
             Bounds bounds = prefab.GetComponent<MeshFilter>().sharedMesh.bounds;
-            Vector3 root = _bed.CellPosition(FrontColumn, FrontRow);
             Vector2 top = SceneMetrics.WorldToWindowPixels(root + Vector3.up * bounds.max.y);
             Vector2 bottom = SceneMetrics.WorldToWindowPixels(root + Vector3.up * Mathf.Max(0f, bounds.min.y));
             return bottom.y - top.y;

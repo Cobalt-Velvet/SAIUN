@@ -22,7 +22,7 @@ namespace _SAIUN.Tests
         private SoundView _view;
         private AudioClip _complete, _transition, _harvest, _warning, _death;
         private CropCatalog _catalog;
-        private CropDefinition _rice;
+        private CropDefinition _olive;
         private double _now;
 
         [SetUp]
@@ -40,11 +40,11 @@ namespace _SAIUN.Tests
             _now = 100d;
             _timer.SetClock(() => _now);
 
-            // 수확 이벤트는 작물 목록이 있어야 기록된다.
-            _rice = ScriptableObject.CreateInstance<CropDefinition>();
-            _rice.Configure("rice", "rice", new GameObject[CropDefinition.StageModelCount]);
+            // 수확 이벤트는 집중 작물이 있어야 기록된다.
+            _olive = ScriptableObject.CreateInstance<CropDefinition>();
+            _olive.Configure("olive", "olive", new GameObject[CropDefinition.StageModelCount]);
             _catalog = ScriptableObject.CreateInstance<CropCatalog>();
-            _catalog.Configure(new[] { _rice });
+            _catalog.Configure(new CropDefinition[0], _olive);
             SetField(typeof(GameManager), _gm, "cropCatalog", _catalog);
 
             _soundGo = new GameObject("Sound");
@@ -65,7 +65,7 @@ namespace _SAIUN.Tests
         {
             Object.DestroyImmediate(_soundGo);
             Object.DestroyImmediate(_gmGo);
-            foreach (Object owned in new Object[] { _complete, _transition, _harvest, _warning, _death, _catalog, _rice })
+            foreach (Object owned in new Object[] { _complete, _transition, _harvest, _warning, _death, _catalog, _olive })
             {
                 Object.DestroyImmediate(owned);
             }

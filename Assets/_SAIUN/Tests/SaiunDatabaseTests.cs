@@ -100,29 +100,16 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 해금은_한_번만_기록된다()
-        {
-            Assert.IsFalse(_db.IsUnlocked("tomato"));
-            _db.Unlock("tomato");
-            _db.Unlock("tomato");
-
-            Assert.IsTrue(_db.IsUnlocked("tomato"));
-            Assert.AreEqual(1, _db.GetUnlocks().Count);
-        }
-
-        [Test]
         public void 전체_삭제_후에는_모든_테이블이_비어_있다()
         {
             int sessionId = _db.InsertSession(NewSession(SessionRecord.ResultHarvested));
             _db.AddHarvest(sessionId, "rice");
-            _db.Unlock("potato");
 
             _db.DeleteAllRows();
 
             Assert.AreEqual(0, _db.GetSessionCount());
             Assert.AreEqual(0, _db.GetHarvestCount());
             Assert.AreEqual(0, _db.GetInventory().Count);
-            Assert.AreEqual(0, _db.GetUnlocks().Count);
         }
 
         [Test]

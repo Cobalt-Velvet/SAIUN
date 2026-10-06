@@ -27,7 +27,6 @@ namespace _SAIUN.Tests
             Assert.AreEqual(SessionConfig.DefaultShortBreakMinutes, config.ShortBreakMinutes);
             Assert.AreEqual(SessionConfig.DefaultLongBreakMinutes, config.LongBreakMinutes);
             Assert.AreEqual(SessionConfig.DefaultTotalSets, config.TotalSets);
-            Assert.AreEqual(SessionConfig.DefaultCropType, config.CropType);
 
             Assert.IsTrue(SettingsStore.AlwaysOnTop);
             Assert.IsTrue(SettingsStore.SoundEnabled);
@@ -42,7 +41,7 @@ namespace _SAIUN.Tests
         {
             var config = new SessionConfig
             {
-                FocusMinutes = 45, ShortBreakMinutes = 10, LongBreakMinutes = 20, TotalSets = 6, CropType = "wheat",
+                FocusMinutes = 45, ShortBreakMinutes = 10, LongBreakMinutes = 20, TotalSets = 6,
                 TaskText = "저장되지 않는 값",
             };
             SettingsStore.SaveSessionConfig(config);
@@ -52,7 +51,6 @@ namespace _SAIUN.Tests
             Assert.AreEqual(10, loaded.ShortBreakMinutes);
             Assert.AreEqual(20, loaded.LongBreakMinutes);
             Assert.AreEqual(6, loaded.TotalSets);
-            Assert.AreEqual("wheat", loaded.CropType);
             Assert.AreEqual(string.Empty, loaded.TaskText, "태스크 텍스트는 세션마다 새로 쓴다");
         }
 
@@ -85,7 +83,6 @@ namespace _SAIUN.Tests
             Assert.AreEqual("session.shortBreakMinutes", SettingsStore.Keys.ShortBreakMinutes);
             Assert.AreEqual("session.longBreakMinutes", SettingsStore.Keys.LongBreakMinutes);
             Assert.AreEqual("session.totalSets", SettingsStore.Keys.TotalSets);
-            Assert.AreEqual("session.cropType", SettingsStore.Keys.CropType);
             Assert.AreEqual("window.posX", SettingsStore.Keys.WindowPosX);
             Assert.AreEqual("window.posY", SettingsStore.Keys.WindowPosY);
             Assert.AreEqual("window.alwaysOnTop", SettingsStore.Keys.WindowAlwaysOnTop);

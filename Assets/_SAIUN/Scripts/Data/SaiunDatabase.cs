@@ -40,7 +40,7 @@ namespace _SAIUN.Scripts.Data
 
         // ---- 연결 ----
 
-        /// <summary>연결을 열고 4개 테이블이 없으면 만든다. 이미 열려 있으면 아무 것도 하지 않는다.</summary>
+        /// <summary>연결을 열고 테이블이 없으면 만든다. 이미 열려 있으면 아무 것도 하지 않는다.</summary>
         public void Open()
         {
             if (IsOpen) return;
@@ -54,7 +54,6 @@ namespace _SAIUN.Scripts.Data
                 _connection.CreateTable<SessionRecord>();
                 _connection.CreateTable<HarvestRecord>();
                 _connection.CreateTable<InventoryRecord>();
-                _connection.CreateTable<UnlockRecord>();
             }
             catch (Exception e)
             {
@@ -140,30 +139,9 @@ namespace _SAIUN.Scripts.Data
             return _connection.Table<InventoryRecord>().ToList();
         }
 
-        // ---- unlocks ----
-
-        public bool IsUnlocked(string itemId)
-        {
-            if (!EnsureOpen() || string.IsNullOrEmpty(itemId)) return false;
-            return _connection.Find<UnlockRecord>(itemId) != null;
-        }
-
-        /// <summary>아이템을 해금한다. 이미 해금돼 있으면 시각을 덮어쓰지 않는다.</summary>
-        public void Unlock(string itemId)
-        {
-            if (!EnsureOpen() || string.IsNullOrEmpty(itemId) || IsUnlocked(itemId)) return;
-            _connection.Insert(new UnlockRecord { ItemId = itemId, UnlockedAt = Now() });
-        }
-
-        public List<UnlockRecord> GetUnlocks()
-        {
-            if (!EnsureOpen()) return new List<UnlockRecord>();
-            return _connection.Table<UnlockRecord>().ToList();
-        }
-
         // ---- 초기화 ----
 
-        /// <summary>4개 테이블의 모든 행을 지운다. 파일은 그대로 둔다.</summary>
+        /// <summary>모든 테이블의 행을 지운다. 파일은 그대로 둔다.</summary>
         public void DeleteAllRows()
         {
             if (!EnsureOpen()) return;
@@ -172,7 +150,6 @@ namespace _SAIUN.Scripts.Data
                 _connection.DeleteAll<HarvestRecord>();
                 _connection.DeleteAll<SessionRecord>();
                 _connection.DeleteAll<InventoryRecord>();
-                _connection.DeleteAll<UnlockRecord>();
             });
         }
 

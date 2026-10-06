@@ -17,3 +17,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 4b17d7156383fc24d853f2415e01df09, type: 2}
   - {fileID: 11400000, guid: ebd70d0b962b04341820a521b3b0bae3, type: 2}
   - {fileID: 11400000, guid: a5b53a688ad8da544a7171d7c26692eb, type: 2}
+  focusCrop: {fileID: 11400000, guid: 73cedf93381049c4198461e6c77cd2c5, type: 2}

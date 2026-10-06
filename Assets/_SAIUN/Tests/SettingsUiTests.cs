@@ -79,32 +79,20 @@ namespace _SAIUN.Tests
         }
 
         [Test]
-        public void 잠긴_작물은_누를_수_없고_기본_작물은_골라서_심는다()
+        public void 시작하면_상자가_토분으로_바뀌고_올리브를_심는다()
         {
+            var growth = Object.FindFirstObjectByType<_SAIUN.Scripts.Crop.CropGrowth>();
+            Assert.IsNotNull(growth);
+            Assert.IsFalse(growth.PotShown, "쉬는 동안에는 상자 텃밭이 나와 있다");
+            Assert.AreEqual(12, growth.GardenCount);
+
+            _bar.PrimaryButton.onClick.Invoke();
             _bar.PrimaryButton.onClick.Invoke();
 
-            Assert.IsTrue(CropButton("rice").interactable);
-            Assert.IsTrue(CropButton("wheat").interactable);
-            Assert.IsFalse(CropButton("tomato").interactable, "누적 집중 10시간 전에는 잠겨 있다");
-            Assert.IsFalse(CropButton("potato").interactable);
-
-            CropButton("wheat").onClick.Invoke();
-            _bar.PrimaryButton.onClick.Invoke();
-            Assert.AreEqual("wheat", Gm.Timer.Config.CropType);
-        }
-
-        [Test]
-        public void 해금된_작물을_고르면_필요_설정까지_올리고_낮추면_대체_작물을_알린다()
-        {
-            Gm.Database.Unlock("crop.tomato");
-            _bar.PrimaryButton.onClick.Invoke();
-
-            CropButton("tomato").onClick.Invoke();
-            Assert.AreEqual(45, _panel.Draft.FocusMinutes, "토마토는 45분 × 4세트부터");
-            Assert.AreEqual(45, Field("focusField").Value);
-
-            Field("focusField").Slider.value = 30;
-            StringAssert.Contains("쌀", HintText(), "설정이 모자라면 쌀을 심는다고 알린다");
+            Assert.AreEqual(PomodoroState.Focus, Gm.StateMachine.CurrentState);
+            Assert.IsTrue(growth.PotShown);
+            Assert.AreEqual("olive", growth.CurrentCrop.Id);
+            Assert.AreEqual(_SAIUN.Scripts.Crop.CropStage.Seed, growth.CurrentStage);
         }
 
         // ---- 시스템 설정 (12-2) ----
@@ -339,16 +327,6 @@ namespace _SAIUN.Tests
             Button(_settings, "openButton").onClick.Invoke();
             Assert.IsTrue(_settings.IsOpen);
         }
-
-        private Button CropButton(string id)
-        {
-            Transform grid = Get<RectTransform>(_panel, "cropGrid");
-            Transform child = grid.Find($"Crop_{id}");
-            Assert.IsNotNull(child, $"작물 버튼 {id}이(가) 없다");
-            return child.GetComponent<Button>();
-        }
-
-        private string HintText() => Get<TMP_Text>(_panel, "hintText").text;
 
         private SliderField Field(string name) => Get<SliderField>(_panel, name);
 

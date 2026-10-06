@@ -16,7 +16,6 @@ namespace _SAIUN.Scripts.Data
             public const string ShortBreakMinutes = "session.shortBreakMinutes";
             public const string LongBreakMinutes = "session.longBreakMinutes";
             public const string TotalSets = "session.totalSets";
-            public const string CropType = "session.cropType";
             public const string WindowPosX = "window.posX";
             public const string WindowPosY = "window.posY";
             public const string WindowAlwaysOnTop = "window.alwaysOnTop";
@@ -58,7 +57,6 @@ namespace _SAIUN.Scripts.Data
                 ShortBreakMinutes = PlayerPrefs.GetInt(Keys.ShortBreakMinutes, SessionConfig.DefaultShortBreakMinutes),
                 LongBreakMinutes = PlayerPrefs.GetInt(Keys.LongBreakMinutes, SessionConfig.DefaultLongBreakMinutes),
                 TotalSets = PlayerPrefs.GetInt(Keys.TotalSets, SessionConfig.DefaultTotalSets),
-                CropType = PlayerPrefs.GetString(Keys.CropType, SessionConfig.DefaultCropType),
             };
         }
 
@@ -70,7 +68,6 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.SetInt(Keys.ShortBreakMinutes, config.ShortBreakMinutes);
             PlayerPrefs.SetInt(Keys.LongBreakMinutes, config.LongBreakMinutes);
             PlayerPrefs.SetInt(Keys.TotalSets, config.TotalSets);
-            PlayerPrefs.SetString(Keys.CropType, config.CropType);
             PlayerPrefs.Save();
         }
 
@@ -195,7 +192,6 @@ namespace _SAIUN.Scripts.Data
             PlayerPrefs.DeleteKey(Keys.ShortBreakMinutes);
             PlayerPrefs.DeleteKey(Keys.LongBreakMinutes);
             PlayerPrefs.DeleteKey(Keys.TotalSets);
-            PlayerPrefs.DeleteKey(Keys.CropType);
             PlayerPrefs.DeleteKey(Keys.WindowPosX);
             PlayerPrefs.DeleteKey(Keys.WindowPosY);
             PlayerPrefs.DeleteKey(Keys.WindowAlwaysOnTop);

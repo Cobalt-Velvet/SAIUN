@@ -10,6 +10,7 @@ namespace _SAIUN.Scripts.Crop
     /// 외형(화분·흙·데크)이 연결돼 있으면 값을 바꿀 때 따라 맞춘다.
     /// 화분·흙·데크는 기본 도형 대신 FlowerbedMeshes가 만드는 메시다(바랜 나무 판자 상자, 둔덕·고랑이 있는 흙 면,
     /// 화분이 놓인 바닷가 나무 데크). 데크가 그림자를 받으므로 그림자만 그리는 바닥은 두지 않는다.
+    /// 집중하는 동안에는 상자 대신 같은 자리(상자 가운데)에 토분 하나가 놓인다(CropGrowth가 바꿔 놓는다).
     /// 메시는 실행할 때(에디터에서는 값을 바꿀 때) 새로 만들고 씬에는 저장하지 않는다.
     /// </summary>
     public class Flowerbed : MonoBehaviour
@@ -61,6 +62,19 @@ namespace _SAIUN.Scripts.Crop
 
         [Tooltip("칸 한 변을 나누는 수. 클수록 둔덕·고랑이 매끈하다.")]
         [SerializeField, Range(2, 32)] private int soilResolution = 16;
+
+        [Header("토분 (외형)")]
+        [Tooltip("MeshFilter가 있으면 토분 메시를 채운다. 상자 가운데 데크 위에 선다.")]
+        [SerializeField] private Transform pot;
+
+        [Tooltip("MeshFilter가 있으면 토분 흙 메시를 채운다")]
+        [SerializeField] private Transform potSoil;
+
+        [Tooltip("토분 테두리 바깥 반지름")]
+        [SerializeField, Min(0.05f)] private float potRadius = 0.25f;
+
+        [Tooltip("토분 높이(테두리 윗면까지)")]
+        [SerializeField, Min(0.05f)] private float potHeight = 0.34f;
 
         [Header("데크 (외형)")]
         [Tooltip("MeshFilter가 있으면 데크 메시를 채운다. 화분은 데크 뒤 모서리에 놓이고 데크는 보는 쪽으로 뻗는다.")]
@@ -122,6 +136,20 @@ namespace _SAIUN.Scripts.Crop
             }
         }
 
+        /// <summary>풍향계가 서는 데크 위 점(로컬). 상자 뒤 모서리를 꿰뚫고 데크에 박혀, 상자를 토분으로 바꿔도 남는다.</summary>
+        public Vector3 VaneBase => new Vector3(RimCorner.x, 0f, RimCorner.z);
+
+        public Transform Planter => planter;
+        public Transform Soil => soilRoot;
+        public Transform Pot => pot;
+        public Transform PotSoil => potSoil;
+        public float PotRadius => potRadius;
+
+        /// <summary>토분 흙 윗면 가운데(집중 작물이 서는 자리)의 월드 좌표.</summary>
+        public Vector3 PotPlantPosition => transform.position + transform.rotation * new Vector3(0f, PotShape.SoilHeight, 0f);
+
+        internal PotShape PotShape => new PotShape { Radius = potRadius, Height = potHeight };
+
         /// <summary>데크 모양(로컬, 윗면 높이 0).</summary>
         internal DeckShape DeckShape
         {
@@ -167,6 +195,8 @@ namespace _SAIUN.Scripts.Crop
         private Mesh _planterMesh;
         private Mesh _soilMesh;
         private Mesh _deckMesh;
+        private Mesh _potMesh;
+        private Mesh _potSoilMesh;
 
         /// <summary>흙 윗면의 가로(열 방향)·세로(행 방향) 월드 길이. 테두리는 뺀다.</summary>
         public Vector2 GridSize => new Vector2(Columns * cellSize, Rows * cellSize);
@@ -197,6 +227,8 @@ namespace _SAIUN.Scripts.Crop
             Release(ref _planterMesh);
             Release(ref _soilMesh);
             Release(ref _deckMesh);
+            Release(ref _potMesh);
+            Release(ref _potSoilMesh);
         }
 
         /// <summary>외형을 현재 그리드 값에 맞춘다. 연결되지 않은 외형은 건너뛴다.</summary>
@@ -226,6 +258,22 @@ namespace _SAIUN.Scripts.Crop
                 Release(ref _deckMesh);
                 _deckMesh = FlowerbedMeshes.BuildDeck(DeckShape);
                 deckFilter.sharedMesh = _deckMesh;
+            }
+
+            if (pot != null && pot.TryGetComponent(out MeshFilter potFilter))
+            {
+                SetLocal(pot, Vector3.zero, Vector3.one);
+                Release(ref _potMesh);
+                _potMesh = FlowerbedMeshes.BuildPot(PotShape);
+                potFilter.sharedMesh = _potMesh;
+            }
+
+            if (potSoil != null && potSoil.TryGetComponent(out MeshFilter potSoilFilter))
+            {
+                SetLocal(potSoil, Vector3.zero, Vector3.one);
+                Release(ref _potSoilMesh);
+                _potSoilMesh = FlowerbedMeshes.BuildPotSoil(PotShape);
+                potSoilFilter.sharedMesh = _potSoilMesh;
             }
         }
 

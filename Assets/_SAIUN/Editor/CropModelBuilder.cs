@@ -15,6 +15,8 @@ namespace _SAIUN.Editor
     ///  - 밀: 풀잎 포기 위로 곧은 줄기와 알곡 두 줄의 이삭.
     ///  - 토마토: 지지대 옆 줄기에 나선으로 붙는 겹잎, 꼭지 홈과 골이 있는 열매와 꽃받침.
     ///  - 감자: 낮게 퍼지는 겹잎 무더기, 별 모양 꽃, 흙 위로 드러난 덩이줄기.
+    ///  - 올리브(집중 작물, 토분 하나): 좁은 잎이 마주나는 어린 가지 → 비틀린 줄기에 은빛 수관을 인 나무,
+    ///    풋올리브가 맺혔다가 검보라로 익는다. 이것만 월드 치수 그대로(OliveScale) 빚는다.
     /// 단계 모델마다 재질별 서브메시를 가진 메시 에셋 하나와 그것을 그리는 프리팹 하나다(부품 수와 무관하게 렌더러 1개).
     /// 같은 작물·단계는 늘 같은 난수로 빚어 다시 만들어도 모양이 같다. 치수는 칸 간격 0.4 기준이고 ModelScale로 키운다.
     /// 앞뒤 칸과 겹쳐 보여도 되지만 옆 칸을 넘지 않게(반경 0.095 × 2 &lt; 칸 절반 0.2) 한다.
@@ -63,6 +65,24 @@ namespace _SAIUN.Editor
         private const string LeafDark = "Crop_LeafDark";
         private const string Grain = "Crop_Grain";
         private const string Fruit = "Crop_Fruit";
+        private const string OliveLeaf = "Olive_Leaf";
+        private const string OliveLeafSilver = "Olive_LeafSilver";
+        private const string OliveBark = "Olive_Bark";
+        private const string OliveGreen = "Olive_Green";
+        private const string OliveRipe = "Olive_Ripe";
+
+        // ---- 올리브 ----
+        // 토분 흙 가운데에서 자란다. 다 자란 나무는 키 0.9 남짓으로 풍향계보다 낮고, 데크 위에서 바다를 배경으로
+        // 둥근 수관의 실루엣이 선다. 결실·수확 단계는 같은 씨로 빚은 같은 나무다.
+        private const float OliveScale = 1f;
+        private const int OliveTreeSeed = 7331;
+        private const float OliveTreeHeight = 0.9f;
+        // 올리브 잎의 폭(길이 대비)과 뒷면 은빛 잎의 비율
+        private const float OliveLeafWidth = 0.24f;
+        private const float OliveShootLeafWidth = 0.32f;
+        private const float OliveSilverShare = 0.4f;
+        // 올리브 잎은 작고 많아 마디를 줄여 빚는다.
+        private const int OliveLeafSegments = 4;
 
         private static readonly (string Name, Color Color, float Smoothness, bool Gradient)[] MaterialLooks =
         {
@@ -71,6 +91,11 @@ namespace _SAIUN.Editor
             (LeafDark, SaiunPalette.CropLeafDark, 0.34f, true),
             (Grain, SaiunPalette.CropGrain, 0.22f, false),
             (Fruit, SaiunPalette.CropFruit, 0.72f, false),
+            (OliveLeaf, SaiunPalette.OliveLeaf, 0.36f, true),
+            (OliveLeafSilver, SaiunPalette.OliveLeafSilver, 0.42f, true),
+            (OliveBark, SaiunPalette.OliveBark, 0.12f, false),
+            (OliveGreen, SaiunPalette.OliveGreen, 0.55f, false),
+            (OliveRipe, SaiunPalette.OliveRipe, 0.78f, false),
         };
 
         private static readonly CropStage[] ModelStages =
@@ -99,14 +124,15 @@ namespace _SAIUN.Editor
             Dictionary<string, Material> materials = EnsureMaterials();
             if (materials == null) return null;
 
-            // 필요 설정과 해금 조건은 사양서 v1.1 7-3 MVP 표 그대로다.
+            // 쉬는 동안 상자에서 저절로 자라는 텃밭 작물과, 집중할 때 토분에 심는 올리브
             var definitions = new List<CropDefinition>
             {
-                BuildCrop("rice", "쌀", materials, overwrite, RiceStage, 25, 4, UnlockCondition.Default, 0),
-                BuildCrop("wheat", "밀", materials, overwrite, WheatStage, 25, 4, UnlockCondition.Default, 0),
-                BuildCrop("tomato", "토마토", materials, overwrite, TomatoStage, 45, 4, UnlockCondition.TotalFocusHours, 10),
-                BuildCrop("potato", "감자", materials, overwrite, PotatoStage, 45, 4, UnlockCondition.HarvestCount, 10),
+                BuildCrop("rice", "쌀", materials, overwrite, RiceStage, ModelScale),
+                BuildCrop("wheat", "밀", materials, overwrite, WheatStage, ModelScale),
+                BuildCrop("tomato", "토마토", materials, overwrite, TomatoStage, ModelScale),
+                BuildCrop("potato", "감자", materials, overwrite, PotatoStage, ModelScale),
             };
+            CropDefinition olive = BuildCrop("olive", "올리브", materials, overwrite, OliveStage, OliveScale);
 
             var catalog = AssetDatabase.LoadAssetAtPath<CropCatalog>(CatalogPath);
             if (catalog == null)
@@ -115,10 +141,10 @@ namespace _SAIUN.Editor
                 catalog = ScriptableObject.CreateInstance<CropCatalog>();
                 AssetDatabase.CreateAsset(catalog, CatalogPath);
             }
-            catalog.Configure(definitions);
+            catalog.Configure(definitions, olive);
             EditorUtility.SetDirty(catalog);
 
-            Debug.Log($"CropModelBuilder: 작물 {definitions.Count}종 준비 완료");
+            Debug.Log($"CropModelBuilder: 텃밭 작물 {definitions.Count}종과 집중 작물 {olive.Id} 준비 완료");
             return catalog;
         }
 
@@ -127,8 +153,7 @@ namespace _SAIUN.Editor
         private delegate void StageShape(CropStage stage, SculptMesh plant, Rng rng);
 
         private static CropDefinition BuildCrop(string id, string displayName, Dictionary<string, Material> materials,
-            bool overwrite, StageShape describe,
-            int requiredFocusMinutes, int requiredSets, UnlockCondition unlock, int unlockThreshold)
+            bool overwrite, StageShape describe, float scale)
         {
             string prefabFolder = $"{PrefabRoot}/{id}";
             string meshFolder = $"{MeshRoot}/{id}";
@@ -146,7 +171,7 @@ namespace _SAIUN.Editor
                 {
                     var plant = new SculptMesh();
                     describe(stage, plant, new Rng(StableSeed(name)));
-                    Mesh mesh = SaveMesh(plant.Bake(name, ModelScale, out string[] parts), $"{meshFolder}/{name}.asset");
+                    Mesh mesh = SaveMesh(plant.Bake(name, scale, out string[] parts), $"{meshFolder}/{name}.asset");
 
                     var root = new GameObject(name);
                     root.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -171,7 +196,6 @@ namespace _SAIUN.Editor
                 AssetDatabase.CreateAsset(definition, definitionPath);
             }
             definition.Configure(id, displayName, prefabs);
-            definition.ConfigureRules(requiredFocusMinutes, requiredSets, unlock, unlockThreshold);
             EditorUtility.SetDirty(definition);
             return definition;
         }
@@ -596,6 +620,163 @@ namespace _SAIUN.Editor
             plant.Leaf(leafMaterial, Frame(tip, TangentOnPath(stalk, 1f) + Vector3.up * 0.1f, Vector3.up),
                 leafletLength.Max * 1.15f, leafletWidth * 1.1f, 0.35f, rng.Range(-30f, -12f));
         }
+
+        // ---- 올리브 ----
+
+        private static void OliveStage(CropStage stage, SculptMesh plant, Rng rng)
+        {
+            switch (stage)
+            {
+                case CropStage.Seed:
+                    OliveShoot(plant, rng, height: 0.13f, pairs: 3, leafLength: 0.075f);
+                    break;
+                case CropStage.Sprout:
+                    OliveShoot(plant, rng, height: 0.28f, pairs: 7, leafLength: 0.085f);
+                    break;
+                case CropStage.Growing:
+                    OliveTree(plant, new Rng(OliveTreeSeed), OliveTreeHeight * 0.6f, branches: 4, twigs: 4, fruit: null);
+                    break;
+                case CropStage.Fruiting:
+                    OliveTree(plant, new Rng(OliveTreeSeed), OliveTreeHeight, branches: 7, twigs: 6, fruit: OliveGreen);
+                    break;
+                case CropStage.Harvestable:
+                    OliveTree(plant, new Rng(OliveTreeSeed), OliveTreeHeight, branches: 7, twigs: 6, fruit: OliveRipe);
+                    break;
+            }
+        }
+
+        // 곧게 선 가는 줄기에 좁은 잎이 마디마다 마주나고, 마디마다 90°씩 돌아간다(올리브 잎차례). 위 잎일수록 작다.
+        // 어린 가지는 눈높이에서 작게 보이므로 잎을 다 자란 나무보다 조금 넓게 빚는다.
+        private static void OliveShoot(SculptMesh plant, Rng rng, float height, int pairs, float leafLength)
+        {
+            List<Vector3> stem = Stem(height, height * 0.05f);
+            plant.Tube(OliveBark, Matrix4x4.identity, stem, height * 0.035f, height * 0.015f, 5);
+            float yaw = rng.Range(0f, 90f);
+            for (int p = 0; p < pairs; p++)
+            {
+                float t = 0.3f + 0.7f * p / Mathf.Max(1, pairs - 1);
+                Vector3 node = PointOnPath(stem, t);
+                Vector3 side = Direction(yaw + p * 90f);
+                float length = leafLength * Mathf.Lerp(1f, 0.6f, t * t);
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    Vector3 growth = side * s + Vector3.up * 0.7f;
+                    plant.Leaf(OliveLeafLook(rng), Frame(node, growth, Vector3.up), length, length * OliveShootLeafWidth, 0.3f,
+                        rng.Range(-18f, 2f), OliveLeafSegments);
+                }
+            }
+        }
+
+        // 비틀린 줄기가 한쪽으로 기울며 오르다 굵은 가지 여럿으로 갈라진다. 가지는 둘레로 고르게 돌아가며 눕거나 서서
+        // 수관이 둥글고, 가지를 따라 난 잔가지와 가지 끝에서 부챗살로 퍼진 잔가지에 잎이 빽빽이 달린다.
+        // 밑동은 짧은 뿌리 셋으로 흙을 움켜쥔다.
+        private static void OliveTree(SculptMesh plant, Rng rng, float height, int branches, int twigs, string fruit)
+        {
+            float trunkHeight = height * 0.38f;
+            float twist = rng.Range(0f, 360f);
+            Vector3 lean = Direction(rng.Range(0f, 360f));
+            var trunk = new List<Vector3>();
+            const int trunkPoints = 7;
+            for (int i = 0; i < trunkPoints; i++)
+            {
+                float t = i / (float)(trunkPoints - 1);
+                Vector3 wobble = Direction(twist + t * 240f) * (height * 0.025f * Mathf.Sin(t * Mathf.PI));
+                trunk.Add(lean * (height * 0.07f * t * t) + wobble + Vector3.up * (trunkHeight * t));
+            }
+            plant.Tube(OliveBark, Matrix4x4.identity, trunk, height * 0.05f, height * 0.028f, 8);
+
+            for (int r = 0; r < 3; r++)
+            {
+                Vector3 outward = Direction(twist + r * 120f + rng.Range(-20f, 20f));
+                var root = new List<Vector3>
+                {
+                    Vector3.up * (height * 0.05f),
+                    outward * (height * 0.05f) + Vector3.up * (height * 0.012f),
+                    outward * (height * 0.085f) - Vector3.up * (height * 0.005f),
+                };
+                plant.Tube(OliveBark, Matrix4x4.identity, root, height * 0.02f, height * 0.006f, 5);
+            }
+
+            for (int b = 0; b < branches; b++)
+            {
+                Vector3 outward = Direction(twist + b * GoldenAngleDegrees + rng.Range(-15f, 15f));
+                float length = height * rng.Range(0.3f, 0.44f);
+                // 눕는 가지부터 거의 선 가지까지 섞여 수관이 위로도 둥글다.
+                float rise = Mathf.Lerp(0.45f, 1.25f, (b + rng.Range(0f, 1f)) / branches);
+                Vector3 start = PointOnPath(trunk, rng.Range(0.7f, 1f));
+                var branch = new List<Vector3>();
+                const int branchPoints = 5;
+                for (int i = 0; i < branchPoints; i++)
+                {
+                    float t = i / (float)(branchPoints - 1);
+                    branch.Add(start + outward * (length * 0.7f * t) + Vector3.up * (length * rise * (t - 0.3f * t * t)));
+                }
+                plant.Tube(OliveBark, Matrix4x4.identity, branch, height * 0.024f, height * 0.008f, 6);
+
+                for (int k = 0; k < twigs; k++)
+                {
+                    float t = 0.3f + 0.7f * k / Mathf.Max(1, twigs - 1);
+                    Vector3 along = TangentOnPath(branch, t);
+                    Vector3 direction = (along + Direction(rng.Range(0f, 360f)) * 0.9f + Vector3.up * rng.Range(-0.1f, 0.6f)).normalized;
+                    OliveTwig(plant, rng, PointOnPath(branch, t), direction, height * rng.Range(0.12f, 0.2f), fruit);
+                }
+                Vector3 tip = branch[branchPoints - 1];
+                Vector3 tipAlong = TangentOnPath(branch, 1f);
+                for (int k = 0; k < 3; k++)
+                {
+                    Vector3 fan = (tipAlong + Direction(rng.Range(0f, 360f)) * 0.7f + Vector3.up * rng.Range(0f, 0.6f)).normalized;
+                    OliveTwig(plant, rng, tip, fan, height * rng.Range(0.14f, 0.2f), fruit);
+                }
+            }
+        }
+
+        // 잔가지: 끝으로 조금 처지고, 좁은 잎이 마디마다 마주나 끝 쪽을 향한다. 열매는 짧은 꼭지로 하나둘 매달린다.
+        private static void OliveTwig(SculptMesh plant, Rng rng, Vector3 at, Vector3 direction, float length, string fruit)
+        {
+            var twig = new List<Vector3>();
+            const int twigPoints = 4;
+            for (int i = 0; i < twigPoints; i++)
+            {
+                float t = i / (float)(twigPoints - 1);
+                twig.Add(at + direction * (length * t) - Vector3.up * (length * 0.3f * t * t));
+            }
+            plant.Tube(OliveBark, Matrix4x4.identity, twig, 0.0045f, 0.002f, 4);
+
+            const int nodes = 6;
+            for (int n = 0; n < nodes; n++)
+            {
+                float t = 0.15f + 0.85f * n / (nodes - 1);
+                Vector3 node = PointOnPath(twig, t);
+                Vector3 tangent = TangentOnPath(twig, t);
+                Vector3 side = Vector3.Cross(Vector3.up, tangent);
+                side = side.sqrMagnitude < 1e-6f ? Vector3.right : side.normalized;
+                Vector3 across = n % 2 == 0 ? side : Vector3.Cross(tangent, side).normalized;
+                for (int s = -1; s <= 1; s += 2)
+                {
+                    Vector3 growth = across * (s * 0.75f) + tangent + Vector3.up * rng.Range(-0.15f, 0.3f);
+                    float leafLength = rng.Range(0.06f, 0.085f);
+                    plant.Leaf(OliveLeafLook(rng), Frame(node, growth, Vector3.up), leafLength, leafLength * OliveLeafWidth, 0.25f,
+                        rng.Range(-28f, -6f), OliveLeafSegments);
+                }
+            }
+            plant.Leaf(OliveLeafLook(rng), Frame(twig[twigPoints - 1], TangentOnPath(twig, 1f), Vector3.up), 0.065f,
+                0.065f * OliveLeafWidth, 0.25f, -10f, OliveLeafSegments);
+
+            if (fruit == null) return;
+            int olives = rng.Range(0f, 1f) < 0.5f ? 1 : 2;
+            for (int o = 0; o < olives; o++)
+            {
+                Vector3 node = PointOnPath(twig, rng.Range(0.35f, 0.85f));
+                Vector3 hang = node - Vector3.up * 0.012f + Direction(rng.Range(0f, 360f)) * 0.008f;
+                plant.Tube(OliveBark, Matrix4x4.identity, new List<Vector3> { node, hang }, 0.0015f, 0.0012f, 3);
+                float size = rng.Range(0.9f, 1.15f);
+                plant.Ellipsoid(fruit, Frame(hang - Vector3.up * 0.018f, Vector3.up, Vector3.forward),
+                    new Vector3(0.016f, 0.021f, 0.016f) * size);
+            }
+        }
+
+        // 잎 윗면의 잿빛 초록과 뒷면의 은빛을 섞어 수관이 반짝이게 한다.
+        private static string OliveLeafLook(Rng rng) => rng.Range(0f, 1f) < OliveSilverShare ? OliveLeafSilver : OliveLeaf;
 
         // 밑동에서 곧게 오르며 옆으로 살짝 굽이치는 줄기
         private static List<Vector3> Stem(float height, float sway)

@@ -55,6 +55,26 @@ namespace _SAIUN.Scripts.Core
         /// <summary>익은 토마토.</summary>
         public static readonly Color CropFruit = Hex("FF6F61");
 
+        // ---- 집중 작물 올리브와 토분 ----
+
+        /// <summary>올리브 잎 윗면의 잿빛 초록.</summary>
+        public static readonly Color OliveLeaf = Hex("7D8C6A");
+
+        /// <summary>올리브 잎 뒷면의 은빛. 이 잎이 섞여 나무가 은빛으로 반짝인다.</summary>
+        public static readonly Color OliveLeafSilver = Hex("B7C0A8");
+
+        /// <summary>올리브 나무껍질의 잿빛 갈색.</summary>
+        public static readonly Color OliveBark = Hex("6F655A");
+
+        /// <summary>풋올리브.</summary>
+        public static readonly Color OliveGreen = Hex("9AA65A");
+
+        /// <summary>익은 올리브(검보라).</summary>
+        public static readonly Color OliveRipe = Hex("4A2F45");
+
+        /// <summary>햇볕과 바닷바람에 바랜 토분.</summary>
+        public static readonly Color PotClay = Hex("C08F72");
+
         // ---- 용도별 색 ----
 
         /// <summary>메인 포인트 컬러: 바다 유리.</summary>
@@ -89,9 +109,6 @@ namespace _SAIUN.Scripts.Core
 
         /// <summary>남은 세트 도트. 완료 도트보다 눈에 덜 띄게 반투명이다.</summary>
         public static readonly Color SetDotPending = WithAlpha(DryWood, 0.45f);
-
-        /// <summary>세션 패널의 작물 칸 바탕. 패널 바탕 위에 그늘진 유목이 비친다.</summary>
-        public static readonly Color PanelChip = WithAlpha(Driftwood, 0.55f);
 
         /// <summary>태스크 입력 필드 배경.</summary>
         public static readonly Color InputBackground = Sand;

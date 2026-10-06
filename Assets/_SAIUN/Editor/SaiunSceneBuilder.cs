@@ -36,6 +36,7 @@ namespace _SAIUN.Editor
         private const string MaterialFolder = "Assets/_SAIUN/Art/Materials";
         private const string PlanterMaterialPath = MaterialFolder + "/Flowerbed_Planter.mat";
         private const string SoilMaterialPath = MaterialFolder + "/Flowerbed_Soil.mat";
+        private const string PotMaterialPath = MaterialFolder + "/Flowerbed_Pot.mat";
         private const string VaneMaterialPath = MaterialFolder + "/WeatherVane_Metal.mat";
         private const string VaneAccentMaterialPath = MaterialFolder + "/WeatherVane_Accent.mat";
         private const string LitShaderName = "Universal Render Pipeline/Lit";
@@ -72,6 +73,7 @@ namespace _SAIUN.Editor
         private const float PlanterSmoothness = 0.14f;
         private const float WoodBumpScale = 0.8f;
         private const float SoilSmoothness = 0.12f;
+        private const float PotSmoothness = 0.2f;
         // 흙 알갱이(디테일 맵)의 칸 대비 반복 비율. 칸과 어긋나게 두어 칸마다 같은 무늬가 보이지 않는다.
         private const float SoilDetailTiling = 0.37f;
 
@@ -205,11 +207,6 @@ namespace _SAIUN.Editor
                 ("completeColor", SaiunPalette.Harvestable),
                 ("warningColor", SaiunPalette.Warning),
                 ("dimColor", SaiunPalette.Charcoal));
-            SetSceneColors<SessionPanelView>(
-                ("cropColor", SaiunPalette.PanelChip),
-                ("cropTextColor", SaiunPalette.Sand),
-                ("selectedCropColor", SaiunPalette.MainPoint),
-                ("selectedCropTextColor", SaiunPalette.OnMainPoint));
         }
 
         private static void SetSceneColors<T>(params (string Field, Color Color)[] values) where T : Component
@@ -850,8 +847,13 @@ namespace _SAIUN.Editor
             soilMaterial.SetFloat("_DetailNormalMapScale", 1f);
             soilMaterial.EnableKeyword("_DETAIL_MULX2");
             soilMaterial.SetFloat("_Smoothness", SoilSmoothness);
+            // 토분: 햇볕에 바랜 테라코타. 흙은 상자 흙과 같은 재질이다.
+            Material potMaterial = EnsureMaterial(PotMaterialPath, lit, _ => { });
+            potMaterial.SetColor("_BaseColor", SaiunPalette.PotClay);
+            potMaterial.SetFloat("_Smoothness", PotSmoothness);
             EditorUtility.SetDirty(planterMaterial);
             EditorUtility.SetDirty(soilMaterial);
+            EditorUtility.SetDirty(potMaterial);
 
             GameObject bedGo = GameObject.Find("Flowerbed");
             bool created = bedGo == null;
@@ -871,11 +873,16 @@ namespace _SAIUN.Editor
             Transform oldGround = bedGo.transform.Find("ShadowGround");
             if (oldGround != null) Object.DestroyImmediate(oldGround.gameObject);
             Transform deck = EnsureMeshChild(bedGo.transform, "Deck", planterMaterial, ShadowCastingMode.On);
+            // 집중하는 동안 상자 대신 놓이는 토분(처음에는 CropGrowth가 감춘다)
+            Transform pot = EnsureMeshChild(bedGo.transform, "Pot", potMaterial, ShadowCastingMode.On);
+            Transform potSoil = EnsureMeshChild(bedGo.transform, "PotSoil", soilMaterial, ShadowCastingMode.On);
 
             var so = new SerializedObject(bed);
             so.FindProperty("planter").objectReferenceValue = planter;
             so.FindProperty("soilRoot").objectReferenceValue = soilRoot;
             so.FindProperty("deck").objectReferenceValue = deck;
+            so.FindProperty("pot").objectReferenceValue = pot;
+            so.FindProperty("potSoil").objectReferenceValue = potSoil;
             so.ApplyModifiedPropertiesWithoutUndo();
 
             // 흙 윗면 중심이 지정한 창 픽셀에 보이도록 바닥 원점을 역산한다. 카메라가 바뀌면 자리도 따라 바뀐다.
@@ -1356,7 +1363,7 @@ namespace _SAIUN.Editor
             VaneMeshes meshes = VaneModelBuilder.Build();
 
             Transform root = EnsureChild(bed.transform, "WeatherVane");
-            root.localPosition = bed.RimCorner;
+            root.localPosition = bed.VaneBase;
             root.localRotation = Quaternion.identity;
             root.localScale = Vector3.one;
 
@@ -1403,14 +1410,20 @@ namespace _SAIUN.Editor
             renderer.receiveShadows = true;
         }
 
-        // 비에 젖는 흙·화분. 작물은 런타임에 생겨서 넣지 않는다.
+        // 비에 젖는 흙·화분·토분. 작물은 런타임에 생겨서 넣지 않는다.
         private static void EnsureSurfaceWetness(Flowerbed bed, WeatherController weather)
         {
             var surfaces = new System.Collections.Generic.List<Renderer>();
-            Transform planter = bed.transform.Find("Planter");
-            if (planter != null && planter.TryGetComponent(out Renderer planterRenderer)) surfaces.Add(planterRenderer);
-            Transform soil = bed.transform.Find("Soil");
-            if (soil != null) surfaces.AddRange(soil.GetComponentsInChildren<Renderer>(true));
+            foreach (string part in new[] { "Planter", "Pot" })
+            {
+                Transform found = bed.transform.Find(part);
+                if (found != null && found.TryGetComponent(out Renderer renderer)) surfaces.Add(renderer);
+            }
+            foreach (string part in new[] { "Soil", "PotSoil" })
+            {
+                Transform found = bed.transform.Find(part);
+                if (found != null) surfaces.AddRange(found.GetComponentsInChildren<Renderer>(true));
+            }
 
             var wetness = EnsureComponent<SurfaceWetness>(bed.gameObject);
             var so = new SerializedObject(wetness);

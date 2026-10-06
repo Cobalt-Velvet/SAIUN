@@ -29,8 +29,11 @@ namespace _SAIUN.Editor
         public const string Metal = "Metal";
         public const string Accent = "Accent";
 
-        /// <summary>받침에서 화살표 축까지 높이(월드).</summary>
-        public const float PoleHeight = 1.15f;
+        /// <summary>
+        /// 받침(데크)에서 화살표 축까지 높이(월드). 기둥은 화분 상자 뒤 모서리를 꿰뚫고 데크에 박혀,
+        /// 집중하는 동안 상자를 토분으로 바꿔도 그대로 선다.
+        /// </summary>
+        public const float PoleHeight = 1.42f;
 
         /// <summary>화살표 축에서 풍속계 중심까지 높이(월드).</summary>
         public const float CupsLift = 0.2f;
